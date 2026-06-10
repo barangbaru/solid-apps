@@ -270,17 +270,32 @@ def get_notification_emails(settings, emp_email=''):
             recipients.append(e)
     return recipients
 
+def normalize_telegram_id(value):
+    """Normalisasi chat_id Telegram.
+    - Angka (misal 123456789 atau -100123456789) → tetap
+    - Username tanpa @ (misal 'grupku') → '@grupku'
+    - Sudah ada @ → tetap
+    """
+    v = value.strip()
+    if not v:
+        return v
+    if v.startswith('@'):
+        return v
+    if v.lstrip('-').isdigit():
+        return v
+    return '@' + v
+
 def get_notification_telegram_ids(settings, emp_tg_id='', default_chat=''):
-    """Gabungkan telegram_id karyawan + daftar statis + default chat."""
+    """Gabungkan telegram_id karyawan + daftar statis + default chat, semua dinormalisasi."""
     ids = []
     if emp_tg_id and emp_tg_id.strip():
-        ids.append(emp_tg_id.strip())
+        ids.append(normalize_telegram_id(emp_tg_id))
     for t in settings.get('notification_telegram_ids', '').split(','):
-        t = t.strip()
+        t = normalize_telegram_id(t)
         if t and t not in ids:
             ids.append(t)
     if not ids and default_chat:
-        ids.append(default_chat)
+        ids.append(normalize_telegram_id(default_chat))
     return ids
 
 # ─── Auth Helpers ──────────────────────────────────────────────────────────────
@@ -692,7 +707,7 @@ def emp_add():
             request.form.get('contract_end',''),
             request.form.get('email','').strip(),
             request.form.get('phone','').strip(),
-            request.form.get('telegram_id','').strip(),
+            normalize_telegram_id(request.form.get('telegram_id','')),
             request.form.get('notes','').strip(),
         ))
         db.commit()
@@ -737,7 +752,7 @@ def emp_edit(emp_id):
             request.form.get('contract_end','')   if emp_type == 'kontrak' else '',
             request.form.get('email','').strip(),
             request.form.get('phone','').strip(),
-            request.form.get('telegram_id','').strip(),
+            normalize_telegram_id(request.form.get('telegram_id','')),
             request.form.get('notes','').strip(),
             emp_id,
         ))

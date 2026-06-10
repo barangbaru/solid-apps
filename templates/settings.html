@@ -151,8 +151,14 @@
           </label>
           <input type="text" name="notification_telegram_ids" class="form-control form-control-sm"
                  value="{{ cfg.notification_telegram_ids }}"
-                 placeholder="-100123456789, 987654321">
-          <div class="form-text">Bisa berupa grup atau personal. Kosongkan jika tidak perlu.</div>
+                 placeholder="-100123456789, @gruphr, namakanal">
+          <div class="form-text">
+            Format yang diterima (pisah koma):
+            <code>123456789</code> numeric ID personal •
+            <code>-100123456789</code> numeric ID grup •
+            <code>@namakanal</code> atau <code>namakanal</code> username grup/channel publik.
+            Username tanpa <code>@</code> akan otomatis ditambah.
+          </div>
         </div>
       </div>
     </div>

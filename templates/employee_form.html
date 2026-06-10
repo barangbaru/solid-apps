@@ -137,7 +137,12 @@
                        value="{{ emp.telegram_id if emp else '' }}"
                        placeholder="123456789 atau @username">
               </div>
-              <div class="form-text">Chat ID (angka) atau @username. Gunakan @userinfobot untuk mendapatkan ID.</div>
+              <div class="form-text">
+                Bisa diisi dengan: <code>123456789</code> (numeric ID personal/grup) <strong>atau</strong>
+                <code>@namakanal</code> / <code>namakanal</code> (username grup/channel publik).
+                <br>Untuk chat personal: gunakan <strong>@userinfobot</strong> di Telegram untuk mendapatkan numeric ID.
+                Username hanya berlaku untuk grup/channel publik.
+              </div>
             </div>
           </div>
         </div>
