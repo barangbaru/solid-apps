@@ -79,11 +79,11 @@
           </td>
           <td class="text-center small">{{ ev.periode }}</td>
           <td class="text-center">
-            {% if ev.supervisor_id == current_user.id %}
+            {% if my_emp_id and ev.supervisor_id == my_emp_id %}
               <span class="badge bg-info text-dark">Atasan Langsung</span>
-            {% elif ev.leader_id == current_user.id %}
+            {% elif my_emp_id and ev.leader_id == my_emp_id %}
               <span class="badge bg-primary">Leader</span>
-            {% elif ev.manager_id == current_user.id %}
+            {% elif my_emp_id and ev.manager_id == my_emp_id %}
               <span class="badge bg-dark">Manager</span>
             {% else %}
               <span class="badge bg-warning text-dark">Superadmin</span>

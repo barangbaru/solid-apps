@@ -15,6 +15,13 @@ _default_db = os.path.join(os.path.dirname(__file__), 'evaluasi.db')
 DB_PATH = os.environ.get('DATABASE_PATH', _default_db)
 DIVISI_LIST = list(ALL_DIVISIONS.keys())
 
+def get_divisi_list(db):
+    try:
+        rows = db.execute('SELECT name FROM divisions WHERE is_active=1 ORDER BY sort_order, name').fetchall()
+        return [r['name'] for r in rows] if rows else DIVISI_LIST
+    except Exception:
+        return DIVISI_LIST
+
 # ─── DB Helpers ────────────────────────────────────────────────────────────────
 
 def get_db():
@@ -190,6 +197,14 @@ CREATE TABLE IF NOT EXISTS eval_reviews (
     FOREIGN KEY(reviewer_user_id) REFERENCES users(id),
     UNIQUE(eval_id, reviewer_user_id)
 );
+CREATE TABLE IF NOT EXISTS divisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 MIGRATIONS = [
@@ -205,6 +220,7 @@ MIGRATIONS = [
     ('employees', 'supervisor_id',   'INTEGER DEFAULT NULL'),
     ('employees', 'leader_id',       'INTEGER DEFAULT NULL'),
     ('employees', 'manager_id',      'INTEGER DEFAULT NULL'),
+    ('employees', 'user_id',         'INTEGER DEFAULT NULL'),
     ('evaluations', 'self_notes',        "TEXT DEFAULT ''"),
     ('evaluations', 'self_achievements', "TEXT DEFAULT ''"),
     ('evaluations', 'self_improvements', "TEXT DEFAULT ''"),
@@ -230,7 +246,7 @@ DEFAULT_SETTINGS = {
     'notification_telegram_ids': '',
 }
 
-LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Team Lead', 'Manager', 'Senior Manager', 'Director']
+LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director']
 
 def init_db():
     db = sqlite3.connect(DB_PATH)
@@ -260,6 +276,13 @@ def init_db():
         print("   Password : Admin@123")
         print(" !! Segera ganti password setelah login !!")
         print("=" * 55)
+    # Migrate old level name
+    db.execute("UPDATE employees SET level='Leader' WHERE level='Team Lead'")
+    # Seed divisions
+    if db.execute('SELECT COUNT(*) FROM divisions').fetchone()[0] == 0:
+        for i, name in enumerate(ALL_DIVISIONS.keys()):
+            db.execute('INSERT OR IGNORE INTO divisions(name, sort_order) VALUES(?,?)', (name, i))
+    db.commit()
     db.close()
 
 def seed_db(db):
@@ -342,27 +365,38 @@ def get_or_create_eval_token(db, eval_id):
     db.commit()
     return token
 
+def get_user_emp_id(db, user_id):
+    """Return the employee.id linked to this user, or None."""
+    row = db.execute('SELECT id FROM employees WHERE user_id=?', (user_id,)).fetchone()
+    return row['id'] if row else None
+
 def can_review_eval(db, user_id, user_role, eval_id):
     if user_role == 'superadmin':
         return True
+    eid = get_user_emp_id(db, user_id)
+    if not eid:
+        return False
     row = db.execute('''SELECT emp.supervisor_id, emp.leader_id, emp.manager_id
                         FROM evaluations e JOIN employees emp ON emp.id = e.employee_id
                         WHERE e.id=?''', (eval_id,)).fetchone()
     if not row:
         return False
-    return user_id in [row['supervisor_id'], row['leader_id'], row['manager_id']]
+    return eid in [row['supervisor_id'], row['leader_id'], row['manager_id']]
 
 def get_pending_review_count(db, user_id, user_role):
     if user_role == 'superadmin':
         return db.execute(
             "SELECT COUNT(*) FROM evaluations WHERE review_status='self_filled'"
         ).fetchone()[0]
+    eid = get_user_emp_id(db, user_id)
+    if not eid:
+        return 0
     return db.execute('''
         SELECT COUNT(*) FROM evaluations e
         JOIN employees emp ON emp.id = e.employee_id
         WHERE e.review_status='self_filled'
         AND (emp.supervisor_id=? OR emp.leader_id=? OR emp.manager_id=?)
-    ''', (user_id, user_id, user_id)).fetchone()[0]
+    ''', (eid, eid, eid)).fetchone()[0]
 
 # ─── Auth Helpers ──────────────────────────────────────────────────────────────
 
@@ -388,11 +422,13 @@ def superadmin_required(f):
 
 @app.context_processor
 def inject_globals():
-    pending = 0
+    pending    = 0
+    divisi_list = DIVISI_LIST
     if 'user_id' in session:
         try:
-            pending = get_pending_review_count(
-                get_db(), session['user_id'], session.get('user_role', ''))
+            db = get_db()
+            pending     = get_pending_review_count(db, session['user_id'], session.get('user_role', ''))
+            divisi_list = get_divisi_list(db)
         except Exception:
             pass
     return {
@@ -405,6 +441,8 @@ def inject_globals():
         'now_year':      date.today().year,
         'today_date':    date.today().isoformat(),
         'pending_reviews': pending,
+        'divisi_list':   divisi_list,
+        'level_choices': LEVEL_CHOICES,
     }
 
 # ─── Score Helpers ──────────────────────────────────────────────────────────────
@@ -743,8 +781,9 @@ def index():
     ''').fetchall()
     expiring_soon = [e for e in contracts_alert if e['days_left'] is not None and e['days_left'] <= 30]
 
+    divisi_list  = get_divisi_list(db)
     divisi_stats = {}
-    for d in DIVISI_LIST:
+    for d in divisi_list:
         row = db.execute('''
             SELECT COUNT(DISTINCT emp.id) AS total,
                    COUNT(DISTINCT CASE WHEN ev.status='final' THEN ev.employee_id END) AS done
@@ -753,8 +792,7 @@ def index():
         ''', (d,)).fetchone()
         divisi_stats[d] = row
     return render_template('index.html', employees=employees, divisi_stats=divisi_stats,
-                           divisi_list=DIVISI_LIST, expiring_soon=expiring_soon,
-                           level_choices=LEVEL_CHOICES)
+                           expiring_soon=expiring_soon)
 
 # ─── Employee CRUD ──────────────────────────────────────────────────────────────
 
@@ -766,11 +804,12 @@ def emp_add():
         divisi = request.form['divisi']
         if not name:
             flash('Nama tidak boleh kosong', 'danger')
-            return render_template('employee_form.html', emp=None,
-                                   divisi_list=DIVISI_LIST, level_choices=LEVEL_CHOICES)
+            db = get_db()
+            employees_all = db.execute('SELECT id,name,jabatan,divisi,level FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+            return render_template('employee_form.html', emp=None, employees_all=employees_all)
         db = get_db()
         def _int_or_none(v):
-            return int(v) if v and v.isdigit() else None
+            return int(v) if v and str(v).isdigit() else None
         db.execute('''INSERT INTO employees(name,jabatan,divisi,level,employment_type,
                       contract_start,contract_end,email,phone,telegram_id,notes,
                       supervisor_id,leader_id,manager_id)
@@ -794,9 +833,8 @@ def emp_add():
         flash(f'Karyawan {name} berhasil ditambahkan', 'success')
         return redirect(url_for('index'))
     db = get_db()
-    users = db.execute("SELECT id, full_name, username, role FROM users WHERE is_active=1 ORDER BY full_name").fetchall()
-    return render_template('employee_form.html', emp=None,
-                           divisi_list=DIVISI_LIST, level_choices=LEVEL_CHOICES, users=users)
+    employees_all = db.execute('SELECT id,name,jabatan,divisi,level FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+    return render_template('employee_form.html', emp=None, employees_all=employees_all)
 
 @app.route('/emp/<int:emp_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -850,9 +888,10 @@ def emp_edit(emp_id):
     # Reminder logs for this employee
     logs = db.execute('''SELECT * FROM reminder_logs WHERE employee_id=?
                          ORDER BY created_at DESC LIMIT 10''', (emp_id,)).fetchall()
-    users = db.execute("SELECT id, full_name, username, role FROM users WHERE is_active=1 ORDER BY full_name").fetchall()
-    return render_template('employee_form.html', emp=emp, divisi_list=DIVISI_LIST,
-                           level_choices=LEVEL_CHOICES, logs=logs, users=users)
+    employees_all = db.execute('SELECT id,name,jabatan,divisi,level FROM employees WHERE is_active=1 AND id!=? ORDER BY name', (emp_id,)).fetchall()
+    linked_user = db.execute('SELECT id,username,role,is_active FROM users WHERE id=?', (emp['user_id'],)).fetchone() if emp['user_id'] else None
+    return render_template('employee_form.html', emp=emp, logs=logs,
+                           employees_all=employees_all, linked_user=linked_user)
 
 @app.route('/emp/<int:emp_id>/delete', methods=['POST'])
 @superadmin_required
@@ -884,8 +923,13 @@ def karyawan():
         WHERE employment_type = 'tetap' AND is_active = 1
         ORDER BY divisi, name
     ''').fetchall()
+    emp_user_map = {r['id']: r for r in db.execute('''
+        SELECT e.id, u.username, u.role, u.is_active AS u_active
+        FROM employees e JOIN users u ON u.id = e.user_id
+        WHERE e.is_active=1
+    ''').fetchall()}
     return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, today=today,
-                           divisi_list=DIVISI_LIST, level_choices=LEVEL_CHOICES)
+                           emp_user_map=emp_user_map)
 
 @app.route('/contracts')
 @login_required
@@ -1194,11 +1238,11 @@ def eval_summary(eval_id):
                                      WHERE ci.divisi=? ORDER BY ci.sort_order''',
                                   (eval_id, ev['divisi'])).fetchall()
     emp = db.execute('''SELECT e.*,
-        u1.full_name AS sup_name, u2.full_name AS lead_name, u3.full_name AS mgr_name
+        e1.name AS sup_name, e2.name AS lead_name, e3.name AS mgr_name
         FROM employees e
-        LEFT JOIN users u1 ON u1.id = e.supervisor_id
-        LEFT JOIN users u2 ON u2.id = e.leader_id
-        LEFT JOIN users u3 ON u3.id = e.manager_id
+        LEFT JOIN employees e1 ON e1.id = e.supervisor_id
+        LEFT JOIN employees e2 ON e2.id = e.leader_id
+        LEFT JOIN employees e3 ON e3.id = e.manager_id
         WHERE e.id=?''', (ev['employee_id'],)).fetchone()
     eval_token = db.execute('SELECT * FROM eval_tokens WHERE eval_id=?', (eval_id,)).fetchone()
     all_reviews = db.execute('''SELECT er.*, u.full_name, u.username
@@ -1305,16 +1349,18 @@ def self_assess(token):
             ))
             db.execute("UPDATE eval_tokens SET status='submitted', submitted_at=? WHERE id=?",
                        (now_str, tok['id']))
-            # Create pending review rows for assigned supervisors
+            # Create pending review rows for assigned supervisors (employee hierarchy → user)
             emp = db.execute('SELECT * FROM employees WHERE id=?', (ev_row['emp_id'],)).fetchone()
-            for reviewer_id, role in [
+            for emp_ref_id, role in [
                 (emp['supervisor_id'], 'Atasan Langsung'),
                 (emp['leader_id'],     'Leader'),
                 (emp['manager_id'],    'Manager'),
             ]:
-                if reviewer_id:
-                    db.execute('''INSERT OR IGNORE INTO eval_reviews(eval_id,reviewer_user_id,reviewer_role)
-                                  VALUES(?,?,?)''', (tok['eval_id'], reviewer_id, role))
+                if emp_ref_id:
+                    rev_emp = db.execute('SELECT user_id FROM employees WHERE id=?', (emp_ref_id,)).fetchone()
+                    if rev_emp and rev_emp['user_id']:
+                        db.execute('''INSERT OR IGNORE INTO eval_reviews(eval_id,reviewer_user_id,reviewer_role)
+                                      VALUES(?,?,?)''', (tok['eval_id'], rev_emp['user_id'], role))
             db.commit()
             return render_template('eval_self.html', ev=ev_row, submitted=True)
 
@@ -1346,6 +1392,7 @@ def reviews():
                      e.id DESC
         ''').fetchall()
     else:
+        my_emp_id = get_user_emp_id(db, uid) or -1
         evals = db.execute('''
             SELECT e.*, emp.name AS emp_name, emp.jabatan, emp.divisi,
                    emp.supervisor_id, emp.leader_id, emp.manager_id,
@@ -1357,11 +1404,12 @@ def reviews():
             AND (emp.supervisor_id=? OR emp.leader_id=? OR emp.manager_id=?)
             ORDER BY CASE e.review_status WHEN 'self_filled' THEN 0 WHEN 'pending_self' THEN 1 ELSE 2 END,
                      e.id DESC
-        ''', (uid, uid, uid)).fetchall()
+        ''', (my_emp_id, my_emp_id, my_emp_id)).fetchall()
+    my_emp_id = get_user_emp_id(db, uid) if role != 'superadmin' else None
     # mark own pending_review rows for each eval
     my_reviews = {r['eval_id']: r for r in db.execute(
         'SELECT * FROM eval_reviews WHERE reviewer_user_id=?', (uid,)).fetchall()}
-    return render_template('reviews.html', evals=evals, my_reviews=my_reviews)
+    return render_template('reviews.html', evals=evals, my_reviews=my_reviews, my_emp_id=my_emp_id)
 
 
 @app.route('/eval/<int:eval_id>/review', methods=['GET', 'POST'])
@@ -1375,23 +1423,26 @@ def eval_review(eval_id):
 
     ev  = get_eval_or_404(db, eval_id)
     emp = db.execute('''SELECT e.*,
-        u1.full_name AS sup_name, u2.full_name AS lead_name, u3.full_name AS mgr_name
+        e1.name AS sup_name, e2.name AS lead_name, e3.name AS mgr_name
         FROM employees e
-        LEFT JOIN users u1 ON u1.id=e.supervisor_id
-        LEFT JOIN users u2 ON u2.id=e.leader_id
-        LEFT JOIN users u3 ON u3.id=e.manager_id
+        LEFT JOIN employees e1 ON e1.id=e.supervisor_id
+        LEFT JOIN employees e2 ON e2.id=e.leader_id
+        LEFT JOIN employees e3 ON e3.id=e.manager_id
         WHERE e.id=?''', (ev['employee_id'],)).fetchone()
+
+    my_emp_id = get_user_emp_id(db, uid)
+    def _reviewer_role():
+        if my_emp_id and my_emp_id == emp['supervisor_id']: return 'Atasan Langsung'
+        if my_emp_id and my_emp_id == emp['leader_id']:     return 'Leader'
+        if my_emp_id and my_emp_id == emp['manager_id']:    return 'Manager'
+        if session.get('user_role') == 'superadmin':        return 'Superadmin'
+        return ''
 
     if request.method == 'POST':
         action = request.form.get('action', 'save_review')
         notes  = request.form.get('review_notes','').strip()
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-        reviewer_role = ''
-        if emp['supervisor_id'] == uid:  reviewer_role = 'Atasan Langsung'
-        elif emp['leader_id'] == uid:    reviewer_role = 'Leader'
-        elif emp['manager_id'] == uid:   reviewer_role = 'Manager'
-        elif session.get('user_role') == 'superadmin': reviewer_role = 'Superadmin'
+        reviewer_role = _reviewer_role()
 
         db.execute('''INSERT OR REPLACE INTO eval_reviews
                       (eval_id, reviewer_user_id, reviewer_role, notes, status, submitted_at)
@@ -1427,11 +1478,7 @@ def eval_review(eval_id):
         LEFT JOIN competency_scores cs ON cs.competency_item_id=ci.id AND cs.eval_id=?
         WHERE ci.divisi=? ORDER BY ci.sort_order''', (eval_id, ev['divisi'])).fetchall()
 
-    reviewer_role = ''
-    if emp['supervisor_id'] == uid:  reviewer_role = 'Atasan Langsung'
-    elif emp['leader_id'] == uid:    reviewer_role = 'Leader'
-    elif emp['manager_id'] == uid:   reviewer_role = 'Manager'
-    elif session.get('user_role') == 'superadmin': reviewer_role = 'Superadmin'
+    reviewer_role = _reviewer_role()
 
     return render_template('eval_review.html', ev=ev, emp=emp,
                            my_review=my_review, all_reviews=all_reviews,
@@ -1455,14 +1502,15 @@ def api_score(eval_id):
 def admin():
     db = get_db()
     data = {}
-    for d in DIVISI_LIST:
+    divisi_list = get_divisi_list(db)
+    for d in divisi_list:
         cats = db.execute('''SELECT sc.id, sc.name, COUNT(si.id) AS item_count
                              FROM skill_categories sc LEFT JOIN skill_items si ON si.category_id=sc.id
                              WHERE sc.divisi=? GROUP BY sc.id ORDER BY sc.sort_order''', (d,)).fetchall()
         comp = db.execute('SELECT COUNT(*) AS c FROM competency_items WHERE divisi=?', (d,)).fetchone()['c']
         abl  = db.execute('SELECT COUNT(*) AS c FROM ability_items WHERE divisi=?', (d,)).fetchone()['c']
         data[d] = {'cats': cats, 'comp_count': comp, 'ability_count': abl}
-    return render_template('admin.html', data=data, divisi_list=DIVISI_LIST)
+    return render_template('admin.html', data=data)
 
 @app.route('/admin/divisi/<path:divisi>')
 @login_required
@@ -1477,6 +1525,103 @@ def admin_divisi(divisi):
     return render_template('admin_divisi.html', divisi=divisi, cats=cats,
                            items_by_cat=items_by_cat, comp_items=comp_items,
                            ability_items=ability_items)
+
+# ─── Division Management ──────────────────────────────────────────────────────
+
+@app.route('/admin/divisions', methods=['GET', 'POST'])
+@superadmin_required
+def admin_divisions():
+    db = get_db()
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            name = request.form.get('name', '').strip()
+            desc = request.form.get('description', '').strip()
+            if name:
+                try:
+                    max_order = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM divisions').fetchone()[0]
+                    db.execute('INSERT INTO divisions(name, description, sort_order) VALUES(?,?,?)',
+                               (name, desc, max_order + 1))
+                    db.commit()
+                    flash(f'Divisi "{name}" ditambahkan', 'success')
+                except Exception:
+                    flash('Nama divisi sudah ada', 'danger')
+        elif action == 'edit':
+            div_id = request.form.get('id')
+            name   = request.form.get('name', '').strip()
+            desc   = request.form.get('description', '').strip()
+            sort_o = request.form.get('sort_order', '0')
+            is_act = 1 if request.form.get('is_active') else 0
+            if div_id and name:
+                db.execute('UPDATE divisions SET name=?,description=?,sort_order=?,is_active=? WHERE id=?',
+                           (name, desc, int(sort_o), is_act, int(div_id)))
+                db.commit()
+                flash('Divisi diperbarui', 'success')
+        elif action == 'delete':
+            div_id = request.form.get('id')
+            if div_id:
+                emp_count = db.execute('SELECT COUNT(*) FROM employees WHERE divisi=(SELECT name FROM divisions WHERE id=?) AND is_active=1',
+                                       (int(div_id),)).fetchone()[0]
+                if emp_count > 0:
+                    flash(f'Tidak bisa hapus divisi — masih ada {emp_count} karyawan aktif', 'danger')
+                else:
+                    db.execute('DELETE FROM divisions WHERE id=?', (int(div_id),))
+                    db.commit()
+                    flash('Divisi dihapus', 'warning')
+        return redirect(url_for('admin_divisions'))
+    divisions = db.execute('SELECT * FROM divisions ORDER BY sort_order, name').fetchall()
+    emp_counts = {r['divisi']: r['c'] for r in db.execute(
+        'SELECT divisi, COUNT(*) AS c FROM employees WHERE is_active=1 GROUP BY divisi').fetchall()}
+    return render_template('admin_divisions.html', divisions=divisions, emp_counts=emp_counts)
+
+
+# ─── Promote Employee to App User ─────────────────────────────────────────────
+
+@app.route('/emp/<int:emp_id>/promote-role', methods=['POST'])
+@superadmin_required
+def emp_promote_role(emp_id):
+    db  = get_db()
+    emp = db.execute('SELECT * FROM employees WHERE id=?', (emp_id,)).fetchone()
+    if not emp:
+        flash('Karyawan tidak ditemukan', 'danger')
+        return redirect(url_for('karyawan'))
+
+    role = request.form.get('role', 'admin')
+    if role not in ('admin', 'superadmin'):
+        flash('Role tidak valid', 'danger')
+        return redirect(url_for('karyawan'))
+
+    if emp['user_id']:
+        # Update existing linked user's role
+        db.execute('UPDATE users SET role=? WHERE id=?', (role, emp['user_id']))
+        db.commit()
+        flash(f'Role {emp["name"]} diupdate ke {role.upper()}', 'success')
+    else:
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        if not username:
+            flash('Username diperlukan', 'danger')
+            return redirect(url_for('karyawan'))
+        existing = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
+        if existing:
+            db.execute('UPDATE employees SET user_id=? WHERE id=?', (existing['id'], emp_id))
+            db.execute('UPDATE users SET role=?, full_name=?, is_active=1 WHERE id=?',
+                       (role, emp['name'], existing['id']))
+            db.commit()
+            flash(f'{emp["name"]} dihubungkan ke akun "{username}" sebagai {role.upper()}', 'success')
+        else:
+            if not password:
+                flash('Password diperlukan untuk akun baru', 'danger')
+                return redirect(url_for('karyawan'))
+            new_uid = db.execute(
+                'INSERT INTO users(username,password_hash,full_name,role) VALUES(?,?,?,?)',
+                (username, generate_password_hash(password), emp['name'], role)
+            ).lastrowid
+            db.execute('UPDATE employees SET user_id=? WHERE id=?', (new_uid, emp_id))
+            db.commit()
+            flash(f'Akun "{username}" dibuat untuk {emp["name"]} sebagai {role.upper()}', 'success')
+    return redirect(url_for('karyawan'))
+
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 

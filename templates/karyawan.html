@@ -198,10 +198,9 @@
             <tr>
               <th>Nama</th>
               <th>Divisi</th>
-              <th>Jabatan</th>
-              <th>Level</th>
-              <th>Email</th>
-              <th>Phone</th>
+              <th>Jabatan / Level</th>
+              <th class="text-center">Akun Aplikasi</th>
+              <th>Email / Phone</th>
               <th></th>
             </tr>
           </thead>
@@ -211,30 +210,57 @@
               {% if emp.divisi != current_divisi.val %}
                 {% set current_divisi.val = emp.divisi %}
                 <tr class="table-light">
-                  <td colspan="7" class="fw-bold text-primary py-1 px-3">
+                  <td colspan="6" class="fw-bold text-primary py-1 px-3">
                     <i class="bi bi-people-fill me-1"></i>{{ emp.divisi }}
                   </td>
                 </tr>
               {% endif %}
+              {% set eu = emp_user_map.get(emp.id) %}
             <tr>
               <td>
                 <a href="/emp/{{ emp.id }}/edit" class="fw-semibold text-decoration-none">{{ emp.name }}</a>
               </td>
               <td class="text-muted small">{{ emp.divisi }}</td>
-              <td class="text-muted small">{{ emp.jabatan or '—' }}</td>
               <td>
+                <div class="small">{{ emp.jabatan or '—' }}</div>
                 {% if emp.level and emp.level != 'Staff' %}
-                  <span class="badge bg-light text-dark border" style="font-size:.72rem">{{ emp.level }}</span>
+                  <span class="badge bg-light text-dark border" style="font-size:.7rem">{{ emp.level }}</span>
                 {% else %}
-                  <span class="text-muted small">{{ emp.level or 'Staff' }}</span>
+                  <span class="text-muted" style="font-size:.72rem">{{ emp.level or 'Staff' }}</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if eu %}
+                  <span class="badge {% if eu.role=='superadmin' %}bg-warning text-dark{% else %}bg-primary{% endif %}">
+                    {{ eu.role | upper }}
+                  </span>
+                  <div class="small text-muted">@{{ eu.username }}</div>
+                  {% if current_user and current_user.role == 'superadmin' %}
+                  <button class="btn btn-xs btn-outline-secondary mt-1"
+                          style="padding:.15rem .4rem;font-size:.7rem"
+                          onclick="openPromote({{ emp.id }},'{{ emp.name }}','{{ eu.username }}','{{ eu.role }}')">
+                    <i class="bi bi-arrow-repeat"></i>
+                  </button>
+                  {% endif %}
+                {% else %}
+                  <span class="text-muted small">—</span>
+                  {% if current_user and current_user.role == 'superadmin' %}
+                  <div>
+                    <button class="btn btn-xs btn-outline-info mt-1"
+                            style="padding:.15rem .4rem;font-size:.7rem"
+                            onclick="openPromote({{ emp.id }},'{{ emp.name }}','','')">
+                      <i class="bi bi-person-plus"></i> Beri Akses
+                    </button>
+                  </div>
+                  {% endif %}
                 {% endif %}
               </td>
               <td class="small">
                 {% if emp.email %}
-                  <a href="mailto:{{ emp.email }}" class="text-decoration-none">{{ emp.email }}</a>
-                {% else %}<span class="text-muted">—</span>{% endif %}
+                  <a href="mailto:{{ emp.email }}" class="text-decoration-none d-block">{{ emp.email }}</a>
+                {% endif %}
+                <span class="text-muted">{{ emp.phone or '—' }}</span>
               </td>
-              <td class="small text-muted">{{ emp.phone or '—' }}</td>
               <td class="text-end pe-2">
                 <div class="d-flex gap-1 justify-content-end">
                   <a href="/emp/{{ emp.id }}/edit" class="btn btn-xs btn-outline-secondary"
@@ -263,4 +289,69 @@
 
 </div><!-- end tab-content -->
 
+<!-- Promote Role Modal -->
+{% if current_user and current_user.role == 'superadmin' %}
+<div class="modal fade" id="promoteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold"><i class="bi bi-person-lock me-1"></i> Akun Aplikasi</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="promoteForm" method="post">
+        <div class="modal-body">
+          <p class="small mb-3"><strong id="promoteEmpName"></strong></p>
+          <div id="promoteNewFields">
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Username</label>
+              <input type="text" name="username" id="promoteUsername" class="form-control form-control-sm" required>
+            </div>
+            <div class="mb-2" id="promotePassField">
+              <label class="form-label small fw-semibold">Password</label>
+              <input type="password" name="password" id="promotePassword" class="form-control form-control-sm">
+              <div class="form-text">Kosongkan jika username sudah ada (akan di-link)</div>
+            </div>
+          </div>
+          <div class="mb-0">
+            <label class="form-label small fw-semibold">Role</label>
+            <select name="role" id="promoteRole" class="form-select form-select-sm">
+              <option value="admin">Admin</option>
+              <option value="superadmin">Superadmin</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-sm btn-info">
+            <i class="bi bi-check-circle me-1"></i> Simpan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+function openPromote(empId, name, username, role) {
+  document.getElementById('promoteEmpName').textContent = name;
+  document.getElementById('promoteForm').action = '/emp/' + empId + '/promote-role';
+  const uField = document.getElementById('promoteUsername');
+  const hasAccount = username !== '';
+  if (hasAccount) {
+    uField.value = username;
+    uField.readOnly = true;
+    document.getElementById('promotePassField').classList.add('d-none');
+  } else {
+    uField.value = name.toLowerCase().replace(/\s+/g,'_');
+    uField.readOnly = false;
+    document.getElementById('promotePassField').classList.remove('d-none');
+  }
+  const roleSelect = document.getElementById('promoteRole');
+  if (role) roleSelect.value = role;
+  new bootstrap.Modal(document.getElementById('promoteModal')).show();
+}
+</script>
 {% endblock %}

@@ -161,46 +161,42 @@
               <label class="form-label fw-semibold small">Atasan Langsung / Co-Leader</label>
               <select name="supervisor_id" class="form-select form-select-sm">
                 <option value="">— Tidak ditentukan —</option>
-                {% if users %}{% for u in users %}
-                <option value="{{ u.id }}"
-                  {{ 'selected' if emp and emp.supervisor_id == u.id else '' }}>
-                  {{ u.full_name or u.username }}
-                  {% if u.role == 'superadmin' %} ★{% endif %}
+                {% for e in employees_all %}
+                <option value="{{ e.id }}"
+                  {{ 'selected' if emp and emp.supervisor_id == e.id else '' }}>
+                  {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
                 </option>
-                {% endfor %}{% endif %}
+                {% endfor %}
               </select>
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold small">Leader</label>
               <select name="leader_id" class="form-select form-select-sm">
                 <option value="">— Tidak ditentukan —</option>
-                {% if users %}{% for u in users %}
-                <option value="{{ u.id }}"
-                  {{ 'selected' if emp and emp.leader_id == u.id else '' }}>
-                  {{ u.full_name or u.username }}
-                  {% if u.role == 'superadmin' %} ★{% endif %}
+                {% for e in employees_all %}
+                <option value="{{ e.id }}"
+                  {{ 'selected' if emp and emp.leader_id == e.id else '' }}>
+                  {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
                 </option>
-                {% endfor %}{% endif %}
+                {% endfor %}
               </select>
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold small">Manager</label>
               <select name="manager_id" class="form-select form-select-sm">
                 <option value="">— Tidak ditentukan —</option>
-                {% if users %}{% for u in users %}
-                <option value="{{ u.id }}"
-                  {{ 'selected' if emp and emp.manager_id == u.id else '' }}>
-                  {{ u.full_name or u.username }}
-                  {% if u.role == 'superadmin' %} ★{% endif %}
+                {% for e in employees_all %}
+                <option value="{{ e.id }}"
+                  {{ 'selected' if emp and emp.manager_id == e.id else '' }}>
+                  {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
                 </option>
-                {% endfor %}{% endif %}
+                {% endfor %}
               </select>
             </div>
           </div>
           <div class="form-text mt-2">
             <i class="bi bi-info-circle me-1"></i>
-            Hanya user yang terdaftar di sistem yang dapat menjadi reviewer.
-            ★ = Superadmin.
+            Pilih dari daftar karyawan. Reviewer harus memiliki akun aplikasi agar bisa login dan mereview.
           </div>
         </div>
       </div>
@@ -233,6 +229,59 @@
 
   <!-- Right Sidebar -->
   <div class="col-lg-4">
+
+    <!-- Akun Aplikasi (Superadmin only) -->
+    {% if emp and current_user.role == 'superadmin' %}
+    <div class="card mb-3 border-info">
+      <div class="card-header py-2 fw-bold bg-info bg-opacity-10">
+        <i class="bi bi-person-lock text-info me-1"></i> Akun Aplikasi
+      </div>
+      <div class="card-body">
+        {% if linked_user %}
+        <div class="mb-2">
+          <span class="badge {% if linked_user.role=='superadmin' %}bg-warning text-dark{% else %}bg-primary{% endif %} me-1">
+            {{ linked_user.role | upper }}
+          </span>
+          <span class="text-muted small">@{{ linked_user.username }}</span>
+          {% if not linked_user.is_active %}<span class="badge bg-secondary ms-1">Nonaktif</span>{% endif %}
+        </div>
+        <form action="/emp/{{ emp.id }}/promote-role" method="post" class="d-flex gap-2 align-items-center flex-wrap">
+          <select name="role" class="form-select form-select-sm" style="width:auto">
+            <option value="admin" {{ 'selected' if linked_user.role=='admin' }}>Admin</option>
+            <option value="superadmin" {{ 'selected' if linked_user.role=='superadmin' }}>Superadmin</option>
+          </select>
+          <button type="submit" class="btn btn-sm btn-outline-info"
+                  onclick="return confirm('Ubah role akun ini?')">
+            <i class="bi bi-arrow-repeat"></i> Update Role
+          </button>
+        </form>
+        {% else %}
+        <p class="text-muted small mb-2">Belum memiliki akun aplikasi.</p>
+        <form action="/emp/{{ emp.id }}/promote-role" method="post">
+          <div class="mb-2">
+            <input type="text" name="username" class="form-control form-control-sm"
+                   placeholder="Username" required
+                   value="{{ emp.name | lower | replace(' ','_') }}">
+          </div>
+          <div class="mb-2">
+            <input type="password" name="password" class="form-control form-control-sm"
+                   placeholder="Password" required>
+          </div>
+          <div class="mb-2">
+            <select name="role" class="form-select form-select-sm">
+              <option value="admin">Admin</option>
+              <option value="superadmin">Superadmin</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-sm btn-info w-100"
+                  onclick="return confirm('Buat akun aplikasi untuk {{ emp.name }}?')">
+            <i class="bi bi-person-plus-fill"></i> Buat Akun
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Promote Role (Superadmin only) -->
     {% if emp and current_user.role == 'superadmin' %}
