@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% block title %}Template {{ divisi }}{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="/admin" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h5 class="fw-bold mb-0"><i class="bi bi-people-fill text-primary me-1"></i> Template: {{ divisi }}</h5>
+</div>
+
+<ul class="nav nav-tabs mb-3" id="divisiTabs">
+  <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-skill">Hard Skill</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-comp">Competency</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-ability">Ability</a></li>
+</ul>
+
+<div class="tab-content">
+  <!-- Hard Skill Tab -->
+  <div class="tab-pane fade show active" id="tab-skill">
+    {% for cat in cats %}
+    {% set items = items_by_cat[cat.id] %}
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold bg-light">
+        <i class="bi bi-folder2 text-primary me-1"></i> {{ cat.name }}
+        <span class="badge bg-secondary ms-1">{{ items | length }} item</span>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr><th style="width:35px">#</th><th>Nama Skill</th><th>Deskripsi</th>
+                <th class="text-center" style="width:80px">Bobot</th></tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+            <tr>
+              <td class="text-muted small">{{ loop.index }}</td>
+              <td class="fw-semibold small">{{ item.name }}</td>
+              <td class="text-muted small">{{ item.description or '—' }}</td>
+              <td class="text-center">
+                <span class="badge {% if item.bobot >= 4 %}bg-danger{% elif item.bobot >= 3 %}bg-warning text-dark{% elif item.bobot >= 2 %}bg-info text-dark{% elif item.bobot > 0 %}bg-secondary{% else %}bg-light text-muted{% endif %}">
+                  {{ item.bobot | int }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Competency Tab -->
+  <div class="tab-pane fade" id="tab-comp">
+    <div class="card">
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr><th style="width:35px">#</th><th>Poin Kompetensi</th>
+                <th class="text-center" style="width:90px">Bobot (%)</th>
+                <th class="text-center" style="width:100px">Tipe</th></tr>
+          </thead>
+          <tbody>
+            {% set total_bobot = namespace(val=0) %}
+            {% for item in comp_items %}
+            {% set total_bobot.val = total_bobot.val + item.bobot %}
+            <tr {% if item.is_hardskill %}class="table-warning"{% endif %}>
+              <td class="text-muted small">{{ loop.index }}</td>
+              <td class="fw-semibold small">{{ item.point_measurement }}</td>
+              <td class="text-center"><span class="badge bg-secondary">{{ (item.bobot*100)|int }}%</span></td>
+              <td class="text-center">
+                {% if item.is_hardskill %}
+                  <span class="badge bg-warning text-dark">Auto (Hard Skill)</span>
+                {% else %}
+                  <span class="badge bg-light text-dark border">Rating 1–5</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-light fw-bold">
+            <tr><td colspan="2" class="text-end">Total Bobot</td>
+                <td class="text-center"><span class="badge {% if (total_bobot.val*100)|round == 100 %}bg-success{% else %}bg-danger{% endif %}">
+                  {{ (total_bobot.val*100)|round|int }}%</span></td>
+                <td></td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+    <div class="alert alert-secondary small mt-2 py-2">
+      <i class="bi bi-info-circle"></i>
+      Formula: <code>Nilai per item = Rating × 20 × Bobot</code>.
+      Item Hard Skill dihitung otomatis: <code>HS_Total × Bobot</code>.
+      Total competency = Σ semua nilai (maks 100).
+    </div>
+  </div>
+
+  <!-- Ability Tab -->
+  <div class="tab-pane fade" id="tab-ability">
+    <div class="card">
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th style="width:35px">#</th><th style="width:200px">Aspek</th>
+                <th><span class="badge bg-danger me-1">A</span>Dasar</th>
+                <th><span class="badge bg-warning text-dark me-1">B</span>Berkembang</th>
+                <th><span class="badge bg-info text-dark me-1">C</span>Mahir</th>
+                <th><span class="badge bg-success me-1">D</span>Expert</th></tr>
+          </thead>
+          <tbody>
+            {% for item in ability_items %}
+            <tr>
+              <td class="text-muted small">{{ loop.index }}</td>
+              <td class="fw-semibold small">{{ item.name }}</td>
+              <td class="small text-muted">{{ item.desc_a[:80] }}{% if item.desc_a|length > 80 %}…{% endif %}</td>
+              <td class="small text-muted">{{ item.desc_b[:80] }}{% if item.desc_b|length > 80 %}…{% endif %}</td>
+              <td class="small text-muted">{{ item.desc_c[:80] }}{% if item.desc_c|length > 80 %}…{% endif %}</td>
+              <td class="small text-muted">{{ item.desc_d[:80] }}{% if item.desc_d|length > 80 %}…{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

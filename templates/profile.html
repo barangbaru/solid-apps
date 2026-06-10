@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Profil Saya{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-person-circle text-primary me-1"></i> Profil & Keamanan
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Username</label>
+            <input class="form-control bg-light" value="{{ user.username }}" disabled>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Role</label>
+            <input class="form-control bg-light"
+                   value="{{ 'Superadmin' if user.role=='superadmin' else 'Admin' }}" disabled>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Nama Lengkap</label>
+            <input type="text" name="full_name" class="form-control"
+                   value="{{ user.full_name }}">
+          </div>
+          <hr>
+          <p class="text-muted small mb-2">Ganti password (isi jika ingin mengubah):</p>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Password Lama</label>
+            <input type="password" name="old_password" class="form-control"
+                   placeholder="Password saat ini" autocomplete="current-password">
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Password Baru</label>
+            <input type="password" name="new_password" class="form-control"
+                   placeholder="Minimal 6 karakter" autocomplete="new-password">
+          </div>
+          <div class="d-flex gap-2">
+            <a href="/" class="btn btn-secondary">Batal</a>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-save"></i> Simpan Perubahan
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

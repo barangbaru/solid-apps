@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Admin Template{% endblock %}
+{% block content %}
+<h5 class="fw-bold mb-3"><i class="bi bi-gear"></i> Admin — Template Evaluasi per Divisi</h5>
+<div class="alert alert-info py-2 small">
+  <i class="bi bi-info-circle"></i>
+  Halaman ini menampilkan template skill, kompetensi, dan ability yang digunakan untuk setiap divisi.
+  Klik nama divisi untuk melihat dan mengelola detail template.
+</div>
+<div class="row g-3">
+  {% for divisi in divisi_list %}
+  {% set d = data[divisi] %}
+  <div class="col-md-6 col-xl-4">
+    <div class="card h-100">
+      <div class="card-header py-2 fw-bold bg-light">
+        <i class="bi bi-people-fill text-primary me-1"></i> {{ divisi }}
+      </div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-2 small">
+          <tr>
+            <td class="text-muted">Kategori Hard Skill</td>
+            <td class="fw-semibold text-end">{{ d.cats | length }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">Total Skill Items</td>
+            <td class="fw-semibold text-end">
+              {{ d.cats | sum(attribute='item_count') }}
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted">Poin Kompetensi</td>
+            <td class="fw-semibold text-end">{{ d.comp_count }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">Ability Items</td>
+            <td class="fw-semibold text-end">{{ d.ability_count }}</td>
+          </tr>
+        </table>
+        <div class="small text-muted mb-2">Kategori Skill:</div>
+        {% for cat in d.cats %}
+        <span class="badge bg-light text-dark border me-1 mb-1">{{ cat.name }} ({{ cat.item_count }})</span>
+        {% endfor %}
+      </div>
+      <div class="card-footer py-2 bg-transparent">
+        <a href="/admin/divisi/{{ divisi }}" class="btn btn-sm btn-outline-primary w-100">
+          <i class="bi bi-eye"></i> Lihat Detail Template
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+{% block title %}Project Performance — {{ ev.emp_name }}{% endblock %}
+{% block content %}
+<div class="eval-steps">
+  <span class="step active">1. Project Performance</span>
+  <a href="/eval/{{ ev.id }}/hardskill" class="step">2. Hard Skill</a>
+  <a href="/eval/{{ ev.id }}/ability" class="step">3. Ability</a>
+  <a href="/eval/{{ ev.id }}/competency" class="step">4. Competency</a>
+  <a href="/eval/{{ ev.id }}/summary" class="step">5. Summary</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header bg-primary text-white py-2 fw-bold">
+        <i class="bi bi-person-badge"></i> {{ ev.emp_name }}
+        <small class="ms-2 fw-normal">{{ ev.jabatan }} · {{ ev.divisi }} · Periode {{ ev.periode }}</small>
+      </div>
+    </div>
+
+    <form method="post">
+      <!-- Project History -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-list-check"></i> Project History</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0" id="tbl-history">
+            <thead class="table-light"><tr>
+              <th style="width:30px">#</th>
+              <th>Project Name</th><th>Task</th>
+              <th style="width:110px">Status</th><th>Notes</th><th></th>
+            </tr></thead>
+            <tbody id="body-history">
+              {% set rows = entries.history if entries.history else [] %}
+              {% for e in rows %}
+              <tr>
+                <td class="text-muted small">{{ loop.index }}</td>
+                <td><input type="text" name="history_project_name" class="form-control form-control-sm" value="{{ e.project_name }}"></td>
+                <td><input type="text" name="history_detail_task" class="form-control form-control-sm" value="{{ e.detail_task }}"></td>
+                <td><select name="history_status" class="form-select form-select-sm">
+                  {% for s in ['DONE','ONPROGRESS','CANCELLED'] %}
+                  <option {% if e.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                </select></td>
+                <td><input type="text" name="history_notes" class="form-control form-control-sm" value="{{ e.notes }}"></td>
+                <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>
+              </tr>
+              {% endfor %}
+              {% for i in range([5 - (entries.history|length), 0]|max) %}
+              <tr>
+                <td class="text-muted small">{{ (entries.history|length) + loop.index }}</td>
+                <td><input type="text" name="history_project_name" class="form-control form-control-sm"></td>
+                <td><input type="text" name="history_detail_task" class="form-control form-control-sm"></td>
+                <td><select name="history_status" class="form-select form-select-sm">
+                  <option>DONE</option><option>ONPROGRESS</option><option>CANCELLED</option>
+                </select></td>
+                <td><input type="text" name="history_notes" class="form-control form-control-sm"></td>
+                <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="p-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRow('body-history','history')">
+            <i class="bi bi-plus"></i> Tambah Baris</button></div>
+        </div>
+      </div>
+
+      <!-- Top Task -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-star"></i> Top Task — Pencapaian Terbesar</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr>
+              <th style="width:30px">#</th>
+              <th>Project Name</th><th>Detail Task</th>
+              <th style="width:110px">Status</th><th>Notes</th><th></th>
+            </tr></thead>
+            <tbody id="body-top">
+              {% set rows = entries.top_task if entries.top_task else [] %}
+              {% for e in rows %}
+              <tr>
+                <td class="text-muted small">{{ loop.index }}</td>
+                <td><input type="text" name="top_task_project_name" class="form-control form-control-sm" value="{{ e.project_name }}"></td>
+                <td><input type="text" name="top_task_detail_task" class="form-control form-control-sm" value="{{ e.detail_task }}"></td>
+                <td><select name="top_task_status" class="form-select form-select-sm">
+                  {% for s in ['DONE','ONPROGRESS','CANCELLED'] %}
+                  <option {% if e.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                </select></td>
+                <td><input type="text" name="top_task_notes" class="form-control form-control-sm" value="{{ e.notes }}"></td>
+                <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>
+              </tr>
+              {% endfor %}
+              {% for i in range([3 - (entries.top_task|length), 0]|max) %}
+              <tr>
+                <td class="text-muted small">{{ (entries.top_task|length) + loop.index }}</td>
+                <td><input type="text" name="top_task_project_name" class="form-control form-control-sm"></td>
+                <td><input type="text" name="top_task_detail_task" class="form-control form-control-sm"></td>
+                <td><select name="top_task_status" class="form-select form-select-sm">
+                  <option>DONE</option><option>ONPROGRESS</option><option>CANCELLED</option>
+                </select></td>
+                <td><input type="text" name="top_task_notes" class="form-control form-control-sm"></td>
+                <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="p-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRow('body-top','top_task')">
+            <i class="bi bi-plus"></i> Tambah Baris</button></div>
+        </div>
+      </div>
+
+      <!-- Improvement -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-lightbulb"></i> Improvement — Kreativitas / Inisiatif</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr>
+              <th style="width:30px">#</th>
+              <th>Project Name</th><th>Detail Task</th>
+              <th style="width:110px">Status</th><th>Notes</th><th></th>
+            </tr></thead>
+            <tbody id="body-imp">
+              {% set rows = entries.improvement if entries.improvement else [] %}
+              {% for e in rows %}
+              <tr>
+                <td class="text-muted small">{{ loop.index }}</td>
+                <td><input type="text" name="improvement_project_name" class="form-control form-control-sm" value="{{ e.project_name }}"></td>
+                <td><input type="text" name="improvement_detail_task" class="form-control form-control-sm" value="{{ e.detail_task }}"></td>
+                <td><select name="improvement_status" class="form-select form-select-sm">
+                  {% for s in ['DONE','ONPROGRESS','CANCELLED'] %}
+                  <option {% if e.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                </select></td>
+                <td><input type="text" name="improvement_notes" class="form-control form-control-sm" value="{{ e.notes }}"></td>
+                <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>
+              </tr>
+              {% endfor %}
+              {% for i in range([3 - (entries.improvement|length), 0]|max) %}
+              <tr>
+                <td class="text-muted small">{{ (entries.improvement|length) + loop.index }}</td>
+                <td><input type="text" name="improvement_project_name" class="form-control form-control-sm"></td>
+                <td><input type="text" name="improvement_detail_task" class="form-control form-control-sm"></td>
+                <td><select name="improvement_status" class="form-select form-select-sm">
+                  <option>DONE</option><option>ONPROGRESS</option><option>CANCELLED</option>
+                </select></td>
+                <td><input type="text" name="improvement_notes" class="form-control form-control-sm"></td>
+                <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="p-2"><button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRow('body-imp','improvement')">
+            <i class="bi bi-plus"></i> Tambah Baris</button></div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" name="action" value="save" class="btn btn-outline-primary">
+          <i class="bi bi-save"></i> Simpan
+        </button>
+        <button type="submit" name="action" value="next" class="btn btn-primary">
+          Lanjut: Hard Skill <i class="bi bi-arrow-right"></i>
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Score Card -->
+  <div class="col-lg-4">
+    <div class="card sticky-score">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-trophy"></i> Skor Project Performance</div>
+      <div class="card-body">
+        <p class="text-muted small mb-2">Diisi oleh penilai berdasarkan performa proyek secara keseluruhan (1–5)</p>
+        <form method="post" id="ppScoreForm">
+          <div class="d-flex gap-2 justify-content-center mb-3" id="pp-btns">
+            {% for v in [1,2,3,4,5] %}
+            <button type="button" onclick="setPP({{ v }})"
+              class="rating-btn {{ 'sel' if ev.pp_score == v else '' }}" id="pp-btn-{{ v }}">{{ v }}</button>
+            {% endfor %}
+          </div>
+          <input type="hidden" name="pp_score" id="pp_score_input" value="{{ ev.pp_score }}">
+          <div class="text-center mb-2">
+            <span class="score-badge text-primary" id="pp-display">{{ ev.pp_total | int }}</span>
+            <span class="text-muted"> / 100</span>
+          </div>
+          <div class="gauge-bar mb-3"><div class="gauge-fill" id="pp-gauge" style="width:{{ ev.pp_total }}%"></div></div>
+          <small class="text-muted">
+            Keterangan: 1=Kurang · 2=Cukup · 3=Baik · 4=Sangat Baik · 5=Luar Biasa
+          </small>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function delRow(btn) { btn.closest('tr').remove(); }
+
+function addRow(tbodyId, prefix) {
+  const tbody = document.getElementById(tbodyId);
+  const n = tbody.rows.length + 1;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td class="text-muted small">${n}</td>
+    <td><input type="text" name="${prefix}_project_name" class="form-control form-control-sm"></td>
+    <td><input type="text" name="${prefix}_detail_task" class="form-control form-control-sm"></td>
+    <td><select name="${prefix}_status" class="form-select form-select-sm">
+      <option>DONE</option><option>ONPROGRESS</option><option>CANCELLED</option></select></td>
+    <td><input type="text" name="${prefix}_notes" class="form-control form-control-sm"></td>
+    <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>`;
+  tbody.appendChild(tr);
+}
+
+function setPP(val) {
+  document.getElementById('pp_score_input').value = val;
+  [1,2,3,4,5].forEach(v => {
+    document.getElementById('pp-btn-'+v).classList.toggle('sel', v === val);
+  });
+  const total = val * 20;
+  document.getElementById('pp-display').textContent = total;
+  document.getElementById('pp-gauge').style.width = total + '%';
+  // auto-save score via form submit with "save" action
+  const hidden = document.createElement('input');
+  hidden.type = 'hidden'; hidden.name = 'action'; hidden.value = 'save';
+  const f = document.getElementById('ppScoreForm');
+  f.appendChild(hidden);
+  fetch('', {method:'POST', body: new FormData(f)});
+  f.removeChild(hidden);
+}
+</script>
+{% endblock %}

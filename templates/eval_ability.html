@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% block title %}Ability — {{ ev.emp_name }}{% endblock %}
+{% block content %}
+<div class="eval-steps">
+  <a href="/eval/{{ ev.id }}/project" class="step done">1. Project Performance</a>
+  <a href="/eval/{{ ev.id }}/hardskill" class="step done">2. Hard Skill</a>
+  <span class="step active">3. Ability</span>
+  <a href="/eval/{{ ev.id }}/competency" class="step">4. Competency</a>
+  <a href="/eval/{{ ev.id }}/summary" class="step">5. Summary</a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header bg-primary text-white py-2 fw-bold">
+    <i class="bi bi-person-badge"></i> {{ ev.emp_name }}
+    <small class="ms-2 fw-normal">{{ ev.jabatan }} · {{ ev.divisi }} · Periode {{ ev.periode }}</small>
+  </div>
+</div>
+
+<div class="alert alert-info py-2 small mb-3">
+  <i class="bi bi-info-circle"></i>
+  Pilih <strong>satu level (A/B/C/D)</strong> yang paling sesuai untuk setiap aspek kemampuan.
+  A = Dasar · B = Berkembang · C = Mahir · D = Expert.
+  Bagian ini bersifat kualitatif dan tidak masuk kalkulasi skor akhir.
+</div>
+
+<form method="post" id="abilityForm">
+<div class="row g-3">
+  <div class="col-lg-9">
+    {% for item in items %}
+    <div class="card mb-2">
+      <div class="card-body py-2 px-3">
+        <div class="row align-items-start">
+          <div class="col-md-3 fw-semibold small pt-1">
+            <span class="text-primary me-1">{{ loop.index }}.</span>{{ item.name }}
+          </div>
+          <div class="col-md-6">
+            <div class="row g-1 small">
+              {% for lv, desc, cls in [('A', item.desc_a, 'sel-A'), ('B', item.desc_b, 'sel-B'), ('C', item.desc_c, 'sel-C'), ('D', item.desc_d, 'sel-D')] %}
+              <div class="col-6">
+                <button type="button"
+                  class="level-btn w-100 text-start {{ cls if item.current_level == lv else '' }}"
+                  data-item="{{ item.id }}" data-level="{{ lv }}"
+                  onclick="setLevel(this, {{ item.id }}, '{{ lv }}')">
+                  <span class="badge {% if lv=='A' %}bg-danger{% elif lv=='B' %}bg-warning text-dark{% elif lv=='C' %}bg-info text-dark{% else %}bg-success{% endif %} me-1">{{ lv }}</span>
+                  <span class="text-wrap">{{ desc[:70] }}{% if desc|length > 70 %}…{% endif %}</span>
+                </button>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="col-md-3 text-end">
+            <span class="badge level-badge-{{ item.id }}
+              {% if item.current_level == 'A' %}bg-danger
+              {% elif item.current_level == 'B' %}bg-warning text-dark
+              {% elif item.current_level == 'C' %}bg-info text-dark
+              {% elif item.current_level == 'D' %}bg-success
+              {% else %}bg-light text-muted{% endif %} fs-6 px-3 py-2">
+              {{ item.current_level if item.current_level else '—' }}
+            </span>
+            <input type="hidden" name="level_{{ item.id }}" id="level_{{ item.id }}" value="{{ item.current_level }}">
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="d-flex gap-2 mt-3 mb-4">
+      <a href="/eval/{{ ev.id }}/hardskill" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Kembali
+      </a>
+      <button type="submit" name="action" value="save" class="btn btn-outline-primary">
+        <i class="bi bi-save"></i> Simpan
+      </button>
+      <button type="submit" name="action" value="next" class="btn btn-primary">
+        Lanjut: Competency <i class="bi bi-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="col-lg-3">
+    <div class="card sticky-score">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-speedometer2"></i> Skor Ability</div>
+      <div class="card-body text-center">
+        <div class="score-badge text-info" id="ability-display">{{ '%.1f' | format(ability_score) }}</div>
+        <div class="text-muted small mb-2">/ 100 (kualitatif)</div>
+        <div class="gauge-bar mb-3">
+          <div class="gauge-fill bg-info" id="ability-gauge" style="width:{{ [ability_score, 100]|min }}%"></div>
+        </div>
+        <table class="table table-sm text-start small mb-2">
+          <tr><td><span class="badge bg-danger">A</span></td><td>Dasar / Pemula</td></tr>
+          <tr><td><span class="badge bg-warning text-dark">B</span></td><td>Berkembang</td></tr>
+          <tr><td><span class="badge bg-info text-dark">C</span></td><td>Mahir</td></tr>
+          <tr><td><span class="badge bg-success">D</span></td><td>Expert / Senior</td></tr>
+        </table>
+        <div class="text-muted small">
+          Terisi: <strong id="filled-count">0</strong> / {{ items | length }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const levelScore = {A: 1, B: 2, C: 3, D: 4};
+const levelCls   = {A: 'sel-A', B: 'sel-B', C: 'sel-C', D: 'sel-D'};
+const levels = {};
+
+// Init from existing values
+document.querySelectorAll('[id^="level_"]').forEach(inp => {
+  const id = inp.name.replace('level_', '');
+  if (inp.value) levels[id] = inp.value;
+});
+updateAbility();
+
+function setLevel(btn, itemId, lv) {
+  const id = String(itemId);
+  // Toggle off if same
+  if (levels[id] === lv) {
+    delete levels[id];
+    document.getElementById('level_' + id).value = '';
+    btn.closest('.row').querySelectorAll('.level-btn').forEach(b => b.className = b.className.replace(/sel-[ABCD]/g, '').trim());
+    updateBadge(id, '');
+  } else {
+    levels[id] = lv;
+    document.getElementById('level_' + id).value = lv;
+    btn.closest('.row').querySelectorAll('.level-btn').forEach(b => {
+      const bLv = b.dataset.level;
+      b.className = b.className.replace(/sel-[ABCD]/g, '').trim();
+      if (bLv === lv) b.classList.add(levelCls[lv]);
+    });
+    updateBadge(id, lv);
+  }
+  updateAbility();
+}
+
+function updateBadge(id, lv) {
+  const badge = document.querySelector('.level-badge-' + id);
+  if (!badge) return;
+  badge.className = 'badge fs-6 px-3 py-2 level-badge-' + id;
+  if (!lv) { badge.classList.add('bg-light', 'text-muted'); badge.textContent = '—'; return; }
+  const cls = {A:'bg-danger', B:'bg-warning text-dark', C:'bg-info text-dark', D:'bg-success'};
+  cls[lv].split(' ').forEach(c => badge.classList.add(c));
+  badge.textContent = lv;
+}
+
+function updateAbility() {
+  const vals = Object.values(levels).map(l => levelScore[l] || 0).filter(v => v > 0);
+  const avg = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length * 25 : 0;
+  document.getElementById('ability-display').textContent = avg.toFixed(1);
+  document.getElementById('ability-gauge').style.width = Math.min(avg, 100) + '%';
+  document.getElementById('filled-count').textContent = vals.length;
+}
+</script>
+{% endblock %}

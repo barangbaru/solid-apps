@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+{% block title %}Hard Skill — {{ ev.emp_name }}{% endblock %}
+{% block content %}
+<div class="eval-steps">
+  <a href="/eval/{{ ev.id }}/project" class="step done">1. Project Performance</a>
+  <span class="step active">2. Hard Skill</span>
+  <a href="/eval/{{ ev.id }}/ability" class="step">3. Ability</a>
+  <a href="/eval/{{ ev.id }}/competency" class="step">4. Competency</a>
+  <a href="/eval/{{ ev.id }}/summary" class="step">5. Summary</a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header bg-primary text-white py-2 fw-bold">
+    <i class="bi bi-person-badge"></i> {{ ev.emp_name }}
+    <small class="ms-2 fw-normal">{{ ev.jabatan }} · {{ ev.divisi }} · Periode {{ ev.periode }}</small>
+  </div>
+</div>
+
+<form method="post" id="hsForm">
+<div class="row g-3">
+  <div class="col-lg-9">
+    <div class="alert alert-info py-2 small mb-3">
+      <i class="bi bi-info-circle"></i>
+      Berikan nilai <strong>0–5</strong> untuk setiap skill item. Bobot sudah ditentukan per item.
+      Formula: <code>Final = (Nilai / 4) × Bobot</code> · Total = <code>(ΣFinal / ΣBobot) × 100</code>
+    </div>
+
+    {% for cat in categories %}
+    {% set items = items_by_cat[cat.id] %}
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-semibold bg-light">
+        <i class="bi bi-folder2"></i> {{ cat.name }}
+        <span class="badge bg-secondary ms-1">{{ items | length }} item</span>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:30px">#</th>
+              <th>Skill</th>
+              <th class="text-center" style="width:90px">Bobot</th>
+              <th class="text-center" style="width:220px">Nilai (0–5)</th>
+              <th class="text-center" style="width:90px">Final</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+            <tr>
+              <td class="text-muted small">{{ loop.index }}</td>
+              <td>
+                <span class="fw-semibold">{{ item.name }}</span>
+                {% if item.description %}<br><small class="text-muted">{{ item.description }}</small>{% endif %}
+              </td>
+              <td class="text-center">
+                <span class="badge {% if item.bobot >= 4 %}bg-danger{% elif item.bobot >= 3 %}bg-warning text-dark{% elif item.bobot >= 2 %}bg-info text-dark{% elif item.bobot > 0 %}bg-secondary{% else %}bg-light text-muted{% endif %}">
+                  {{ item.bobot | int }}
+                </span>
+              </td>
+              <td class="text-center">
+                <div class="d-flex gap-1 justify-content-center score-group" data-bobot="{{ item.bobot }}">
+                  {% for v in [0,1,2,3,4,5] %}
+                  <button type="button"
+                    class="rating-btn score-btn {{ 'sel' if item.current_score == v else '' }}"
+                    data-item="{{ item.id }}" data-val="{{ v }}"
+                    onclick="setScore(this, {{ item.id }}, {{ v }}, {{ item.bobot }})">{{ v }}</button>
+                  {% endfor %}
+                  <input type="hidden" name="score_{{ item.id }}" id="score_{{ item.id }}" value="{{ item.current_score }}">
+                </div>
+              </td>
+              <td class="text-center">
+                <span class="fw-semibold text-primary final-val" id="final_{{ item.id }}">
+                  {{ '%.2f' | format(item.final_value) }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="d-flex gap-2 mb-4">
+      <a href="/eval/{{ ev.id }}/project" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Kembali
+      </a>
+      <button type="submit" name="action" value="save" class="btn btn-outline-primary">
+        <i class="bi bi-save"></i> Simpan
+      </button>
+      <button type="submit" name="action" value="next" class="btn btn-primary">
+        Lanjut: Ability <i class="bi bi-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Score Sidebar -->
+  <div class="col-lg-3">
+    <div class="card sticky-score">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-bar-chart"></i> Total Hard Skill</div>
+      <div class="card-body text-center">
+        <div class="score-badge text-primary" id="hs-total-display">{{ '%.1f' | format(hs_total) }}</div>
+        <div class="text-muted small mb-2">/ 100</div>
+        <div class="gauge-bar mb-3">
+          <div class="gauge-fill" id="hs-gauge" style="width:{{ [hs_total, 100] | min }}%"></div>
+        </div>
+        <table class="table table-sm text-start small">
+          <tr><td class="text-muted">Nilai 0</td><td>Belum dikuasai</td></tr>
+          <tr><td class="text-muted">Nilai 1–2</td><td>Dasar</td></tr>
+          <tr><td class="text-muted">Nilai 3</td><td>Menengah</td></tr>
+          <tr><td class="text-muted">Nilai 4</td><td>Mahir</td></tr>
+          <tr><td class="text-muted">Nilai 5</td><td>Expert</td></tr>
+        </table>
+        <div class="text-muted small">Bobot menentukan tingkat kepentingan tiap skill (0 = opsional)</div>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+// Store all scores for live total calculation
+const bobotMap = {};
+const scoreMap = {};
+
+document.querySelectorAll('.score-group').forEach(grp => {
+  const bobot = parseFloat(grp.dataset.bobot);
+  grp.querySelectorAll('.score-btn').forEach(btn => {
+    const itemId = btn.dataset.item;
+    bobotMap[itemId] = bobot;
+    if (btn.classList.contains('sel')) scoreMap[itemId] = parseInt(btn.dataset.val);
+  });
+});
+
+function setScore(btn, itemId, val, bobot) {
+  // Update buttons
+  btn.closest('.score-group').querySelectorAll('.score-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  document.getElementById('score_' + itemId).value = val;
+  scoreMap[itemId] = val;
+  // Update final value display
+  const finalVal = (val / 4.0) * bobot;
+  document.getElementById('final_' + itemId).textContent = finalVal.toFixed(2);
+  // Recalculate total
+  updateTotal();
+}
+
+function updateTotal() {
+  let sumFinal = 0, sumBobot = 0;
+  for (const [id, score] of Object.entries(scoreMap)) {
+    const b = bobotMap[id] || 0;
+    sumFinal += (score / 4.0) * b;
+    sumBobot += b;
+  }
+  const total = sumBobot > 0 ? (sumFinal / sumBobot) * 100 : 0;
+  document.getElementById('hs-total-display').textContent = total.toFixed(1);
+  document.getElementById('hs-gauge').style.width = Math.min(total, 100) + '%';
+}
+
+// Init scoreMap from existing values
+document.querySelectorAll('[id^="score_"]').forEach(input => {
+  const id = input.name.replace('score_', '');
+  scoreMap[id] = parseInt(input.value) || 0;
+});
+updateTotal();
+</script>
+{% endblock %}

@@ -1,0 +1,238 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<!-- Contract Alert Banner -->
+{% if expiring_soon %}
+<div class="alert alert-warning py-2 mb-3 d-flex align-items-center gap-2">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div>
+    <strong>{{ expiring_soon | length }} kontrak</strong> akan berakhir dalam 30 hari ke depan.
+    <a href="/contracts" class="alert-link ms-1">Lihat detail &rarr;</a>
+  </div>
+</div>
+{% endif %}
+
+<!-- Divisi Stats -->
+<div class="row g-3 mb-4">
+  {% for d in divisi_list %}
+  {% set st = divisi_stats[d] %}
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card text-center p-3">
+      <div class="fw-bold text-muted small text-truncate" title="{{ d }}">{{ d }}</div>
+      <div class="display-6 fw-bold mt-1">{{ st.total }}</div>
+      <div class="small text-success">{{ st.done }} final</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Employee List Header -->
+<div class="card mb-3">
+  <div class="card-body d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+    <h6 class="mb-0 fw-bold"><i class="bi bi-people"></i> Daftar Karyawan Aktif</h6>
+    <div class="d-flex gap-2">
+      <a href="/contracts" class="btn btn-outline-warning btn-sm">
+        <i class="bi bi-file-earmark-text"></i> Manajemen Kontrak
+      </a>
+      <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addEmpModal">
+        <i class="bi bi-person-plus"></i> Tambah Karyawan
+      </button>
+    </div>
+  </div>
+</div>
+
+{% for divisi in divisi_list %}
+{% set divisi_emps = employees | selectattr('divisi','equalto',divisi) | list %}
+{% if divisi_emps %}
+<div class="card mb-3">
+  <div class="card-header py-2 bg-light fw-bold text-primary">
+    <i class="bi bi-people-fill"></i> {{ divisi }}
+    <span class="badge bg-secondary ms-1">{{ divisi_emps | length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Nama</th><th>Jabatan / Level</th>
+          <th class="text-center">Kepegawaian</th>
+          <th>Periode Eval.</th>
+          <th class="text-center">Skor</th>
+          <th class="text-center">Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in divisi_emps %}
+        <tr>
+          <td>
+            <a href="/emp/{{ emp.id }}/edit" class="fw-semibold text-decoration-none">{{ emp.name }}</a>
+          </td>
+          <td class="text-muted small">
+            {{ emp.jabatan or '—' }}
+            {% if emp.level and emp.level != 'Staff' %}
+            <span class="badge bg-light text-dark border ms-1 badge-level">{{ emp.level }}</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if emp.employment_type == 'kontrak' %}
+              <span class="badge bg-warning text-dark">Kontrak</span>
+            {% else %}
+              <span class="badge bg-success">Tetap</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ emp.latest_periode or '—' }}</td>
+          <td class="text-center">
+            {% if emp.latest_score is not none %}
+              <span class="fw-bold
+                {% if emp.latest_score >= 80 %}text-success
+                {% elif emp.latest_score >= 60 %}text-warning
+                {% else %}text-danger{% endif %}">
+                {{ '%.1f' | format(emp.latest_score) }}
+              </span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center">
+            {% if emp.latest_status == 'final' %}
+              <span class="badge bg-success">Final</span>
+            {% elif emp.latest_status == 'draft' %}
+              <span class="badge bg-warning text-dark">Draft</span>
+            {% else %}
+              <span class="badge bg-light text-muted border">Belum</span>
+            {% endif %}
+          </td>
+          <td class="text-end pe-2">
+            {% if emp.latest_eval_id %}
+              <a href="/eval/{{ emp.latest_eval_id }}/project" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <a href="/eval/{{ emp.latest_eval_id }}/summary" class="btn btn-sm btn-outline-info">
+                <i class="bi bi-bar-chart"></i>
+              </a>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-success"
+                    onclick="openNewEval({{ emp.id }}, '{{ emp.name | e }}')">
+              <i class="bi bi-plus-circle"></i>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if not employees %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-people display-3"></i>
+  <div class="mt-2">Belum ada karyawan. Klik <strong>Tambah Karyawan</strong> untuk memulai.</div>
+</div>
+{% endif %}
+
+<!-- Add Employee Modal -->
+<div class="modal fade" id="addEmpModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form action="/emp/add" method="post">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-person-plus text-primary me-1"></i> Tambah Karyawan</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nama Lengkap *</label>
+              <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Jabatan</label>
+              <input type="text" name="jabatan" class="form-control" placeholder="Junior Programmer">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Divisi *</label>
+              <select name="divisi" class="form-select" required>
+                {% for d in divisi_list %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Level</label>
+              <select name="level" class="form-select">
+                {% for lv in level_choices %}<option value="{{ lv }}">{{ lv }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Tipe Kepegawaian</label>
+              <select name="employment_type" class="form-select" id="modalEmpType"
+                      onchange="document.getElementById('modalContractDates').classList.toggle('d-none', this.value!='kontrak')">
+                <option value="tetap">Karyawan Tetap</option>
+                <option value="kontrak">Karyawan Kontrak</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Email</label>
+              <input type="email" name="email" class="form-control" placeholder="nama@perusahaan.com">
+            </div>
+            <div class="col-12 d-none" id="modalContractDates">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Mulai Kontrak</label>
+                  <input type="date" name="contract_start" class="form-control">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label fw-semibold">Akhir Kontrak</label>
+                  <input type="date" name="contract_end" class="form-control">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- New Evaluation Modal -->
+<div class="modal fade" id="newEvalModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="newEvalForm" method="post">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="bi bi-clipboard2-plus text-success me-1"></i>
+            Evaluasi Baru — <span id="newEvalName"></span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Periode Evaluasi</label>
+            <input type="text" name="periode" class="form-control"
+                   value="{{ now_year }}" placeholder="2026">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-play-circle"></i> Mulai Evaluasi
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function openNewEval(empId, empName) {
+  document.getElementById('newEvalName').textContent = empName;
+  document.getElementById('newEvalForm').action = '/eval/new/' + empId;
+  new bootstrap.Modal(document.getElementById('newEvalModal')).show();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  # ── Aplikasi Flask ─────────────────────────────────────────────────────────
+  evaluasi:
+    image: nexus.devops.mmi-pt.com/evaluasi-kinerja:latest
+    container_name: evaluasi_app
+    restart: unless-stopped
+
+    env_file: .env        # Buat dari .env.example
+    environment:
+      DATABASE_PATH: /app/data/evaluasi.db
+      START_SCHEDULER: "1"
+      TZ: Asia/Jakarta
+
+    volumes:
+      # SQLite database persisted di host
+      - evaluasi_data:/app/data
+
+    networks:
+      - evaluasi_net
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/login"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Nginx reverse proxy ────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: evaluasi_nginx
+    restart: unless-stopped
+    depends_on:
+      evaluasi:
+        condition: service_healthy
+
+    ports:
+      - "80:80"
+      # - "443:443"   # Aktifkan jika pakai SSL
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # - ./nginx/certs:/etc/nginx/certs:ro   # Mount SSL cert jika perlu
+
+    networks:
+      - evaluasi_net
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+# ── Named volumes ────────────────────────────────────────────────────────────
+volumes:
+  evaluasi_data:
+    driver: local
+
+# ── Network ───────────────────────────────────────────────────────────────────
+networks:
+  evaluasi_net:
+    driver: bridge

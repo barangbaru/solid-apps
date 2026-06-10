@@ -1,0 +1,268 @@
+{% extends 'base.html' %}
+{% block title %}Summary — {{ ev.emp_name }}{% endblock %}
+{% block content %}
+<div class="eval-steps">
+  <a href="/eval/{{ ev.id }}/project" class="step done">1. Project Performance</a>
+  <a href="/eval/{{ ev.id }}/hardskill" class="step done">2. Hard Skill</a>
+  <a href="/eval/{{ ev.id }}/ability" class="step done">3. Ability</a>
+  <a href="/eval/{{ ev.id }}/competency" class="step done">4. Competency</a>
+  <span class="step active">5. Summary</span>
+</div>
+
+<form method="post">
+<div class="row g-3">
+  <!-- Left Column -->
+  <div class="col-lg-8">
+
+    <!-- Header Info -->
+    <div class="card mb-3">
+      <div class="card-body py-2">
+        <div class="row">
+          <div class="col-sm-6">
+            <table class="table table-sm table-borderless mb-0 small">
+              <tr><td class="text-muted fw-semibold" style="width:100px">Nama</td><td class="fw-bold">{{ ev.emp_name }}</td></tr>
+              <tr><td class="text-muted fw-semibold">Jabatan</td><td>{{ ev.jabatan or '—' }}</td></tr>
+              <tr><td class="text-muted fw-semibold">Divisi</td><td><span class="badge bg-primary">{{ ev.divisi }}</span></td></tr>
+              <tr><td class="text-muted fw-semibold">Periode</td><td>{{ ev.periode }}</td></tr>
+            </table>
+          </div>
+          <div class="col-sm-6">
+            <table class="table table-sm table-borderless mb-0 small">
+              <tr><td class="text-muted fw-semibold" style="width:120px">Status</td>
+                  <td><span class="badge {% if ev.status=='final' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                    {{ 'Final' if ev.status == 'final' else 'Draft' }}</span></td></tr>
+              <tr><td class="text-muted fw-semibold">Evaluator</td>
+                  <td><input type="text" name="evaluator" class="form-control form-control-sm" value="{{ ev.evaluator }}" placeholder="Nama penilai"></td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Score Summary Table -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-table"></i> Rekapitulasi Nilai</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>Komponen</th><th class="text-center">Bobot</th>
+                <th class="text-center">Nilai Mentah</th><th class="text-center">Nilai Tertimbang</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><i class="bi bi-kanban text-success me-1"></i> Project Performance</td>
+              <td class="text-center">30%</td>
+              <td class="text-center fw-semibold">{{ '%.1f' | format(ev.pp_total) }}</td>
+              <td class="text-center fw-semibold text-success">{{ '%.2f' | format(ev.pp_total * 0.3) }}</td>
+            </tr>
+            <tr>
+              <td><i class="bi bi-clipboard-check text-warning me-1"></i> Competency
+                <small class="text-muted">(termasuk Hard Skill)</small></td>
+              <td class="text-center">70%</td>
+              <td class="text-center fw-semibold">{{ '%.2f' | format(ev.competency_total) }}</td>
+              <td class="text-center fw-semibold text-warning">{{ '%.2f' | format(ev.competency_total * 0.7) }}</td>
+            </tr>
+            <tr class="table-light">
+              <td colspan="2" class="fw-bold text-end">Hard Skill (referensi)</td>
+              <td class="text-center text-primary fw-semibold">{{ '%.2f' | format(ev.hs_total) }}</td>
+              <td class="text-center text-muted small">masuk Competency</td>
+            </tr>
+            <tr class="table-light">
+              <td colspan="2" class="fw-bold text-end">Ability (kualitatif)</td>
+              <td class="text-center text-info fw-semibold">{{ '%.2f' | format(ev.ability_score) }}</td>
+              <td class="text-center text-muted small">tidak tertimbang</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="table-primary">
+              <td colspan="3" class="fw-bold text-end fs-6">TOTAL NILAI AKHIR</td>
+              <td class="text-center fw-bold fs-5
+                {% if ev.final_total >= 80 %}text-success
+                {% elif ev.final_total >= 70 %}text-primary
+                {% elif ev.final_total >= 60 %}text-info
+                {% elif ev.final_total >= 50 %}text-warning
+                {% else %}text-danger{% endif %}">
+                {{ '%.2f' | format(ev.final_total) }}
+                <small class="text-muted fw-normal fs-6">/ 100</small>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Competency Detail -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-list-stars"></i> Detail Competency
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>#</th><th>Poin Kompetensi</th>
+                <th class="text-center">Bobot</th>
+                <th class="text-center">Rating</th>
+                <th class="text-center">Nilai</th></tr>
+          </thead>
+          <tbody>
+            {% for item in competency_items %}
+            <tr {% if item.is_hardskill %}class="table-warning"{% endif %}>
+              <td class="text-muted small">{{ loop.index }}</td>
+              <td>{{ item.point_measurement }}
+                {% if item.is_hardskill %}<span class="badge bg-warning text-dark ms-1 small">Auto</span>{% endif %}
+              </td>
+              <td class="text-center small">{{ (item.bobot*100)|int }}%</td>
+              <td class="text-center">
+                {% if item.is_hardskill %}
+                  <span class="text-muted small">HS={{ '%.1f'|format(ev.hs_total) }}</span>
+                {% else %}
+                  {% if item.current_rating > 0 %}
+                    <span class="badge bg-primary">{{ item.current_rating }}</span>
+                  {% else %}
+                    <span class="badge bg-light text-muted">—</span>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td class="text-center fw-semibold text-success small">
+                {% if item.is_hardskill %}
+                  {{ '%.2f'|format(ev.hs_total * item.bobot) }}
+                {% else %}
+                  {{ '%.2f'|format(item.current_rating * 20 * item.bobot) }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Peer Reviews -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-chat-quote"></i> Penilaian/Saran Rekan Kerja
+        <small class="text-muted fw-normal">(diisi oleh rekan kerja)</small>
+      </div>
+      <div class="card-body">
+        {% for peer in peers %}
+        <div class="mb-3 p-2 border rounded">
+          <div class="row g-2">
+            <div class="col-md-3">
+              <label class="form-label small text-muted mb-1">Nama Reviewer {{ peer.slot }}</label>
+              <input type="text" name="peer_name_{{ peer.slot }}" class="form-control form-control-sm"
+                     value="{{ peer.reviewer_name }}" placeholder="Nama rekan">
+            </div>
+            <div class="col-md-9">
+              <label class="form-label small text-muted mb-1">Penilaian / Saran</label>
+              <textarea name="peer_feedback_{{ peer.slot }}" class="form-control form-control-sm" rows="2"
+                        placeholder="Tuliskan penilaian atau saran...">{{ peer.feedback }}</textarea>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Overall Assessment -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-journal-text"></i> Penilaian Kinerja Keseluruhan
+        <small class="text-muted fw-normal">(diisi penilai)</small>
+      </div>
+      <div class="card-body">
+        <textarea name="overall_assessment" class="form-control mb-3" rows="3"
+                  placeholder="Catatan penilaian kinerja secara keseluruhan...">{{ ev.overall_assessment }}</textarea>
+        <label class="form-label fw-semibold">Rencana Pengembangan Karyawan</label>
+        <textarea name="development_plan" class="form-control" rows="3"
+                  placeholder="Rencana pengembangan, pelatihan, atau target periode berikutnya...">{{ ev.development_plan }}</textarea>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="d-flex gap-2 flex-wrap mb-5">
+      <a href="/eval/{{ ev.id }}/competency" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Kembali
+      </a>
+      <button type="submit" name="action" value="save" class="btn btn-outline-primary">
+        <i class="bi bi-save"></i> Simpan Draft
+      </button>
+      {% if ev.status != 'final' %}
+      <button type="submit" name="action" value="finalize" class="btn btn-success"
+              onclick="return confirm('Finalisasi evaluasi? Status tidak dapat dikembalikan ke draft.')">
+        <i class="bi bi-check-circle"></i> Finalisasi Evaluasi
+      </button>
+      {% else %}
+      <span class="btn btn-success disabled"><i class="bi bi-check-circle-fill"></i> Sudah Final</span>
+      {% endif %}
+      <form action="/eval/{{ ev.id }}/delete" method="post" class="d-inline"
+            onsubmit="return confirm('Hapus evaluasi ini?')">
+        <button type="submit" class="btn btn-outline-danger">
+          <i class="bi bi-trash"></i> Hapus Evaluasi
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Right: Score Card -->
+  <div class="col-lg-4">
+    <div class="card sticky-score mb-3">
+      <div class="card-header py-2 fw-bold bg-primary text-white">
+        <i class="bi bi-award"></i> Hasil Evaluasi
+      </div>
+      <div class="card-body text-center">
+        <div class="display-4 fw-bold
+          {% if ev.final_total >= 80 %}text-success
+          {% elif ev.final_total >= 70 %}text-primary
+          {% elif ev.final_total >= 60 %}text-info
+          {% elif ev.final_total >= 50 %}text-warning
+          {% else %}text-danger{% endif %}">
+          {{ '%.1f' | format(ev.final_total) }}
+        </div>
+        <div class="text-muted mb-3">/ 100</div>
+        <div class="gauge-bar mb-3" style="height:12px">
+          <div class="gauge-fill {% if ev.final_total >= 80 %}bg-success{% elif ev.final_total >= 70 %}bg-primary{% elif ev.final_total >= 60 %}bg-info{% elif ev.final_total >= 50 %}bg-warning{% else %}bg-danger{% endif %}"
+               style="width:{{ [ev.final_total,100]|min }}%; height:12px"></div>
+        </div>
+        <div class="fs-5 fw-bold mb-3">
+          {% if ev.final_total >= 80 %}<span class="text-success"><i class="bi bi-star-fill"></i> Luar Biasa</span>
+          {% elif ev.final_total >= 70 %}<span class="text-primary"><i class="bi bi-star-fill"></i> Sangat Baik</span>
+          {% elif ev.final_total >= 60 %}<span class="text-info"><i class="bi bi-star-half"></i> Baik</span>
+          {% elif ev.final_total >= 50 %}<span class="text-warning"><i class="bi bi-star"></i> Cukup</span>
+          {% else %}<span class="text-danger"><i class="bi bi-exclamation-circle"></i> Perlu Perbaikan</span>
+          {% endif %}
+        </div>
+        <table class="table table-sm text-start">
+          <tr><td class="text-muted">PP (30%)</td>
+              <td class="text-end fw-semibold">{{ '%.1f'|format(ev.pp_total) }}</td>
+              <td class="text-end text-success">{{ '%.1f'|format(ev.pp_total*0.3) }}</td></tr>
+          <tr><td class="text-muted">Competency (70%)</td>
+              <td class="text-end fw-semibold">{{ '%.1f'|format(ev.competency_total) }}</td>
+              <td class="text-end text-warning">{{ '%.1f'|format(ev.competency_total*0.7) }}</td></tr>
+          <tr><td class="text-muted">Hard Skill</td>
+              <td class="text-end fw-semibold text-primary" colspan="2">{{ '%.1f'|format(ev.hs_total) }}</td></tr>
+          <tr><td class="text-muted">Ability</td>
+              <td class="text-end fw-semibold text-info" colspan="2">{{ '%.1f'|format(ev.ability_score) }}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Project Summary -->
+    <div class="card">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-folder2-open"></i> Ringkasan Project</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 small">
+          <tr><td class="text-muted ps-3">Project History</td>
+              <td class="text-end pe-3 fw-semibold">{{ entries.history | length }} project</td></tr>
+          <tr><td class="text-muted ps-3">Top Task</td>
+              <td class="text-end pe-3 fw-semibold">{{ entries.top_task | length }} item</td></tr>
+          <tr><td class="text-muted ps-3">Improvement</td>
+              <td class="text-end pe-3 fw-semibold">{{ entries.improvement | length }} item</td></tr>
+          <tr><td class="text-muted ps-3">PP Score</td>
+              <td class="text-end pe-3 fw-bold text-primary">{{ ev.pp_score }} / 5</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}

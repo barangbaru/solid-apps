@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Evaluasi Kinerja{% endblock %} | Tim IT</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background:#f5f7fa; font-size:.92rem; }
+    .navbar-brand { font-weight:700; letter-spacing:.5px; }
+    .card { border:none; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+    .eval-steps { display:flex; gap:4px; margin-bottom:1.5rem; flex-wrap:wrap; }
+    .eval-steps .step { padding:.35rem .9rem; border-radius:20px; font-size:.82rem;
+                        background:#e9ecef; color:#495057; text-decoration:none; }
+    .eval-steps .step.active { background:#0d6efd; color:#fff; font-weight:600; }
+    .eval-steps .step.done   { background:#198754; color:#fff; }
+    .score-badge { font-size:2rem; font-weight:700; }
+    .table-sm th, .table-sm td { padding:.35rem .6rem; }
+    .rating-btn { width:38px; height:38px; border-radius:50%; border:2px solid #dee2e6;
+                  background:#fff; cursor:pointer; font-weight:600; transition:.15s; }
+    .rating-btn.sel { background:#0d6efd; color:#fff; border-color:#0d6efd; }
+    .level-btn { padding:.25rem .7rem; border:2px solid #dee2e6; border-radius:6px;
+                 background:#fff; cursor:pointer; font-weight:600; font-size:.8rem; }
+    .level-btn.sel-A { background:#f8d7da; border-color:#dc3545; }
+    .level-btn.sel-B { background:#fff3cd; border-color:#ffc107; }
+    .level-btn.sel-C { background:#cff4fc; border-color:#0dcaf0; }
+    .level-btn.sel-D { background:#d1e7dd; border-color:#198754; color:#198754; }
+    .gauge-bar  { height:8px; border-radius:4px; background:#e9ecef; }
+    .gauge-fill { height:8px; border-radius:4px; background:#0d6efd; transition:width .4s; }
+    .sticky-score { position:sticky; top:70px; }
+    .contract-ok      { border-left:4px solid #198754 !important; }
+    .contract-warn    { border-left:4px solid #ffc107 !important; }
+    .contract-danger  { border-left:4px solid #dc3545 !important; }
+    .contract-expired { border-left:4px solid #6c757d !important; opacity:.75; }
+    .badge-level { font-size:.75rem; }
+  </style>
+</head>
+<body>
+{% if current_user %}
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/"><i class="bi bi-clipboard2-check"></i> Evaluasi Kinerja</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMain">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-house"></i> Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="/contracts"><i class="bi bi-file-earmark-text"></i> Kontrak</a></li>
+        <li class="nav-item"><a class="nav-link" href="/reminders"><i class="bi bi-bell"></i> Log Reminder</a></li>
+        <li class="nav-item"><a class="nav-link" href="/admin"><i class="bi bi-sliders"></i> Template</a></li>
+        {% if current_user.role == 'superadmin' %}
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+            <i class="bi bi-shield-lock"></i> Superadmin
+          </a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="/users"><i class="bi bi-people me-1"></i>Kelola User</a></li>
+            <li><a class="dropdown-item" href="/settings"><i class="bi bi-gear me-1"></i>Pengaturan Notifikasi</a></li>
+          </ul>
+        </li>
+        {% endif %}
+      </ul>
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+            <i class="bi bi-person-circle"></i>
+            {{ current_user.name }}
+            <span class="badge {% if current_user.role == 'superadmin' %}bg-warning text-dark{% else %}bg-light text-dark{% endif %} ms-1" style="font-size:.7rem">
+              {{ current_user.role | upper }}
+            </span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="/profile"><i class="bi bi-person-gear me-1"></i>Profil & Password</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="/logout"><i class="bi bi-box-arrow-right me-1"></i>Logout</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+{% endif %}
+<div class="container-fluid px-4">
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+      <div class="alert alert-{{ cat }} alert-dismissible py-2 mb-3" role="alert">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

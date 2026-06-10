@@ -1,0 +1,242 @@
+{% extends 'base.html' %}
+{% block title %}Pengaturan Notifikasi{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h5 class="fw-bold mb-0"><i class="bi bi-gear-fill text-primary"></i> Pengaturan Sistem & Notifikasi</h5>
+</div>
+
+<form method="post" id="settingsForm">
+<div class="row g-3">
+  <!-- Left: Email + Telegram -->
+  <div class="col-lg-8">
+
+    <!-- Email SMTP -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-envelope-fill text-primary me-1"></i> Konfigurasi Email (SMTP)
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">SMTP Host</label>
+            <input type="text" name="smtp_host" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_host }}" placeholder="smtp.gmail.com / smtp.office365.com">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Port</label>
+            <input type="number" name="smtp_port" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_port or '587' }}" placeholder="587">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Username / Email</label>
+            <input type="text" name="smtp_user" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_user }}" placeholder="noreply@perusahaan.com"
+                   autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Password / App Password</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="smtp_password" class="form-control"
+                     id="smtpPwd" value="{{ cfg.smtp_password }}" autocomplete="new-password">
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('smtpPwd')">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">From Email (opsional)</label>
+            <input type="text" name="smtp_from" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_from }}" placeholder="Evaluasi Kinerja &lt;noreply@...&gt;">
+          </div>
+          <div class="col-md-4 d-flex align-items-end pb-1">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="smtp_ssl" id="smtpSsl"
+                     {{ 'checked' if cfg.smtp_ssl == '1' else '' }}>
+              <label class="form-check-label small" for="smtpSsl">Gunakan SSL/TLS</label>
+            </div>
+          </div>
+        </div>
+        <!-- Test Email -->
+        <hr class="my-3">
+        <div class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label fw-semibold small">Test — Kirim ke email</label>
+            <input type="email" id="testEmailAddr" class="form-control form-control-sm"
+                   placeholder="test@example.com">
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" onclick="testEmail()">
+            <i class="bi bi-send"></i> Test Email
+          </button>
+        </div>
+        <div id="emailResult" class="mt-2 small"></div>
+      </div>
+    </div>
+
+    <!-- Telegram Bot -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-telegram me-1" style="color:#0088cc"></i> Konfigurasi Telegram Bot
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Bot Token</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="telegram_bot_token" id="tgToken" class="form-control"
+                     value="{{ cfg.telegram_bot_token }}" placeholder="123456:ABCdef..."
+                     autocomplete="off">
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('tgToken')">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="form-text">Dapatkan dari <strong>@BotFather</strong> di Telegram.</div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Default Chat ID</label>
+            <input type="text" name="telegram_default_chat_id" class="form-control form-control-sm"
+                   value="{{ cfg.telegram_default_chat_id }}"
+                   placeholder="-100123456789 (group) atau 123456789 (personal)">
+            <div class="form-text">
+              Digunakan jika karyawan tidak memiliki Telegram ID individual.
+              Gunakan <strong>@userinfobot</strong> untuk mendapatkan chat ID Anda.
+            </div>
+          </div>
+        </div>
+        <!-- Test Telegram -->
+        <hr class="my-3">
+        <div class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label fw-semibold small">Test — Chat ID (kosongkan untuk pakai default)</label>
+            <input type="text" id="testChatId" class="form-control form-control-sm"
+                   placeholder="{{ cfg.telegram_default_chat_id or 'Chat ID tujuan test' }}">
+          </div>
+          <button type="button" class="btn btn-sm" style="background:#0088cc;color:#fff" onclick="testTelegram()">
+            <i class="bi bi-telegram"></i> Test Telegram
+          </button>
+        </div>
+        <div id="telegramResult" class="mt-2 small"></div>
+
+        <div class="alert alert-info py-2 small mt-3 mb-0">
+          <strong>Cara setup Telegram Bot:</strong><br>
+          1. Chat <code>@BotFather</code> → <code>/newbot</code> → ikuti instruksi → salin token<br>
+          2. Tambahkan bot ke grup, atau chat bot langsung<br>
+          3. Gunakan <code>@userinfobot</code> untuk mendapatkan chat ID<br>
+          4. Per karyawan: isi <em>Telegram ID</em> di halaman edit karyawan
+        </div>
+      </div>
+    </div>
+
+    <!-- Reminder Schedule -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-clock-history text-warning me-1"></i> Jadwal Reminder Otomatis
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">Kirim Reminder pada H-</label>
+            <input type="text" name="reminder_days" class="form-control form-control-sm"
+                   value="{{ cfg.reminder_days or '30,14,7,1' }}"
+                   placeholder="30,14,7,1">
+            <div class="form-text">
+              Pisahkan dengan koma. Contoh: <code>30,14,7,1</code> artinya reminder dikirim
+              30 hari, 14 hari, 7 hari, dan 1 hari sebelum kontrak berakhir.
+            </div>
+          </div>
+          <div class="col-md-4 d-flex align-items-end pb-2">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="reminder_enabled" id="remEnabled"
+                     {{ 'checked' if cfg.reminder_enabled != '0' else '' }}>
+              <label class="form-check-label small fw-semibold" for="remEnabled">
+                Reminder Otomatis Aktif
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="alert alert-secondary py-2 small mt-3 mb-0">
+          <i class="bi bi-info-circle"></i>
+          Reminder otomatis berjalan setiap hari pukul <strong>08:00</strong> saat aplikasi aktif.
+          Gunakan tombol <em>"Kirim Semua Reminder"</em> di halaman Kontrak untuk trigger manual.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: App Settings + Actions -->
+  <div class="col-lg-4">
+    <div class="card mb-3 sticky-score">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-app text-primary me-1"></i> Pengaturan Aplikasi</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Nama Aplikasi</label>
+          <input type="text" name="app_name" class="form-control form-control-sm"
+                 value="{{ cfg.app_name or 'Evaluasi Kinerja Tim IT' }}">
+        </div>
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-save"></i> Simpan Semua Pengaturan
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-lightning text-warning me-1"></i> Aksi Manual</div>
+      <div class="card-body d-grid gap-2">
+        <button type="button" class="btn btn-outline-warning btn-sm" onclick="runReminders()">
+          <i class="bi bi-bell"></i> Jalankan Reminder Sekarang
+        </button>
+        <a href="/reminders" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-clock-history"></i> Lihat Log Reminder
+        </a>
+        <div id="runResult" class="small text-muted"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleField(id) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function showResult(elId, ok, msg) {
+  const el = document.getElementById(elId);
+  el.innerHTML = `<div class="alert alert-${ok?'success':'danger'} py-1 px-2 mb-0">${ok?'✓':'✗'} ${msg}</div>`;
+}
+
+function testEmail() {
+  const addr = document.getElementById('testEmailAddr').value.trim();
+  if (!addr) { alert('Masukkan alamat email tujuan test'); return; }
+  // Save settings first
+  const fd = new FormData(document.getElementById('settingsForm'));
+  fetch('/settings', {method:'POST', body:fd}).then(() => {
+    const fd2 = new FormData();
+    fd2.append('test_email', addr);
+    return fetch('/settings/test-email', {method:'POST', body:fd2});
+  }).then(r=>r.json()).then(d=>showResult('emailResult',d.ok,d.msg));
+}
+
+function testTelegram() {
+  const chat = document.getElementById('testChatId').value.trim();
+  const fd = new FormData(document.getElementById('settingsForm'));
+  fetch('/settings', {method:'POST', body:fd}).then(() => {
+    const fd2 = new FormData();
+    fd2.append('test_chat_id', chat);
+    return fetch('/settings/test-telegram', {method:'POST', body:fd2});
+  }).then(r=>r.json()).then(d=>showResult('telegramResult',d.ok,d.msg));
+}
+
+function runReminders() {
+  document.getElementById('runResult').innerHTML = '<i class="bi bi-hourglass-split"></i> Memproses...';
+  fetch('/settings/run-reminders', {method:'POST'})
+    .then(r=>r.json())
+    .then(d => {
+      document.getElementById('runResult').innerHTML =
+        `<div class="alert alert-${d.failed?'warning':'success'} py-1 px-2 mb-0">${d.msg}</div>`;
+    });
+}
+</script>
+{% endblock %}

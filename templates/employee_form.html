@@ -1,0 +1,292 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if emp else 'Tambah' }} Karyawan{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="/" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h5 class="fw-bold mb-0">
+    <i class="bi bi-person-{{ 'gear' if emp else 'plus' }} text-primary me-1"></i>
+    {{ 'Detail Karyawan: ' + emp.name if emp else 'Tambah Karyawan Baru' }}
+  </h5>
+  {% if emp %}
+  <span class="badge {% if emp.employment_type=='kontrak' %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">
+    {{ emp.employment_type | upper }}
+  </span>
+  <span class="badge bg-secondary">{{ emp.level }}</span>
+  {% endif %}
+</div>
+
+<div class="row g-3">
+  <!-- Main Form -->
+  <div class="col-lg-8">
+    <form method="post" id="empForm">
+      <input type="hidden" name="action" id="formAction" value="save">
+
+      <!-- Identitas -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-person-id text-primary me-1"></i> Identitas</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nama Lengkap *</label>
+              <input type="text" name="name" class="form-control" required
+                     value="{{ emp.name if emp else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Jabatan / Posisi</label>
+              <input type="text" name="jabatan" class="form-control"
+                     value="{{ emp.jabatan if emp else '' }}"
+                     placeholder="Contoh: Junior Programmer">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Divisi *</label>
+              <select name="divisi" class="form-select" required>
+                {% for d in divisi_list %}
+                <option value="{{ d }}" {{ 'selected' if emp and emp.divisi==d else '' }}>{{ d }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Level / Grade</label>
+              <select name="level" class="form-select">
+                {% for lv in level_choices %}
+                <option value="{{ lv }}" {{ 'selected' if emp and emp.level==lv else '' }}>{{ lv }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kontrak -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-file-earmark-text text-warning me-1"></i> Status Kepegawaian</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Tipe Kepegawaian *</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="employment_type"
+                       id="typeTetap" value="tetap"
+                       {{ 'checked' if not emp or emp.employment_type=='tetap' else '' }}
+                       onchange="toggleContract(false)">
+                <label class="form-check-label fw-semibold text-success" for="typeTetap">
+                  <i class="bi bi-person-check me-1"></i>Karyawan Tetap
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="employment_type"
+                       id="typeKontrak" value="kontrak"
+                       {{ 'checked' if emp and emp.employment_type=='kontrak' else '' }}
+                       onchange="toggleContract(true)">
+                <label class="form-check-label fw-semibold text-warning" for="typeKontrak">
+                  <i class="bi bi-file-earmark-text me-1"></i>Karyawan Kontrak
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="contractFields" class="{{ '' if emp and emp.employment_type=='kontrak' else 'd-none' }}">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Tanggal Mulai Kontrak</label>
+                <input type="date" name="contract_start" class="form-control"
+                       value="{{ emp.contract_start if emp else '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Tanggal Akhir Kontrak</label>
+                <input type="date" name="contract_end" class="form-control"
+                       value="{{ emp.contract_end if emp else '' }}">
+                {% if emp and emp.contract_end %}
+                  {% set today_str = today_date %}
+                  <div class="form-text" id="contractCountdown"></div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kontak & Notifikasi -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-bell text-info me-1"></i> Kontak & Notifikasi</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Email</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                <input type="email" name="email" class="form-control"
+                       value="{{ emp.email if emp else '' }}"
+                       placeholder="nama@perusahaan.com">
+              </div>
+              <div class="form-text">Digunakan untuk reminder kontrak via email.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Nomor HP / WA</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-phone"></i></span>
+                <input type="text" name="phone" class="form-control"
+                       value="{{ emp.phone if emp else '' }}"
+                       placeholder="08xxxxxxxxxx">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Telegram ID / Username</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-telegram"></i></span>
+                <input type="text" name="telegram_id" class="form-control"
+                       value="{{ emp.telegram_id if emp else '' }}"
+                       placeholder="123456789 atau @username">
+              </div>
+              <div class="form-text">Chat ID (angka) atau @username. Gunakan @userinfobot untuk mendapatkan ID.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Catatan -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-journal-text text-secondary me-1"></i> Catatan</div>
+        <div class="card-body">
+          <textarea name="notes" class="form-control" rows="2"
+                    placeholder="Catatan tambahan tentang karyawan ini...">{{ emp.notes if emp else '' }}</textarea>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="/" class="btn btn-secondary">Batal</a>
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save"></i> {{ 'Simpan Perubahan' if emp else 'Tambah Karyawan' }}
+        </button>
+        {% if emp %}
+        <form action="/emp/{{ emp.id }}/delete" method="post" class="ms-auto"
+              onsubmit="return confirm('Nonaktifkan karyawan {{ emp.name }}? Data evaluasi tetap tersimpan.')">
+          <button type="submit" class="btn btn-outline-danger">
+            <i class="bi bi-person-dash"></i> Nonaktifkan
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <!-- Right Sidebar -->
+  <div class="col-lg-4">
+
+    <!-- Promote Role (Superadmin only) -->
+    {% if emp and current_user.role == 'superadmin' %}
+    <div class="card mb-3 border-warning">
+      <div class="card-header py-2 fw-bold bg-warning bg-opacity-10">
+        <i class="bi bi-arrow-up-circle-fill text-warning me-1"></i> Promote Karyawan
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="action" value="promote">
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Level Baru</label>
+            <select name="promote_level" class="form-select form-select-sm">
+              {% for lv in level_choices %}
+              <option value="{{ lv }}" {{ 'selected' if emp.level==lv else '' }}>{{ lv }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Jabatan Baru</label>
+            <input type="text" name="promote_jabatan" class="form-control form-control-sm"
+                   value="{{ emp.jabatan }}" placeholder="Jabatan setelah promosi">
+          </div>
+          <button type="submit" class="btn btn-warning btn-sm w-100"
+                  onclick="return confirm('Promote {{ emp.name }} ke level baru?')">
+            <i class="bi bi-arrow-up-circle"></i> Terapkan Promosi
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Contract Status Widget -->
+    {% if emp and emp.employment_type == 'kontrak' and emp.contract_end %}
+    <div class="card mb-3" id="contractStatusCard">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-calendar-check me-1"></i> Status Kontrak</div>
+      <div class="card-body text-center" id="contractStatusBody">
+        <div class="display-6 fw-bold" id="daysLeftDisplay">—</div>
+        <div class="text-muted small mb-2">hari tersisa</div>
+        <div class="gauge-bar mb-2"><div class="gauge-fill" id="contractGauge" style="width:0%"></div></div>
+        <div class="small" id="contractEndLabel">Akhir: {{ emp.contract_end }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Reminder Log for this employee -->
+    {% if emp and logs %}
+    <div class="card">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-bell-history text-muted me-1"></i> Riwayat Reminder
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          {% for log in logs %}
+          <tr>
+            <td class="small text-muted ps-2" style="width:90px">{{ log.created_at[:10] }}</td>
+            <td class="small">
+              {% if log.channel == 'email' %}
+                <i class="bi bi-envelope text-primary"></i>
+              {% else %}
+                <i class="bi bi-telegram" style="color:#0088cc"></i>
+              {% endif %}
+              <span class="{% if log.status=='sent' %}text-success{% else %}text-danger{% endif %}">
+                {{ 'OK' if log.status=='sent' else 'Gagal' }}
+              </span>
+            </td>
+            <td class="small text-muted">{{ log.triggered_by }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleContract(show) {
+  document.getElementById('contractFields').classList.toggle('d-none', !show);
+}
+
+// Contract countdown
+const endInput = document.querySelector('input[name="contract_end"]');
+if (endInput && endInput.value) {
+  updateCountdown(endInput.value);
+  endInput.addEventListener('change', e => updateCountdown(e.target.value));
+}
+function updateCountdown(val) {
+  if (!val) return;
+  const end = new Date(val);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.round((end - today) / 86400000);
+  const el = document.getElementById('daysLeftDisplay');
+  const gauge = document.getElementById('contractGauge');
+  if (!el) return;
+  el.textContent = Math.abs(diff);
+  if (diff < 0) {
+    el.className = 'display-6 fw-bold text-secondary';
+    document.getElementById('contractEndLabel').textContent = `Berakhir ${Math.abs(diff)} hari lalu`;
+    gauge.style.width = '100%'; gauge.className = 'gauge-fill bg-secondary';
+  } else if (diff <= 14) {
+    el.className = 'display-6 fw-bold text-danger';
+    gauge.style.width = '100%'; gauge.className = 'gauge-fill bg-danger';
+  } else if (diff <= 30) {
+    el.className = 'display-6 fw-bold text-warning';
+    gauge.style.width = '75%'; gauge.className = 'gauge-fill bg-warning';
+  } else {
+    el.className = 'display-6 fw-bold text-success';
+    const pct = Math.min(100, Math.round((1 - diff/365)*100));
+    gauge.style.width = pct + '%'; gauge.className = 'gauge-fill bg-success';
+  }
+}
+// Init on page load
+{% if emp and emp.employment_type == 'kontrak' and emp.contract_end %}
+updateCountdown('{{ emp.contract_end }}');
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% block title %}Competency — {{ ev.emp_name }}{% endblock %}
+{% block content %}
+<div class="eval-steps">
+  <a href="/eval/{{ ev.id }}/project" class="step done">1. Project Performance</a>
+  <a href="/eval/{{ ev.id }}/hardskill" class="step done">2. Hard Skill</a>
+  <a href="/eval/{{ ev.id }}/ability" class="step done">3. Ability</a>
+  <span class="step active">4. Competency</span>
+  <a href="/eval/{{ ev.id }}/summary" class="step">5. Summary</a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header bg-primary text-white py-2 fw-bold">
+    <i class="bi bi-person-badge"></i> {{ ev.emp_name }}
+    <small class="ms-2 fw-normal">{{ ev.jabatan }} · {{ ev.divisi }} · Periode {{ ev.periode }}</small>
+  </div>
+</div>
+
+<div class="alert alert-info py-2 small mb-3">
+  <i class="bi bi-info-circle"></i>
+  Berikan rating <strong>1–5</strong> untuk setiap poin kompetensi.
+  Formula: <code>Nilai = Rating × 20 × Bobot</code>.
+  Item <strong>Hard Skill</strong> dihitung otomatis dari skor hard skill.
+</div>
+
+<form method="post" id="compForm">
+<div class="row g-3">
+  <div class="col-lg-9">
+    <div class="card">
+      <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="width:30px">#</th>
+              <th>Poin Kompetensi</th>
+              <th class="text-center" style="width:70px">Bobot</th>
+              <th class="text-center" style="width:270px">Rating (1–5)</th>
+              <th class="text-center" style="width:90px">Nilai</th>
+            </tr>
+          </thead>
+          <tbody id="compBody">
+            {% for row in items_with_val %}
+            {% set item = row.item %}
+            <tr {% if item.is_hardskill %}class="table-warning"{% endif %}>
+              <td class="text-muted small">{{ loop.index }}</td>
+              <td>
+                <span class="fw-semibold">{{ item.point_measurement }}</span>
+                {% if item.is_hardskill %}
+                  <span class="badge bg-warning text-dark ms-1">Auto dari Hard Skill</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <span class="badge bg-secondary">{{ (item.bobot * 100) | int }}%</span>
+              </td>
+              <td class="text-center">
+                {% if item.is_hardskill %}
+                  <div class="text-muted small fst-italic">
+                    Skor HS: <strong>{{ '%.1f' | format(hs_total) }}</strong> × {{ item.bobot }}
+                  </div>
+                  <input type="hidden" name="rating_{{ item.id }}" value="0">
+                {% else %}
+                  <div class="d-flex gap-1 justify-content-center" id="rgrp_{{ item.id }}">
+                    {% for v in [1,2,3,4,5] %}
+                    <button type="button"
+                      class="rating-btn {{ 'sel' if item.current_rating == v else '' }}"
+                      onclick="setRating(this, {{ item.id }}, {{ v }}, {{ item.bobot }})">{{ v }}</button>
+                    {% endfor %}
+                    <input type="hidden" name="rating_{{ item.id }}" id="rating_{{ item.id }}" value="{{ item.current_rating }}">
+                  </div>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <span class="fw-bold text-success comp-val" id="cval_{{ item.id }}">
+                  {{ '%.2f' | format(row.val) }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="table-light fw-bold">
+            <tr>
+              <td colspan="4" class="text-end">Total Competency</td>
+              <td class="text-center text-success fs-6" id="comp-total-cell">
+                {{ '%.2f' | format(competency_total) }}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-3 mb-4">
+      <a href="/eval/{{ ev.id }}/ability" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Kembali
+      </a>
+      <button type="submit" name="action" value="save" class="btn btn-outline-primary">
+        <i class="bi bi-save"></i> Simpan
+      </button>
+      <button type="submit" name="action" value="next" class="btn btn-primary">
+        Lanjut: Summary <i class="bi bi-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="col-lg-3">
+    <div class="card sticky-score">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-bar-chart-fill"></i> Skor Sementara</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small text-muted mb-1">
+            <span>Project Performance (30%)</span>
+            <strong>{{ '%.1f' | format(ev.pp_total) }}</strong>
+          </div>
+          <div class="gauge-bar"><div class="gauge-fill bg-success" style="width:{{ ev.pp_total }}%"></div></div>
+        </div>
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small text-muted mb-1">
+            <span>Competency (70%)</span>
+            <strong id="comp-sidebar">{{ '%.1f' | format(competency_total) }}</strong>
+          </div>
+          <div class="gauge-bar"><div class="gauge-fill bg-warning" id="comp-gauge" style="width:{{ [competency_total,100]|min }}%"></div></div>
+        </div>
+        <hr class="my-2">
+        <div class="d-flex justify-content-between mb-1">
+          <span class="fw-semibold">Total Akhir</span>
+          <span class="score-badge text-primary" id="final-display" style="font-size:1.5rem">
+            {{ '%.1f' | format(ev.final_total) }}
+          </span>
+        </div>
+        <div class="gauge-bar mb-2">
+          <div class="gauge-fill" id="final-gauge" style="width:{{ [ev.final_total,100]|min }}%"></div>
+        </div>
+        <div class="text-center small text-muted">/ 100</div>
+
+        <hr class="my-2">
+        <div class="small text-muted">
+          <div class="mb-1"><span class="badge bg-success me-1">≥80</span>Luar Biasa</div>
+          <div class="mb-1"><span class="badge bg-primary me-1">70–79</span>Sangat Baik</div>
+          <div class="mb-1"><span class="badge bg-info text-dark me-1">60–69</span>Baik</div>
+          <div class="mb-1"><span class="badge bg-warning text-dark me-1">50–59</span>Cukup</div>
+          <div><span class="badge bg-danger me-1">&lt;50</span>Perlu Perbaikan</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const ratingMap = {};
+const bobotMap  = {};
+const hsTotal   = {{ hs_total }};
+let hsBobot     = 0;
+let hsVal       = 0;
+
+// Init from existing
+{% for row in items_with_val %}
+{% set item = row.item %}
+{% if item.is_hardskill %}
+hsBobot = {{ item.bobot }};
+hsVal   = {{ row.val }};
+{% else %}
+ratingMap[{{ item.id }}] = {{ item.current_rating }};
+bobotMap[{{ item.id }}]  = {{ item.bobot }};
+{% endif %}
+{% endfor %}
+
+const ppTotal30 = {{ ev.pp_total }} * 0.3;
+
+function setRating(btn, itemId, val, bobot) {
+  btn.closest('div').querySelectorAll('.rating-btn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  document.getElementById('rating_' + itemId).value = val;
+  ratingMap[itemId] = val;
+  bobotMap[itemId]  = bobot;
+  const itemVal = val * 20 * bobot;
+  document.getElementById('cval_' + itemId).textContent = itemVal.toFixed(2);
+  updateComp();
+}
+
+function updateComp() {
+  let total = hsVal;
+  for (const [id, rating] of Object.entries(ratingMap)) {
+    total += rating * 20 * (bobotMap[id] || 0);
+  }
+  document.getElementById('comp-total-cell').textContent = total.toFixed(2);
+  document.getElementById('comp-sidebar').textContent    = total.toFixed(1);
+  document.getElementById('comp-gauge').style.width      = Math.min(total, 100) + '%';
+  const finalTotal = ppTotal30 + total * 0.7;
+  document.getElementById('final-display').textContent   = finalTotal.toFixed(1);
+  document.getElementById('final-gauge').style.width     = Math.min(finalTotal, 100) + '%';
+}
+
+updateComp();
+</script>
+{% endblock %}

@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Database (akan di-mount via volume)
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Development tools
+inspect_*.py
+check_db.py
+test_*.py
+
+# Editor & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+logs/
+
+# Env files (secrets jangan masuk image)
+.env
+.env.local
+.env.production
+
+# Gunicorn socket (aaPanel, bukan Docker)
+*.sock
+
+# Temporary
+tmp/
+temp/
