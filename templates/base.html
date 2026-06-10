@@ -48,6 +48,15 @@
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-house"></i> Dashboard</a></li>
         <li class="nav-item"><a class="nav-link" href="/karyawan"><i class="bi bi-people-fill"></i> Karyawan</a></li>
+        <li class="nav-item">
+          <a class="nav-link position-relative" href="/reviews">
+            <i class="bi bi-clipboard2-check"></i> Review
+            {% if pending_reviews > 0 %}
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                  style="font-size:.6rem">{{ pending_reviews }}</span>
+            {% endif %}
+          </a>
+        </li>
         <li class="nav-item"><a class="nav-link" href="/reminders"><i class="bi bi-bell"></i> Log Reminder</a></li>
         <li class="nav-item"><a class="nav-link" href="/admin"><i class="bi bi-sliders"></i> Template</a></li>
         {% if current_user.role == 'superadmin' %}

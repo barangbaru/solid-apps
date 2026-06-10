@@ -1,0 +1,260 @@
+{% extends 'base.html' %}
+{% block title %}Review — {{ ev.emp_name }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="/reviews" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h5 class="fw-bold mb-0">
+    <i class="bi bi-clipboard2-check text-primary me-1"></i>
+    Review Evaluasi — {{ ev.emp_name }}
+  </h5>
+  <span class="badge
+    {% if ev.review_status=='self_filled' %}bg-danger
+    {% elif ev.review_status=='approved' %}bg-success
+    {% elif ev.review_status=='rejected' %}bg-secondary
+    {% else %}bg-warning text-dark{% endif %}">
+    {% if ev.review_status=='self_filled' %}Perlu Review
+    {% elif ev.review_status=='approved' %}Disetujui
+    {% elif ev.review_status=='rejected' %}Dikembalikan
+    {% else %}{{ ev.review_status }}{% endif %}
+  </span>
+  <span class="badge bg-light text-dark border ms-1">{{ reviewer_role }}</span>
+</div>
+
+<div class="row g-3">
+  <!-- Left: Detail -->
+  <div class="col-lg-8">
+
+    <!-- Info Karyawan -->
+    <div class="card mb-3">
+      <div class="card-body py-2">
+        <div class="row g-2 small">
+          <div class="col-sm-3"><span class="text-muted">Nama</span><br><strong>{{ ev.emp_name }}</strong></div>
+          <div class="col-sm-3"><span class="text-muted">Jabatan</span><br>{{ ev.jabatan or '—' }}</div>
+          <div class="col-sm-3"><span class="text-muted">Divisi</span><br><span class="badge bg-primary">{{ ev.divisi }}</span></div>
+          <div class="col-sm-3"><span class="text-muted">Periode</span><br><strong>{{ ev.periode }}</strong></div>
+        </div>
+        <hr class="my-2">
+        <div class="row g-2 small">
+          <div class="col-sm-4"><span class="text-muted">Atasan Langsung</span><br>{{ emp.sup_name or '—' }}</div>
+          <div class="col-sm-4"><span class="text-muted">Leader</span><br>{{ emp.lead_name or '—' }}</div>
+          <div class="col-sm-4"><span class="text-muted">Manager</span><br>{{ emp.mgr_name or '—' }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Self-Assessment dari karyawan -->
+    {% if ev.self_achievements or ev.self_notes or ev.self_improvements %}
+    <div class="card mb-3 border-primary">
+      <div class="card-header py-2 fw-bold text-primary">
+        <i class="bi bi-person-fill me-1"></i> Self-Assessment Karyawan
+      </div>
+      <div class="card-body">
+        {% if ev.self_achievements %}
+        <div class="mb-3">
+          <div class="small fw-semibold text-muted text-uppercase mb-1">Pencapaian & Kontribusi</div>
+          <div class="p-2 bg-light rounded" style="white-space:pre-wrap">{{ ev.self_achievements }}</div>
+        </div>
+        {% endif %}
+        {% if ev.self_notes %}
+        <div class="mb-3">
+          <div class="small fw-semibold text-muted text-uppercase mb-1">Tantangan & Kendala</div>
+          <div class="p-2 bg-light rounded" style="white-space:pre-wrap">{{ ev.self_notes }}</div>
+        </div>
+        {% endif %}
+        {% if ev.self_improvements %}
+        <div class="mb-0">
+          <div class="small fw-semibold text-muted text-uppercase mb-1">Area Pengembangan</div>
+          <div class="p-2 bg-light rounded" style="white-space:pre-wrap">{{ ev.self_improvements }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning py-2 mb-3 small">
+      <i class="bi bi-hourglass-split me-1"></i>
+      Karyawan belum mengisi self-assessment.
+    </div>
+    {% endif %}
+
+    <!-- Nilai Evaluasi -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-table me-1"></i> Rekap Nilai Evaluator</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr><th>Komponen</th><th class="text-center">Bobot</th>
+                <th class="text-center">Nilai</th><th class="text-center">Tertimbang</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Project Performance</td>
+              <td class="text-center">30%</td>
+              <td class="text-center fw-semibold">{{ '%.1f'|format(ev.pp_total) }}</td>
+              <td class="text-center text-success fw-semibold">{{ '%.2f'|format(ev.pp_total*0.3) }}</td>
+            </tr>
+            <tr>
+              <td>Competency <small class="text-muted">(+HS)</small></td>
+              <td class="text-center">70%</td>
+              <td class="text-center fw-semibold">{{ '%.2f'|format(ev.competency_total) }}</td>
+              <td class="text-center text-warning fw-semibold">{{ '%.2f'|format(ev.competency_total*0.7) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="table-primary">
+              <td colspan="3" class="fw-bold text-end">Total Nilai Akhir</td>
+              <td class="text-center fw-bold fs-5
+                {% if ev.final_total>=80 %}text-success{% elif ev.final_total>=60 %}text-primary{% else %}text-danger{% endif %}">
+                {{ '%.2f'|format(ev.final_total) }}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Competency detail -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-list-stars me-1"></i>Detail Competency</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 small">
+          <thead class="table-light">
+            <tr><th>#</th><th>Poin</th><th class="text-center">Bobot</th><th class="text-center">Rating</th></tr>
+          </thead>
+          <tbody>
+            {% for item in competency_items %}
+            <tr {% if item.is_hardskill %}class="table-warning"{% endif %}>
+              <td class="text-muted">{{ loop.index }}</td>
+              <td>{{ item.point_measurement }}
+                {% if item.is_hardskill %}<span class="badge bg-warning text-dark ms-1">HS Auto</span>{% endif %}
+              </td>
+              <td class="text-center">{{ (item.bobot*100)|int }}%</td>
+              <td class="text-center">
+                {% if item.is_hardskill %}
+                  <span class="text-muted">{{ '%.1f'|format(ev.hs_total) }}</span>
+                {% else %}
+                  <span class="badge bg-primary">{{ item.current_rating }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Review dari reviewer lain -->
+    {% if all_reviews %}
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-people me-1"></i> Review dari Reviewer Lain</div>
+      <div class="card-body">
+        {% for r in all_reviews %}
+        <div class="mb-3 p-2 border rounded {% if r.reviewer_user_id == current_user.id %}border-primary{% endif %}">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <div>
+              <strong>{{ r.full_name or r.username }}</strong>
+              <span class="badge bg-secondary ms-1">{{ r.reviewer_role }}</span>
+            </div>
+            <div class="d-flex gap-1 align-items-center">
+              <span class="badge {% if r.status=='submitted' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                {{ 'Sudah diisi' if r.status=='submitted' else 'Belum' }}
+              </span>
+              {% if r.submitted_at %}<span class="text-muted small">{{ r.submitted_at[:16] }}</span>{% endif %}
+            </div>
+          </div>
+          {% if r.notes %}
+          <div class="small text-muted bg-light p-2 rounded" style="white-space:pre-wrap">{{ r.notes }}</div>
+          {% else %}
+          <div class="small text-muted fst-italic">Belum ada catatan.</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Form Review (jika masih bisa review) -->
+    {% if ev.review_status in ('self_filled', 'pending_self') or (ev.review_status in ('approved','rejected') and current_user.role == 'superadmin') %}
+    <div class="card mb-3 border-warning">
+      <div class="card-header py-2 fw-bold text-warning">
+        <i class="bi bi-pencil-square me-1"></i> Berikan Penilaian Anda — {{ reviewer_role }}
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="reviewer_role" value="{{ reviewer_role }}">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Catatan Review</label>
+            <textarea name="review_notes" class="form-control" rows="4"
+                      placeholder="Tuliskan penilaian, catatan, atau feedback Anda...">{{ my_review.notes if my_review else '' }}</textarea>
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="submit" name="action" value="save_review" class="btn btn-outline-primary">
+              <i class="bi bi-save me-1"></i> Simpan Catatan
+            </button>
+            {% if ev.review_status == 'self_filled' %}
+            <button type="submit" name="action" value="approve" class="btn btn-success"
+                    onclick="return confirm('Setujui evaluasi ini?')">
+              <i class="bi bi-check-circle me-1"></i> Setujui
+            </button>
+            <button type="submit" name="action" value="reject" class="btn btn-outline-danger"
+                    onclick="return confirm('Kembalikan evaluasi untuk perbaikan?')">
+              <i class="bi bi-arrow-counterclockwise me-1"></i> Kembalikan
+            </button>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Approved/Rejected notice -->
+    {% if ev.review_status == 'approved' %}
+    <div class="alert alert-success py-2 mb-3">
+      <i class="bi bi-check-circle-fill me-1"></i>
+      Evaluasi ini telah <strong>disetujui</strong>
+      {% if ev.reviewed_at %} pada {{ ev.reviewed_at[:16] }}{% endif %}.
+      {% if ev.review_notes %}<br><small>Catatan: {{ ev.review_notes }}</small>{% endif %}
+    </div>
+    {% elif ev.review_status == 'rejected' %}
+    <div class="alert alert-warning py-2 mb-3">
+      <i class="bi bi-arrow-counterclockwise me-1"></i>
+      Evaluasi ini <strong>dikembalikan</strong> untuk perbaikan.
+      {% if ev.review_notes %}<br><small>Catatan: {{ ev.review_notes }}</small>{% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- Right: Score card -->
+  <div class="col-lg-4">
+    <div class="card sticky-score">
+      <div class="card-header py-2 fw-bold bg-primary text-white">
+        <i class="bi bi-award me-1"></i> Nilai Akhir
+      </div>
+      <div class="card-body text-center">
+        <div class="display-4 fw-bold
+          {% if ev.final_total>=80 %}text-success{% elif ev.final_total>=70 %}text-primary
+          {% elif ev.final_total>=60 %}text-info{% elif ev.final_total>=50 %}text-warning
+          {% else %}text-danger{% endif %}">
+          {{ '%.1f'|format(ev.final_total) }}
+        </div>
+        <div class="text-muted mb-3">/ 100</div>
+        <div class="gauge-bar mb-3">
+          <div class="gauge-fill {% if ev.final_total>=80 %}bg-success{% elif ev.final_total>=70 %}bg-primary{% elif ev.final_total>=60 %}bg-info{% elif ev.final_total>=50 %}bg-warning{% else %}bg-danger{% endif %}"
+               style="width:{{ [ev.final_total,100]|min }}%"></div>
+        </div>
+        <div class="fw-bold mb-3">
+          {% if ev.final_total>=80 %}<span class="text-success">Luar Biasa</span>
+          {% elif ev.final_total>=70 %}<span class="text-primary">Sangat Baik</span>
+          {% elif ev.final_total>=60 %}<span class="text-info">Baik</span>
+          {% elif ev.final_total>=50 %}<span class="text-warning">Cukup</span>
+          {% else %}<span class="text-danger">Perlu Perbaikan</span>{% endif %}
+        </div>
+        <a href="/eval/{{ ev.id }}/summary" class="btn btn-outline-primary btn-sm w-100 mt-1">
+          <i class="bi bi-bar-chart me-1"></i> Lihat Full Summary
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

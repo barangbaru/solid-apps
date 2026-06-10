@@ -148,6 +148,63 @@
         </div>
       </div>
 
+      <!-- Struktur Organisasi -->
+      <div class="card mb-3">
+        <div class="card-header py-2 fw-bold"><i class="bi bi-diagram-3 text-success me-1"></i> Struktur Organisasi</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Tentukan atasan langsung, leader, dan manager karyawan ini.
+            Mereka akan menjadi reviewer dan approver pada proses evaluasi kinerja.
+          </p>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Atasan Langsung / Co-Leader</label>
+              <select name="supervisor_id" class="form-select form-select-sm">
+                <option value="">— Tidak ditentukan —</option>
+                {% if users %}{% for u in users %}
+                <option value="{{ u.id }}"
+                  {{ 'selected' if emp and emp.supervisor_id == u.id else '' }}>
+                  {{ u.full_name or u.username }}
+                  {% if u.role == 'superadmin' %} ★{% endif %}
+                </option>
+                {% endfor %}{% endif %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Leader</label>
+              <select name="leader_id" class="form-select form-select-sm">
+                <option value="">— Tidak ditentukan —</option>
+                {% if users %}{% for u in users %}
+                <option value="{{ u.id }}"
+                  {{ 'selected' if emp and emp.leader_id == u.id else '' }}>
+                  {{ u.full_name or u.username }}
+                  {% if u.role == 'superadmin' %} ★{% endif %}
+                </option>
+                {% endfor %}{% endif %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Manager</label>
+              <select name="manager_id" class="form-select form-select-sm">
+                <option value="">— Tidak ditentukan —</option>
+                {% if users %}{% for u in users %}
+                <option value="{{ u.id }}"
+                  {{ 'selected' if emp and emp.manager_id == u.id else '' }}>
+                  {{ u.full_name or u.username }}
+                  {% if u.role == 'superadmin' %} ★{% endif %}
+                </option>
+                {% endfor %}{% endif %}
+              </select>
+            </div>
+          </div>
+          <div class="form-text mt-2">
+            <i class="bi bi-info-circle me-1"></i>
+            Hanya user yang terdaftar di sistem yang dapat menjadi reviewer.
+            ★ = Superadmin.
+          </div>
+        </div>
+      </div>
+
       <!-- Catatan -->
       <div class="card mb-3">
         <div class="card-header py-2 fw-bold"><i class="bi bi-journal-text text-secondary me-1"></i> Catatan</div>

@@ -178,6 +178,135 @@
       </div>
     </div>
 
+    <!-- Self-Assessment & Review Status -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-clipboard2-pulse text-primary me-1"></i> Self-Assessment & Review
+      </div>
+      <div class="card-body">
+
+        <!-- Hierarchy info -->
+        {% if emp %}
+        <div class="row g-2 small mb-3">
+          <div class="col-sm-4">
+            <span class="text-muted">Atasan Langsung:</span><br>
+            <strong>{{ emp.sup_name or '—' }}</strong>
+          </div>
+          <div class="col-sm-4">
+            <span class="text-muted">Leader:</span><br>
+            <strong>{{ emp.lead_name or '—' }}</strong>
+          </div>
+          <div class="col-sm-4">
+            <span class="text-muted">Manager:</span><br>
+            <strong>{{ emp.mgr_name or '—' }}</strong>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Review status badges -->
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+          <span class="fw-semibold small">Status Review:</span>
+          {% if ev.review_status == 'draft' %}
+            <span class="badge bg-secondary">Draft — Belum dikirim</span>
+          {% elif ev.review_status == 'pending_self' %}
+            <span class="badge bg-warning text-dark"><i class="bi bi-hourglass"></i> Menunggu Karyawan</span>
+          {% elif ev.review_status == 'self_filled' %}
+            <span class="badge bg-primary"><i class="bi bi-person-check"></i> Self-Assessment Terisi</span>
+          {% elif ev.review_status == 'approved' %}
+            <span class="badge bg-success"><i class="bi bi-check-circle"></i> Disetujui</span>
+          {% elif ev.review_status == 'rejected' %}
+            <span class="badge bg-danger"><i class="bi bi-arrow-counterclockwise"></i> Dikembalikan</span>
+          {% endif %}
+        </div>
+
+        <!-- Self-assessment content (if filled) -->
+        {% if ev.self_achievements or ev.self_notes or ev.self_improvements %}
+        <div class="border rounded p-2 bg-light mb-3 small">
+          <div class="fw-semibold text-primary mb-2"><i class="bi bi-person-fill me-1"></i>Isian Karyawan</div>
+          {% if ev.self_achievements %}
+          <div class="mb-2">
+            <span class="text-muted">Pencapaian:</span>
+            <div style="white-space:pre-wrap">{{ ev.self_achievements }}</div>
+          </div>
+          {% endif %}
+          {% if ev.self_notes %}
+          <div class="mb-2">
+            <span class="text-muted">Tantangan:</span>
+            <div style="white-space:pre-wrap">{{ ev.self_notes }}</div>
+          </div>
+          {% endif %}
+          {% if ev.self_improvements %}
+          <div>
+            <span class="text-muted">Pengembangan:</span>
+            <div style="white-space:pre-wrap">{{ ev.self_improvements }}</div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Send link / copy link -->
+        {% if emp and emp.email %}
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+          <form action="/eval/{{ ev.id }}/send-self-link" method="post" class="d-inline">
+            <button type="submit" class="btn btn-sm btn-outline-primary"
+                    onclick="return confirm('Kirim link self-assessment ke {{ emp.email }}?')">
+              <i class="bi bi-envelope me-1"></i>
+              {{ 'Kirim Ulang Link' if eval_token else 'Kirim Link Self-Assessment' }}
+            </button>
+          </form>
+          {% if self_link %}
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  onclick="navigator.clipboard.writeText('{{ self_link }}');this.textContent='✓ Disalin!'">
+            <i class="bi bi-link-45deg me-1"></i> Salin Link
+          </button>
+          {% if eval_token %}
+          <span class="text-muted small">
+            Terkirim: {{ eval_token.sent_at[:16] if eval_token.sent_at else '—' }}
+            {% if eval_token.submitted_at %}
+            • Diisi: {{ eval_token.submitted_at[:16] }}
+            {% endif %}
+          </span>
+          {% endif %}
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="alert alert-warning py-2 small mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Email karyawan belum diisi. <a href="/emp/{{ ev.employee_id }}/edit">Lengkapi data karyawan</a>
+          untuk mengirim link self-assessment.
+        </div>
+        {% endif %}
+
+        <!-- Reviewer notes (if approved/rejected) -->
+        {% if ev.review_status in ('approved','rejected') and ev.review_notes %}
+        <div class="alert alert-{{ 'success' if ev.review_status=='approved' else 'warning' }} py-2 small mt-3 mb-0">
+          <strong>Catatan Reviewer:</strong> {{ ev.review_notes }}
+        </div>
+        {% endif %}
+
+        <!-- All reviews -->
+        {% if all_reviews %}
+        <div class="mt-3">
+          <div class="small fw-semibold text-muted mb-2">Review dari:</div>
+          {% for r in all_reviews %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom small">
+            <span>{{ r.full_name or r.username }} <span class="badge bg-light text-dark border">{{ r.reviewer_role }}</span></span>
+            <span class="badge {% if r.status=='submitted' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+              {{ 'Sudah' if r.status=='submitted' else 'Belum' }}
+            </span>
+          </div>
+          {% endfor %}
+          {% if ev.review_status == 'self_filled' %}
+          <a href="/eval/{{ ev.id }}/review" class="btn btn-sm btn-danger mt-2">
+            <i class="bi bi-check2-square me-1"></i> Buka Halaman Review
+          </a>
+          {% endif %}
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+
     <!-- Actions -->
     <div class="d-flex gap-2 flex-wrap mb-5">
       <a href="/eval/{{ ev.id }}/competency" class="btn btn-outline-secondary">

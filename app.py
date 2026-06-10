@@ -2,7 +2,7 @@ from flask import (Flask, render_template, request, redirect, url_for,
                    flash, g, session, jsonify)
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-import sqlite3, os, smtplib, json, requests as req_lib
+import sqlite3, os, smtplib, json, secrets, requests as req_lib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, date, timedelta
@@ -167,6 +167,29 @@ CREATE TABLE IF NOT EXISTS reminder_logs (
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS eval_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    eval_id INTEGER NOT NULL UNIQUE,
+    token TEXT UNIQUE NOT NULL,
+    email_sent_to TEXT DEFAULT '',
+    sent_at TEXT DEFAULT '',
+    accessed_at TEXT DEFAULT '',
+    submitted_at TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
+    FOREIGN KEY(eval_id) REFERENCES evaluations(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS eval_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    eval_id INTEGER NOT NULL,
+    reviewer_user_id INTEGER NOT NULL,
+    reviewer_role TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    submitted_at TEXT DEFAULT '',
+    FOREIGN KEY(eval_id) REFERENCES evaluations(id) ON DELETE CASCADE,
+    FOREIGN KEY(reviewer_user_id) REFERENCES users(id),
+    UNIQUE(eval_id, reviewer_user_id)
+);
 """
 
 MIGRATIONS = [
@@ -179,6 +202,16 @@ MIGRATIONS = [
     ('employees', 'telegram_id',     "TEXT DEFAULT ''"),
     ('employees', 'is_active',       "INTEGER DEFAULT 1"),
     ('employees', 'notes',           "TEXT DEFAULT ''"),
+    ('employees', 'supervisor_id',   'INTEGER DEFAULT NULL'),
+    ('employees', 'leader_id',       'INTEGER DEFAULT NULL'),
+    ('employees', 'manager_id',      'INTEGER DEFAULT NULL'),
+    ('evaluations', 'self_notes',        "TEXT DEFAULT ''"),
+    ('evaluations', 'self_achievements', "TEXT DEFAULT ''"),
+    ('evaluations', 'self_improvements', "TEXT DEFAULT ''"),
+    ('evaluations', 'review_status',     "TEXT DEFAULT 'draft'"),
+    ('evaluations', 'reviewed_by',       'INTEGER DEFAULT NULL'),
+    ('evaluations', 'reviewed_at',       "TEXT DEFAULT ''"),
+    ('evaluations', 'review_notes',      "TEXT DEFAULT ''"),
 ]
 
 DEFAULT_SETTINGS = {
@@ -298,6 +331,39 @@ def get_notification_telegram_ids(settings, emp_tg_id='', default_chat=''):
         ids.append(normalize_telegram_id(default_chat))
     return ids
 
+# ─── Review / Self-Assessment Helpers ─────────────────────────────────────────
+
+def get_or_create_eval_token(db, eval_id):
+    row = db.execute('SELECT token FROM eval_tokens WHERE eval_id=?', (eval_id,)).fetchone()
+    if row:
+        return row['token']
+    token = secrets.token_urlsafe(32)
+    db.execute('INSERT INTO eval_tokens(eval_id, token) VALUES(?,?)', (eval_id, token))
+    db.commit()
+    return token
+
+def can_review_eval(db, user_id, user_role, eval_id):
+    if user_role == 'superadmin':
+        return True
+    row = db.execute('''SELECT emp.supervisor_id, emp.leader_id, emp.manager_id
+                        FROM evaluations e JOIN employees emp ON emp.id = e.employee_id
+                        WHERE e.id=?''', (eval_id,)).fetchone()
+    if not row:
+        return False
+    return user_id in [row['supervisor_id'], row['leader_id'], row['manager_id']]
+
+def get_pending_review_count(db, user_id, user_role):
+    if user_role == 'superadmin':
+        return db.execute(
+            "SELECT COUNT(*) FROM evaluations WHERE review_status='self_filled'"
+        ).fetchone()[0]
+    return db.execute('''
+        SELECT COUNT(*) FROM evaluations e
+        JOIN employees emp ON emp.id = e.employee_id
+        WHERE e.review_status='self_filled'
+        AND (emp.supervisor_id=? OR emp.leader_id=? OR emp.manager_id=?)
+    ''', (user_id, user_id, user_id)).fetchone()[0]
+
 # ─── Auth Helpers ──────────────────────────────────────────────────────────────
 
 def login_required(f):
@@ -322,6 +388,13 @@ def superadmin_required(f):
 
 @app.context_processor
 def inject_globals():
+    pending = 0
+    if 'user_id' in session:
+        try:
+            pending = get_pending_review_count(
+                get_db(), session['user_id'], session.get('user_role', ''))
+        except Exception:
+            pass
     return {
         'current_user': {
             'id':       session.get('user_id'),
@@ -329,8 +402,9 @@ def inject_globals():
             'name':     session.get('user_name'),
             'role':     session.get('user_role'),
         } if 'user_id' in session else None,
-        'now_year':   date.today().year,
-        'today_date': date.today().isoformat(),
+        'now_year':      date.today().year,
+        'today_date':    date.today().isoformat(),
+        'pending_reviews': pending,
     }
 
 # ─── Score Helpers ──────────────────────────────────────────────────────────────
@@ -695,9 +769,12 @@ def emp_add():
             return render_template('employee_form.html', emp=None,
                                    divisi_list=DIVISI_LIST, level_choices=LEVEL_CHOICES)
         db = get_db()
+        def _int_or_none(v):
+            return int(v) if v and v.isdigit() else None
         db.execute('''INSERT INTO employees(name,jabatan,divisi,level,employment_type,
-                      contract_start,contract_end,email,phone,telegram_id,notes)
-                      VALUES(?,?,?,?,?,?,?,?,?,?,?)''', (
+                      contract_start,contract_end,email,phone,telegram_id,notes,
+                      supervisor_id,leader_id,manager_id)
+                      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
             name,
             request.form.get('jabatan','').strip(),
             divisi,
@@ -709,12 +786,17 @@ def emp_add():
             request.form.get('phone','').strip(),
             normalize_telegram_id(request.form.get('telegram_id','')),
             request.form.get('notes','').strip(),
+            _int_or_none(request.form.get('supervisor_id','')),
+            _int_or_none(request.form.get('leader_id','')),
+            _int_or_none(request.form.get('manager_id','')),
         ))
         db.commit()
         flash(f'Karyawan {name} berhasil ditambahkan', 'success')
         return redirect(url_for('index'))
+    db = get_db()
+    users = db.execute("SELECT id, full_name, username, role FROM users WHERE is_active=1 ORDER BY full_name").fetchall()
     return render_template('employee_form.html', emp=None,
-                           divisi_list=DIVISI_LIST, level_choices=LEVEL_CHOICES)
+                           divisi_list=DIVISI_LIST, level_choices=LEVEL_CHOICES, users=users)
 
 @app.route('/emp/<int:emp_id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -739,10 +821,13 @@ def emp_edit(emp_id):
             flash(f'{emp["name"]} dipromosikan ke {new_level} — {new_jabatan}', 'success')
             return redirect(url_for('emp_edit', emp_id=emp_id))
         # Normal save
+        def _int_or_none(v):
+            return int(v) if v and str(v).isdigit() else None
         emp_type = request.form.get('employment_type', 'tetap')
         db.execute('''UPDATE employees SET name=?,jabatan=?,divisi=?,level=?,
                       employment_type=?,contract_start=?,contract_end=?,
-                      email=?,phone=?,telegram_id=?,notes=? WHERE id=?''', (
+                      email=?,phone=?,telegram_id=?,notes=?,
+                      supervisor_id=?,leader_id=?,manager_id=? WHERE id=?''', (
             request.form['name'].strip(),
             request.form.get('jabatan','').strip(),
             request.form['divisi'],
@@ -754,6 +839,9 @@ def emp_edit(emp_id):
             request.form.get('phone','').strip(),
             normalize_telegram_id(request.form.get('telegram_id','')),
             request.form.get('notes','').strip(),
+            _int_or_none(request.form.get('supervisor_id','')),
+            _int_or_none(request.form.get('leader_id','')),
+            _int_or_none(request.form.get('manager_id','')),
             emp_id,
         ))
         db.commit()
@@ -762,8 +850,9 @@ def emp_edit(emp_id):
     # Reminder logs for this employee
     logs = db.execute('''SELECT * FROM reminder_logs WHERE employee_id=?
                          ORDER BY created_at DESC LIMIT 10''', (emp_id,)).fetchall()
+    users = db.execute("SELECT id, full_name, username, role FROM users WHERE is_active=1 ORDER BY full_name").fetchall()
     return render_template('employee_form.html', emp=emp, divisi_list=DIVISI_LIST,
-                           level_choices=LEVEL_CHOICES, logs=logs)
+                           level_choices=LEVEL_CHOICES, logs=logs, users=users)
 
 @app.route('/emp/<int:emp_id>/delete', methods=['POST'])
 @superadmin_required
@@ -1104,8 +1193,23 @@ def eval_summary(eval_id):
                                      LEFT JOIN competency_scores cs ON cs.competency_item_id=ci.id AND cs.eval_id=?
                                      WHERE ci.divisi=? ORDER BY ci.sort_order''',
                                   (eval_id, ev['divisi'])).fetchall()
+    emp = db.execute('''SELECT e.*,
+        u1.full_name AS sup_name, u2.full_name AS lead_name, u3.full_name AS mgr_name
+        FROM employees e
+        LEFT JOIN users u1 ON u1.id = e.supervisor_id
+        LEFT JOIN users u2 ON u2.id = e.leader_id
+        LEFT JOIN users u3 ON u3.id = e.manager_id
+        WHERE e.id=?''', (ev['employee_id'],)).fetchone()
+    eval_token = db.execute('SELECT * FROM eval_tokens WHERE eval_id=?', (eval_id,)).fetchone()
+    all_reviews = db.execute('''SELECT er.*, u.full_name, u.username
+        FROM eval_reviews er JOIN users u ON u.id = er.reviewer_user_id
+        WHERE er.eval_id=? ORDER BY er.submitted_at''', (eval_id,)).fetchall()
+    base_url = request.host_url.rstrip('/')
+    self_link = f"{base_url}/assess/{eval_token['token']}" if eval_token else None
     return render_template('eval_summary.html', ev=ev, peers=peers, entries=entries,
-                           competency_items=competency_items)
+                           competency_items=competency_items, emp=emp,
+                           eval_token=eval_token, self_link=self_link,
+                           all_reviews=all_reviews)
 
 @app.route('/eval/<int:eval_id>/delete', methods=['POST'])
 @superadmin_required
@@ -1115,6 +1219,225 @@ def eval_delete(eval_id):
     db.commit()
     flash('Evaluasi dihapus', 'warning')
     return redirect(url_for('index'))
+
+# ─── Self-Assessment & Review Routes ──────────────────────────────────────────
+
+@app.route('/eval/<int:eval_id>/send-self-link', methods=['POST'])
+@login_required
+def eval_send_self_link(eval_id):
+    db = get_db()
+    ev = get_eval_or_404(db, eval_id)
+    if not ev:
+        flash('Evaluasi tidak ditemukan', 'danger')
+        return redirect(url_for('index'))
+    emp = db.execute('SELECT * FROM employees WHERE id=?', (ev['employee_id'],)).fetchone()
+    if not emp or not emp['email']:
+        flash('Email karyawan belum diisi di data karyawan', 'warning')
+        return redirect(url_for('eval_summary', eval_id=eval_id))
+
+    token    = get_or_create_eval_token(db, eval_id)
+    base_url = request.host_url.rstrip('/')
+    link     = f'{base_url}/assess/{token}'
+
+    settings = get_settings(db)
+    subject  = f'[Self-Assessment] Evaluasi Kinerja {emp["name"]} — Periode {ev["periode"]}'
+    html_body = f"""
+<h3 style="color:#0d6efd">Self-Assessment Evaluasi Kinerja</h3>
+<p>Yth. <strong>{emp['name']}</strong>,</p>
+<p>Anda diminta mengisi <b>penilaian diri (self-assessment)</b> untuk evaluasi kinerja
+   periode <strong>{ev['periode']}</strong>.</p>
+<p>Silakan klik tombol di bawah untuk mengisi form:</p>
+<p style="margin:20px 0">
+  <a href="{link}" style="background:#0d6efd;color:#fff;padding:12px 24px;border-radius:6px;
+     text-decoration:none;font-weight:bold">📝 Isi Self-Assessment</a>
+</p>
+<p style="color:#666;font-size:.9em">Atau buka link berikut: <a href="{link}">{link}</a></p>
+<hr>
+<p style="color:#999;font-size:.85em">
+  Mohon segera mengisi sebelum batas waktu. Jika ada pertanyaan, hubungi tim HR/evaluator.
+</p>"""
+
+    ok, err = send_email(settings, emp['email'], subject, html_body)
+    if ok:
+        db.execute('''INSERT OR REPLACE INTO eval_tokens(eval_id, token, email_sent_to, sent_at)
+                      VALUES(?,?,?,?)''',
+                   (eval_id, token, emp['email'],
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        db.execute("UPDATE evaluations SET review_status='pending_self' WHERE id=? AND review_status='draft'",
+                   (eval_id,))
+        db.commit()
+        flash(f'Link self-assessment berhasil dikirim ke {emp["email"]}', 'success')
+    else:
+        flash(f'Gagal kirim email: {err}. Link: {link}', 'warning')
+    return redirect(url_for('eval_summary', eval_id=eval_id))
+
+
+@app.route('/assess/<token>', methods=['GET', 'POST'])
+def self_assess(token):
+    """Public — no login required. Employee fills self-assessment via token link."""
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    try:
+        tok = db.execute("SELECT * FROM eval_tokens WHERE token=?", (token,)).fetchone()
+        if not tok:
+            return render_template('eval_self.html', error='Link tidak valid atau sudah kadaluarsa.')
+
+        ev_row = db.execute('''SELECT e.*, emp.name AS emp_name, emp.jabatan, emp.divisi, emp.id AS emp_id
+                               FROM evaluations e JOIN employees emp ON emp.id=e.employee_id
+                               WHERE e.id=?''', (tok['eval_id'],)).fetchone()
+        if not ev_row:
+            return render_template('eval_self.html', error='Data evaluasi tidak ditemukan.')
+
+        if tok['status'] == 'submitted':
+            return render_template('eval_self.html', ev=ev_row, already_submitted=True)
+
+        if request.method == 'POST':
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            db.execute('''UPDATE evaluations SET self_achievements=?, self_notes=?,
+                          self_improvements=?,
+                          review_status=CASE WHEN review_status='pending_self' THEN 'self_filled'
+                                             ELSE review_status END
+                          WHERE id=?''', (
+                request.form.get('self_achievements','').strip(),
+                request.form.get('self_notes','').strip(),
+                request.form.get('self_improvements','').strip(),
+                tok['eval_id']
+            ))
+            db.execute("UPDATE eval_tokens SET status='submitted', submitted_at=? WHERE id=?",
+                       (now_str, tok['id']))
+            # Create pending review rows for assigned supervisors
+            emp = db.execute('SELECT * FROM employees WHERE id=?', (ev_row['emp_id'],)).fetchone()
+            for reviewer_id, role in [
+                (emp['supervisor_id'], 'Atasan Langsung'),
+                (emp['leader_id'],     'Leader'),
+                (emp['manager_id'],    'Manager'),
+            ]:
+                if reviewer_id:
+                    db.execute('''INSERT OR IGNORE INTO eval_reviews(eval_id,reviewer_user_id,reviewer_role)
+                                  VALUES(?,?,?)''', (tok['eval_id'], reviewer_id, role))
+            db.commit()
+            return render_template('eval_self.html', ev=ev_row, submitted=True)
+
+        if not tok['accessed_at']:
+            db.execute('UPDATE eval_tokens SET accessed_at=? WHERE id=?',
+                       (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), tok['id']))
+            db.commit()
+        return render_template('eval_self.html', ev=ev_row, token=token)
+    finally:
+        db.close()
+
+
+@app.route('/reviews')
+@login_required
+def reviews():
+    db  = get_db()
+    uid = session['user_id']
+    role = session.get('user_role', '')
+    if role == 'superadmin':
+        evals = db.execute('''
+            SELECT e.*, emp.name AS emp_name, emp.jabatan, emp.divisi,
+                   emp.supervisor_id, emp.leader_id, emp.manager_id,
+                   u.full_name AS reviewed_by_name
+            FROM evaluations e
+            JOIN employees emp ON emp.id = e.employee_id
+            LEFT JOIN users u ON u.id = e.reviewed_by
+            WHERE e.review_status != 'draft'
+            ORDER BY CASE e.review_status WHEN 'self_filled' THEN 0 WHEN 'pending_self' THEN 1 ELSE 2 END,
+                     e.id DESC
+        ''').fetchall()
+    else:
+        evals = db.execute('''
+            SELECT e.*, emp.name AS emp_name, emp.jabatan, emp.divisi,
+                   emp.supervisor_id, emp.leader_id, emp.manager_id,
+                   u.full_name AS reviewed_by_name
+            FROM evaluations e
+            JOIN employees emp ON emp.id = e.employee_id
+            LEFT JOIN users u ON u.id = e.reviewed_by
+            WHERE e.review_status != 'draft'
+            AND (emp.supervisor_id=? OR emp.leader_id=? OR emp.manager_id=?)
+            ORDER BY CASE e.review_status WHEN 'self_filled' THEN 0 WHEN 'pending_self' THEN 1 ELSE 2 END,
+                     e.id DESC
+        ''', (uid, uid, uid)).fetchall()
+    # mark own pending_review rows for each eval
+    my_reviews = {r['eval_id']: r for r in db.execute(
+        'SELECT * FROM eval_reviews WHERE reviewer_user_id=?', (uid,)).fetchall()}
+    return render_template('reviews.html', evals=evals, my_reviews=my_reviews)
+
+
+@app.route('/eval/<int:eval_id>/review', methods=['GET', 'POST'])
+@login_required
+def eval_review(eval_id):
+    db  = get_db()
+    uid = session['user_id']
+    if not can_review_eval(db, uid, session.get('user_role',''), eval_id):
+        flash('Anda tidak memiliki akses mereview evaluasi ini', 'danger')
+        return redirect(url_for('index'))
+
+    ev  = get_eval_or_404(db, eval_id)
+    emp = db.execute('''SELECT e.*,
+        u1.full_name AS sup_name, u2.full_name AS lead_name, u3.full_name AS mgr_name
+        FROM employees e
+        LEFT JOIN users u1 ON u1.id=e.supervisor_id
+        LEFT JOIN users u2 ON u2.id=e.leader_id
+        LEFT JOIN users u3 ON u3.id=e.manager_id
+        WHERE e.id=?''', (ev['employee_id'],)).fetchone()
+
+    if request.method == 'POST':
+        action = request.form.get('action', 'save_review')
+        notes  = request.form.get('review_notes','').strip()
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        reviewer_role = ''
+        if emp['supervisor_id'] == uid:  reviewer_role = 'Atasan Langsung'
+        elif emp['leader_id'] == uid:    reviewer_role = 'Leader'
+        elif emp['manager_id'] == uid:   reviewer_role = 'Manager'
+        elif session.get('user_role') == 'superadmin': reviewer_role = 'Superadmin'
+
+        db.execute('''INSERT OR REPLACE INTO eval_reviews
+                      (eval_id, reviewer_user_id, reviewer_role, notes, status, submitted_at)
+                      VALUES(?,?,?,?,'submitted',?)''',
+                   (eval_id, uid, reviewer_role, notes, now_str))
+
+        if action == 'approve':
+            db.execute('''UPDATE evaluations SET review_status='approved',
+                          reviewed_by=?, reviewed_at=?, review_notes=? WHERE id=?''',
+                       (uid, now_str, notes, eval_id))
+            db.commit()
+            flash('Evaluasi disetujui', 'success')
+            return redirect(url_for('reviews'))
+        elif action == 'reject':
+            db.execute('''UPDATE evaluations SET review_status='rejected',
+                          reviewed_by=?, reviewed_at=?, review_notes=? WHERE id=?''',
+                       (uid, now_str, notes, eval_id))
+            db.commit()
+            flash('Evaluasi dikembalikan untuk perbaikan', 'warning')
+            return redirect(url_for('reviews'))
+        else:
+            db.commit()
+            flash('Catatan review disimpan', 'success')
+            return redirect(url_for('eval_review', eval_id=eval_id))
+
+    my_review = db.execute('SELECT * FROM eval_reviews WHERE eval_id=? AND reviewer_user_id=?',
+                            (eval_id, uid)).fetchone()
+    all_reviews = db.execute('''SELECT er.*, u.full_name, u.username
+        FROM eval_reviews er JOIN users u ON u.id=er.reviewer_user_id
+        WHERE er.eval_id=? ORDER BY er.submitted_at''', (eval_id,)).fetchall()
+    competency_items = db.execute('''SELECT ci.*, COALESCE(cs.rating,0) AS current_rating
+        FROM competency_items ci
+        LEFT JOIN competency_scores cs ON cs.competency_item_id=ci.id AND cs.eval_id=?
+        WHERE ci.divisi=? ORDER BY ci.sort_order''', (eval_id, ev['divisi'])).fetchall()
+
+    reviewer_role = ''
+    if emp['supervisor_id'] == uid:  reviewer_role = 'Atasan Langsung'
+    elif emp['leader_id'] == uid:    reviewer_role = 'Leader'
+    elif emp['manager_id'] == uid:   reviewer_role = 'Manager'
+    elif session.get('user_role') == 'superadmin': reviewer_role = 'Superadmin'
+
+    return render_template('eval_review.html', ev=ev, emp=emp,
+                           my_review=my_review, all_reviews=all_reviews,
+                           competency_items=competency_items,
+                           reviewer_role=reviewer_role)
+
 
 @app.route('/api/eval/<int:eval_id>/score')
 @login_required
