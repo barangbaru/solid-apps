@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+{% block title %}Manajemen Karyawan{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h5 class="fw-bold mb-0"><i class="bi bi-people-fill text-primary"></i> Manajemen Karyawan</h5>
+  <a href="/emp/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-person-plus"></i> Tambah Karyawan
+  </a>
+</div>
+
+<!-- Summary Cards -->
+{% set expired  = kontrak | selectattr('days_left', 'lt', 0)  | list if kontrak else [] %}
+{% set expiring = kontrak | selectattr('days_left', 'ge', 0) | selectattr('days_left', 'le', 30) | list if kontrak else [] %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3 border-start border-4 border-primary">
+      <div class="display-6 fw-bold text-primary">{{ tetap | length }}</div>
+      <div class="small text-muted">Karyawan Tetap</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3 border-start border-4 border-warning">
+      <div class="display-6 fw-bold text-warning">{{ kontrak | length }}</div>
+      <div class="small text-muted">Karyawan Kontrak</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3 border-start border-4 border-danger">
+      <div class="display-6 fw-bold text-danger">{{ expiring | length }}</div>
+      <div class="small text-muted">Kontrak ≤ 30 Hari</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center p-3 border-start border-4 border-secondary">
+      <div class="display-6 fw-bold text-secondary">{{ expired | length }}</div>
+      <div class="small text-muted">Kontrak Berakhir</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="karyawanTab" role="tablist">
+  <li class="nav-item">
+    <button class="nav-link active" id="kontrak-tab" data-bs-toggle="tab"
+            data-bs-target="#tab-kontrak" type="button">
+      <i class="bi bi-file-earmark-text me-1"></i> Karyawan Kontrak
+      <span class="badge bg-warning text-dark ms-1">{{ kontrak | length }}</span>
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" id="tetap-tab" data-bs-toggle="tab"
+            data-bs-target="#tab-tetap" type="button">
+      <i class="bi bi-person-check me-1"></i> Karyawan Tetap
+      <span class="badge bg-primary ms-1">{{ tetap | length }}</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+  <!-- ── Tab Kontrak ──────────────────────────────────────────────────────── -->
+  <div class="tab-pane fade show active" id="tab-kontrak">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <span class="text-muted small">
+        <i class="bi bi-info-circle"></i>
+        Reminder otomatis jam 08:00. Konfigurasi di <a href="/settings">Pengaturan</a>.
+      </span>
+      <form action="/contracts/remind-all" method="post" class="d-inline"
+            onsubmit="return confirm('Kirim reminder ke semua kontrak yang jatuh tempo sesuai pengaturan?')">
+        <button class="btn btn-warning btn-sm">
+          <i class="bi bi-bell"></i> Kirim Semua Reminder
+        </button>
+      </form>
+    </div>
+
+    {% if not kontrak %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-file-earmark-x display-3"></i>
+      <div class="mt-2">Belum ada karyawan kontrak.</div>
+      <a href="/emp/add" class="btn btn-outline-primary btn-sm mt-2">
+        <i class="bi bi-person-plus"></i> Tambah Karyawan Kontrak
+      </a>
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Nama</th>
+              <th>Divisi / Jabatan</th>
+              <th class="text-center">Mulai Kontrak</th>
+              <th class="text-center">Akhir Kontrak</th>
+              <th class="text-center">Sisa Hari</th>
+              <th class="text-center">Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for emp in kontrak %}
+              {% set dl = emp.days_left %}
+              {% if dl is none %}
+                {% set row_class = '' %}{% set badge_class = 'bg-secondary' %}{% set status_text = 'Belum diisi' %}
+              {% elif dl < 0 %}
+                {% set row_class = 'table-secondary' %}{% set badge_class = 'bg-secondary' %}{% set status_text = 'BERAKHIR' %}
+              {% elif dl <= 7 %}
+                {% set row_class = 'table-danger' %}{% set badge_class = 'bg-danger' %}{% set status_text = 'KRITIS' %}
+              {% elif dl <= 14 %}
+                {% set row_class = 'table-danger' %}{% set badge_class = 'bg-danger' %}{% set status_text = 'SEGERA' %}
+              {% elif dl <= 30 %}
+                {% set row_class = 'table-warning' %}{% set badge_class = 'bg-warning text-dark' %}{% set status_text = 'PERHATIAN' %}
+              {% else %}
+                {% set row_class = '' %}{% set badge_class = 'bg-success' %}{% set status_text = 'AKTIF' %}
+              {% endif %}
+            <tr class="{{ row_class }}">
+              <td>
+                <a href="/emp/{{ emp.id }}/edit" class="fw-semibold text-decoration-none">{{ emp.name }}</a>
+                <div class="text-muted small">{{ emp.level }}</div>
+              </td>
+              <td>
+                <div>{{ emp.divisi }}</div>
+                <div class="text-muted small">{{ emp.jabatan or '—' }}</div>
+              </td>
+              <td class="text-center small">{{ emp.contract_start or '—' }}</td>
+              <td class="text-center small fw-semibold">{{ emp.contract_end or '—' }}</td>
+              <td class="text-center">
+                {% if dl is none %}<span class="text-muted">—</span>
+                {% elif dl < 0 %}<span class="fw-bold text-secondary">{{ dl | abs }} hari lalu</span>
+                {% elif dl == 0 %}<span class="fw-bold text-danger">Hari ini!</span>
+                {% else %}
+                  <span class="fw-bold {% if dl <= 14 %}text-danger{% elif dl <= 30 %}text-warning{% else %}text-success{% endif %}">
+                    {{ dl | int }} hari
+                  </span>
+                {% endif %}
+              </td>
+              <td class="text-center"><span class="badge {{ badge_class }}">{{ status_text }}</span></td>
+              <td class="text-end pe-2">
+                <div class="d-flex gap-1 justify-content-end">
+                  <a href="/emp/{{ emp.id }}/edit" class="btn btn-xs btn-outline-secondary"
+                     style="padding:.2rem .5rem;font-size:.75rem" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  <form action="/contracts/remind/{{ emp.id }}" method="post" class="d-inline">
+                    <button type="submit" class="btn btn-xs btn-outline-warning"
+                            style="padding:.2rem .5rem;font-size:.75rem" title="Kirim reminder"
+                            {% if not emp.email and not emp.telegram_id %}disabled{% endif %}>
+                      <i class="bi bi-bell"></i>
+                    </button>
+                  </form>
+                  {% if current_user and current_user.role == 'superadmin' %}
+                  <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
+                        onsubmit="return confirm('Nonaktifkan {{ emp.name }}?')">
+                    <button type="submit" class="btn btn-xs btn-outline-danger"
+                            style="padding:.2rem .5rem;font-size:.75rem" title="Nonaktifkan">
+                      <i class="bi bi-person-x"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mt-3 d-flex flex-wrap gap-3 small text-muted">
+      <span><span class="badge bg-danger me-1">KRITIS</span>≤ 7 hari</span>
+      <span><span class="badge bg-danger me-1">SEGERA</span>8–14 hari</span>
+      <span><span class="badge bg-warning text-dark me-1">PERHATIAN</span>15–30 hari</span>
+      <span><span class="badge bg-success me-1">AKTIF</span>> 30 hari</span>
+      <span><span class="badge bg-secondary me-1">BERAKHIR</span>Sudah lewat</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Tab Tetap ────────────────────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="tab-tetap">
+    {% if not tetap %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-person-x display-3"></i>
+      <div class="mt-2">Belum ada karyawan tetap.</div>
+      <a href="/emp/add" class="btn btn-outline-primary btn-sm mt-2">
+        <i class="bi bi-person-plus"></i> Tambah Karyawan Tetap
+      </a>
+    </div>
+    {% else %}
+    {% set divisi_groups = {} %}
+    {% for emp in tetap %}
+      {% if emp.divisi not in divisi_groups %}{% set _ = divisi_groups.update({emp.divisi: []}) %}{% endif %}
+    {% endfor %}
+
+    <div class="card">
+      <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Nama</th>
+              <th>Divisi</th>
+              <th>Jabatan</th>
+              <th>Level</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set current_divisi = namespace(val='') %}
+            {% for emp in tetap %}
+              {% if emp.divisi != current_divisi.val %}
+                {% set current_divisi.val = emp.divisi %}
+                <tr class="table-light">
+                  <td colspan="7" class="fw-bold text-primary py-1 px-3">
+                    <i class="bi bi-people-fill me-1"></i>{{ emp.divisi }}
+                  </td>
+                </tr>
+              {% endif %}
+            <tr>
+              <td>
+                <a href="/emp/{{ emp.id }}/edit" class="fw-semibold text-decoration-none">{{ emp.name }}</a>
+              </td>
+              <td class="text-muted small">{{ emp.divisi }}</td>
+              <td class="text-muted small">{{ emp.jabatan or '—' }}</td>
+              <td>
+                {% if emp.level and emp.level != 'Staff' %}
+                  <span class="badge bg-light text-dark border" style="font-size:.72rem">{{ emp.level }}</span>
+                {% else %}
+                  <span class="text-muted small">{{ emp.level or 'Staff' }}</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if emp.email %}
+                  <a href="mailto:{{ emp.email }}" class="text-decoration-none">{{ emp.email }}</a>
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td class="small text-muted">{{ emp.phone or '—' }}</td>
+              <td class="text-end pe-2">
+                <div class="d-flex gap-1 justify-content-end">
+                  <a href="/emp/{{ emp.id }}/edit" class="btn btn-xs btn-outline-secondary"
+                     style="padding:.2rem .5rem;font-size:.75rem" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  {% if current_user and current_user.role == 'superadmin' %}
+                  <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
+                        onsubmit="return confirm('Nonaktifkan {{ emp.name }}?')">
+                    <button type="submit" class="btn btn-xs btn-outline-danger"
+                            style="padding:.2rem .5rem;font-size:.75rem" title="Nonaktifkan">
+                      <i class="bi bi-person-x"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div><!-- end tab-content -->
+
+{% endblock %}

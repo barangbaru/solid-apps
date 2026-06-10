@@ -193,6 +193,8 @@ DEFAULT_SETTINGS = {
     'reminder_days': '30,14,7,1',
     'reminder_enabled': '1',
     'app_name': 'Evaluasi Kinerja Tim IT',
+    'notification_emails': '',
+    'notification_telegram_ids': '',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Team Lead', 'Manager', 'Senior Manager', 'Director']
@@ -256,6 +258,30 @@ def get_settings(db):
 
 def save_setting(db, key, value):
     db.execute('INSERT OR REPLACE INTO app_settings(key, value) VALUES(?,?)', (key, value))
+
+def get_notification_emails(settings, emp_email=''):
+    """Gabungkan email karyawan + daftar email statis dari pengaturan."""
+    recipients = []
+    if emp_email and emp_email.strip():
+        recipients.append(emp_email.strip())
+    for e in settings.get('notification_emails', '').split(','):
+        e = e.strip()
+        if e and e not in recipients:
+            recipients.append(e)
+    return recipients
+
+def get_notification_telegram_ids(settings, emp_tg_id='', default_chat=''):
+    """Gabungkan telegram_id karyawan + daftar statis + default chat."""
+    ids = []
+    if emp_tg_id and emp_tg_id.strip():
+        ids.append(emp_tg_id.strip())
+    for t in settings.get('notification_telegram_ids', '').split(','):
+        t = t.strip()
+        if t and t not in ids:
+            ids.append(t)
+    if not ids and default_chat:
+        ids.append(default_chat)
+    return ids
 
 # ─── Auth Helpers ──────────────────────────────────────────────────────────────
 
@@ -444,15 +470,15 @@ def run_contract_reminders(triggered_by='auto'):
             html    = compose_contract_message(emp, days_left)
             tg_msg  = compose_telegram_message(emp, days_left)
 
-            if emp['email'] and settings.get('smtp_host','').strip():
-                ok, err = send_email(settings, emp['email'], subject, html)
-                log_reminder(db, emp['id'], 'email', subject, html, ok, err, triggered_by)
-                if ok: sent += 1
-                else:  failed += 1
+            if settings.get('smtp_host','').strip():
+                for to_email in get_notification_emails(settings, emp['email'] or ''):
+                    ok, err = send_email(settings, to_email, subject, html)
+                    log_reminder(db, emp['id'], 'email', subject, html, ok, err, triggered_by)
+                    if ok: sent += 1
+                    else:  failed += 1
 
             if bot_token:
-                chat_id = emp['telegram_id'].strip() or default_chat
-                if chat_id:
+                for chat_id in get_notification_telegram_ids(settings, emp['telegram_id'] or '', default_chat):
                     ok, err = send_telegram(bot_token, chat_id, tg_msg)
                     log_reminder(db, emp['id'], 'telegram', subject, tg_msg, ok, err, triggered_by)
                     if ok: sent += 1
@@ -737,19 +763,30 @@ def emp_delete(emp_id):
 
 # ─── Contract Management ───────────────────────────────────────────────────────
 
-@app.route('/contracts')
+@app.route('/karyawan')
 @login_required
-def contracts():
-    db  = get_db()
+def karyawan():
+    db = get_db()
     today = date.today()
-    emps = db.execute('''
+    kontrak = db.execute('''
         SELECT *, julianday(contract_end) - julianday('now') AS days_left
         FROM employees
         WHERE employment_type = 'kontrak' AND is_active = 1
         ORDER BY CASE WHEN contract_end='' OR contract_end IS NULL THEN 1 ELSE 0 END,
                  contract_end ASC
     ''').fetchall()
-    return render_template('contracts.html', emps=emps, today=today)
+    tetap = db.execute('''
+        SELECT * FROM employees
+        WHERE employment_type = 'tetap' AND is_active = 1
+        ORDER BY divisi, name
+    ''').fetchall()
+    return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, today=today,
+                           divisi_list=DIVISI_LIST, level_choices=LEVEL_CHOICES)
+
+@app.route('/contracts')
+@login_required
+def contracts():
+    return redirect(url_for('karyawan'))
 
 @app.route('/contracts/remind/<int:emp_id>', methods=['POST'])
 @login_required
@@ -775,31 +812,31 @@ def contract_remind_one(emp_id):
     who          = session.get('username','manual')
     sent = []
 
-    if emp['email'] and settings.get('smtp_host','').strip():
-        ok, err = send_email(settings, emp['email'], subject, html)
-        log_reminder(db, emp_id, 'email', subject, html, ok, err, who)
-        sent.append(f"Email: {'✓' if ok else '✗ '+str(err)}")
+    if settings.get('smtp_host','').strip():
+        for to_email in get_notification_emails(settings, emp['email'] or ''):
+            ok, err = send_email(settings, to_email, subject, html)
+            log_reminder(db, emp_id, 'email', subject, html, ok, err, who)
+            sent.append(f"Email {to_email}: {'✓' if ok else '✗ '+str(err)}")
 
     if bot_token:
-        chat_id = emp['telegram_id'].strip() or default_chat
-        if chat_id:
+        for chat_id in get_notification_telegram_ids(settings, emp['telegram_id'] or '', default_chat):
             ok, err = send_telegram(bot_token, chat_id, tg_msg)
             log_reminder(db, emp_id, 'telegram', subject, tg_msg, ok, err, who)
-            sent.append(f"Telegram: {'✓' if ok else '✗ '+str(err)}")
+            sent.append(f"Telegram {chat_id}: {'✓' if ok else '✗ '+str(err)}")
 
     if not sent:
         flash('Tidak ada channel notifikasi yang dikonfigurasi (email / telegram)', 'warning')
     else:
         db.commit()
         flash('Reminder dikirim — ' + ' | '.join(sent), 'success')
-    return redirect(url_for('contracts'))
+    return redirect(url_for('karyawan'))
 
 @app.route('/contracts/remind-all', methods=['POST'])
 @login_required
 def contract_remind_all():
     sent, failed = run_contract_reminders(triggered_by=session.get('username','manual'))
     flash(f'Selesai — {sent} berhasil, {failed} gagal', 'success' if failed == 0 else 'warning')
-    return redirect(url_for('contracts'))
+    return redirect(url_for('karyawan'))
 
 @app.route('/reminders')
 @login_required
@@ -826,7 +863,8 @@ def settings():
     if request.method == 'POST':
         keys = ['smtp_host','smtp_port','smtp_user','smtp_password','smtp_from','smtp_ssl',
                 'telegram_bot_token','telegram_default_chat_id',
-                'reminder_days','reminder_enabled','app_name']
+                'reminder_days','reminder_enabled','app_name',
+                'notification_emails','notification_telegram_ids']
         for k in keys:
             v = request.form.get(k, '').strip()
             if k == 'smtp_ssl':
@@ -1055,7 +1093,7 @@ def eval_summary(eval_id):
                            competency_items=competency_items)
 
 @app.route('/eval/<int:eval_id>/delete', methods=['POST'])
-@login_required
+@superadmin_required
 def eval_delete(eval_id):
     db = get_db()
     db.execute('DELETE FROM evaluations WHERE id=?', (eval_id,))

@@ -126,6 +126,37 @@
       </div>
     </div>
 
+    <!-- Notifikasi Statis -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-broadcast text-danger me-1"></i> Penerima Notifikasi Statis
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Selain email/Telegram milik karyawan, notifikasi juga dikirim ke alamat-alamat di bawah ini
+          (misal: HRD, Manager). Pisahkan dengan koma.
+        </p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-envelope me-1"></i> Email Statis
+          </label>
+          <input type="text" name="notification_emails" class="form-control form-control-sm"
+                 value="{{ cfg.notification_emails }}"
+                 placeholder="hrd@perusahaan.com, manager@perusahaan.com">
+          <div class="form-text">Kosongkan jika tidak perlu.</div>
+        </div>
+        <div class="mb-0">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-telegram me-1" style="color:#0088cc"></i> Telegram Chat ID Statis
+          </label>
+          <input type="text" name="notification_telegram_ids" class="form-control form-control-sm"
+                 value="{{ cfg.notification_telegram_ids }}"
+                 placeholder="-100123456789, 987654321">
+          <div class="form-text">Bisa berupa grup atau personal. Kosongkan jika tidak perlu.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Reminder Schedule -->
     <div class="card mb-3">
       <div class="card-header py-2 fw-bold">
