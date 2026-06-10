@@ -204,7 +204,7 @@ TZ=Asia/Jakarta
 
 ```bash
 # 4. Login ke Nexus registry (jika pull dari private registry)
-docker login nexus.devops.mmi-pt.com -u developer -p nop4ssword
+docker login nexus.domain.com -u user -p userpassword
 
 # 5. Build image lokal (atau pull dari registry)
 docker compose build
