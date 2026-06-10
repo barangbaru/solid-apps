@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Env / secrets
+.env
+.env.local
+
+# Gunicorn socket
+*.sock
+
+# Dev / debug scripts
+inspect_*.py
+check_db.py
+
+# Editor & OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
