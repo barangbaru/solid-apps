@@ -245,34 +245,57 @@
         {% endif %}
 
         <!-- Send link / copy link -->
-        {% if emp and emp.email %}
-        <div class="d-flex gap-2 flex-wrap align-items-center">
-          <form action="/eval/{{ ev.id }}/send-self-link" method="post" class="d-inline">
-            <button type="submit" class="btn btn-sm btn-outline-primary"
-                    onclick="return confirm('Kirim link self-assessment ke {{ emp.email }}?')">
-              <i class="bi bi-envelope me-1"></i>
-              {{ 'Kirim Ulang Link' if eval_token else 'Kirim Link Self-Assessment' }}
-            </button>
-          </form>
-          {% if self_link %}
-          <button type="button" class="btn btn-sm btn-outline-secondary"
-                  onclick="navigator.clipboard.writeText('{{ self_link }}');this.textContent='✓ Disalin!'">
-            <i class="bi bi-link-45deg me-1"></i> Salin Link
-          </button>
-          {% if eval_token %}
-          <span class="text-muted small">
-            Terkirim: {{ eval_token.sent_at[:16] if eval_token.sent_at else '—' }}
-            {% if eval_token.submitted_at %}
-            • Diisi: {{ eval_token.submitted_at[:16] }}
+        {% if emp and (emp.email or emp.telegram_id) %}
+        <div class="mb-2">
+          <div class="d-flex gap-1 flex-wrap small mb-2">
+            {% if emp.email %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+              <i class="bi bi-envelope me-1"></i>{{ emp.email }}
+            </span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-secondary border" title="Email belum diisi">
+              <i class="bi bi-envelope me-1"></i>Tidak ada email
+            </span>
             {% endif %}
-          </span>
-          {% endif %}
-          {% endif %}
+            {% if emp.telegram_id %}
+            <span class="badge bg-info-subtle text-info border border-info-subtle">
+              <i class="bi bi-telegram me-1"></i>{{ emp.telegram_id }}
+            </span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-secondary border" title="Telegram belum diisi">
+              <i class="bi bi-telegram me-1"></i>Tidak ada Telegram
+            </span>
+            {% endif %}
+          </div>
+          <div class="d-flex gap-2 flex-wrap align-items-center">
+            <form action="/eval/{{ ev.id }}/send-self-link" method="post" class="d-inline">
+              <button type="submit" class="btn btn-sm btn-primary"
+                      onclick="return confirm('Kirim link self-assessment ke karyawan?\n{% if emp.email %}Email: {{ emp.email }}\n{% endif %}{% if emp.telegram_id %}Telegram: {{ emp.telegram_id }}\n{% endif %}')">
+                <i class="bi bi-send me-1"></i>
+                {{ 'Kirim Ulang Self-Assessment' if eval_token else 'Kirim Self-Assessment' }}
+              </button>
+            </form>
+            {% if self_link %}
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="navigator.clipboard.writeText('{{ self_link }}');this.textContent='✓ Disalin!'">
+              <i class="bi bi-link-45deg me-1"></i> Salin Link
+            </button>
+            {% if eval_token %}
+            <span class="text-muted small">
+              Terkirim: {{ eval_token.sent_at[:16] if eval_token.sent_at else '—' }}
+              {% if eval_token.submitted_at %}
+              • Diisi: {{ eval_token.submitted_at[:16] }}
+              {% endif %}
+            </span>
+            {% endif %}
+            {% endif %}
+          </div>
         </div>
         {% else %}
         <div class="alert alert-warning py-2 small mb-0">
           <i class="bi bi-exclamation-triangle me-1"></i>
-          Email karyawan belum diisi. <a href="/emp/{{ ev.employee_id }}/edit">Lengkapi data karyawan</a>
+          Email dan Telegram karyawan belum diisi.
+          <a href="/emp/{{ ev.employee_id }}/edit">Lengkapi data karyawan</a>
           untuk mengirim link self-assessment.
         </div>
         {% endif %}

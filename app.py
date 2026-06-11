@@ -1071,6 +1071,24 @@ def eval_new(emp_id):
     for slot in range(1, 6):
         db.execute('INSERT INTO peer_reviews(eval_id, slot) VALUES(?,?)', (eval_id, slot))
     db.commit()
+
+    emp = db.execute('SELECT * FROM employees WHERE id=?', (emp_id,)).fetchone()
+    if emp and (emp['email'] or emp['telegram_id']):
+        results, any_ok, link = _send_self_assessment(
+            db, eval_id, emp, periode,
+            request.host_url.rstrip('/'),
+            triggered_by=session.get('username', 'auto-new')
+        )
+        db.commit()
+        if any_ok:
+            flash(f'Evaluasi dibuat & link self-assessment dikirim — ' + ' | '.join(results), 'success')
+        else:
+            flash(f'Evaluasi dibuat. Gagal kirim notifikasi ({"; ".join(results)}). '
+                  f'Kirim manual dari halaman Summary.', 'warning')
+    else:
+        flash('Evaluasi berhasil dibuat. Email/Telegram karyawan belum diisi — '
+              'kirim link self-assessment manual dari halaman Summary.', 'info')
+
     return redirect(url_for('eval_project', eval_id=eval_id))
 
 @app.route('/eval/<int:eval_id>/project', methods=['GET', 'POST'])
@@ -1266,6 +1284,67 @@ def eval_delete(eval_id):
 
 # ─── Self-Assessment & Review Routes ──────────────────────────────────────────
 
+def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='auto'):
+    """Kirim link self-assessment via email dan/atau Telegram. Return (results, any_ok, link)."""
+    token    = get_or_create_eval_token(db, eval_id)
+    link     = f'{base_url}/assess/{token}'
+    settings = get_settings(db)
+    now_str  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    results  = []
+
+    if emp['email']:
+        subject   = f'[Self-Assessment] Evaluasi Kinerja {emp["name"]} — Periode {periode}'
+        html_body = f"""
+<h3 style="color:#1e2a3a">Self-Assessment Evaluasi Kinerja</h3>
+<p>Yth. <strong>{emp['name']}</strong>,</p>
+<p>Anda diminta mengisi <b>penilaian diri (self-assessment)</b> untuk evaluasi kinerja
+   periode <strong>{periode}</strong>.</p>
+<p>Silakan klik tombol di bawah untuk mengisi form:</p>
+<p style="margin:20px 0">
+  <a href="{link}" style="background:#4da8da;color:#fff;padding:12px 24px;border-radius:6px;
+     text-decoration:none;font-weight:bold">&#128221; Isi Self-Assessment</a>
+</p>
+<p style="color:#666;font-size:.9em">Atau buka link: <a href="{link}">{link}</a></p>
+<hr>
+<p style="color:#999;font-size:.85em">
+  Mohon segera mengisi sebelum batas waktu. Hubungi tim HR/evaluator jika ada pertanyaan.
+</p>"""
+        ok, err = send_email(settings, emp['email'], subject, html_body)
+        log_reminder(db, emp['id'], 'email', subject, html_body, ok, err, triggered_by)
+        if ok:
+            db.execute('''INSERT OR REPLACE INTO eval_tokens(eval_id, token, email_sent_to, sent_at)
+                          VALUES(?,?,?,?)''', (eval_id, token, emp['email'], now_str))
+            results.append(f'Email {emp["email"]} ✓')
+        else:
+            results.append(f'Email gagal: {err}')
+
+    bot_token = settings.get('telegram_bot_token', '').strip()
+    tg_id     = normalize_telegram_id(emp['telegram_id'] or '')
+    if bot_token and tg_id:
+        tg_msg = (
+            f"📝 <b>Self-Assessment Evaluasi Kinerja</b>\n\n"
+            f"Yth. <b>{emp['name']}</b>,\n\n"
+            f"Anda diminta mengisi penilaian diri (self-assessment) untuk evaluasi kinerja "
+            f"periode <b>{periode}</b>.\n\n"
+            f"Silakan buka link berikut:\n<a href=\"{link}\">{link}</a>\n\n"
+            f"<i>Mohon segera mengisi sebelum batas waktu.</i>"
+        )
+        ok, err = send_telegram(bot_token, tg_id, tg_msg)
+        log_reminder(db, emp['id'], 'telegram', f'Self-Assessment {emp["name"]}', tg_msg, ok, err, triggered_by)
+        if ok:
+            results.append(f'Telegram {tg_id} ✓')
+        else:
+            results.append(f'Telegram {tg_id} gagal: {err}')
+    elif emp['telegram_id'] and not bot_token:
+        results.append('Telegram: bot token belum dikonfigurasi')
+
+    any_ok = any('✓' in r for r in results)
+    if any_ok:
+        db.execute("UPDATE evaluations SET review_status='pending_self' WHERE id=? AND review_status='draft'",
+                   (eval_id,))
+    return results, any_ok, link
+
+
 @app.route('/eval/<int:eval_id>/send-self-link', methods=['POST'])
 @login_required
 def eval_send_self_link(eval_id):
@@ -1275,44 +1354,20 @@ def eval_send_self_link(eval_id):
         flash('Evaluasi tidak ditemukan', 'danger')
         return redirect(url_for('index'))
     emp = db.execute('SELECT * FROM employees WHERE id=?', (ev['employee_id'],)).fetchone()
-    if not emp or not emp['email']:
-        flash('Email karyawan belum diisi di data karyawan', 'warning')
+    if not emp or (not emp['email'] and not emp['telegram_id']):
+        flash('Email dan Telegram karyawan belum diisi. Lengkapi data karyawan terlebih dahulu.', 'warning')
         return redirect(url_for('eval_summary', eval_id=eval_id))
 
-    token    = get_or_create_eval_token(db, eval_id)
-    base_url = request.host_url.rstrip('/')
-    link     = f'{base_url}/assess/{token}'
-
-    settings = get_settings(db)
-    subject  = f'[Self-Assessment] Evaluasi Kinerja {emp["name"]} — Periode {ev["periode"]}'
-    html_body = f"""
-<h3 style="color:#0d6efd">Self-Assessment Evaluasi Kinerja</h3>
-<p>Yth. <strong>{emp['name']}</strong>,</p>
-<p>Anda diminta mengisi <b>penilaian diri (self-assessment)</b> untuk evaluasi kinerja
-   periode <strong>{ev['periode']}</strong>.</p>
-<p>Silakan klik tombol di bawah untuk mengisi form:</p>
-<p style="margin:20px 0">
-  <a href="{link}" style="background:#0d6efd;color:#fff;padding:12px 24px;border-radius:6px;
-     text-decoration:none;font-weight:bold">📝 Isi Self-Assessment</a>
-</p>
-<p style="color:#666;font-size:.9em">Atau buka link berikut: <a href="{link}">{link}</a></p>
-<hr>
-<p style="color:#999;font-size:.85em">
-  Mohon segera mengisi sebelum batas waktu. Jika ada pertanyaan, hubungi tim HR/evaluator.
-</p>"""
-
-    ok, err = send_email(settings, emp['email'], subject, html_body)
-    if ok:
-        db.execute('''INSERT OR REPLACE INTO eval_tokens(eval_id, token, email_sent_to, sent_at)
-                      VALUES(?,?,?,?)''',
-                   (eval_id, token, emp['email'],
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-        db.execute("UPDATE evaluations SET review_status='pending_self' WHERE id=? AND review_status='draft'",
-                   (eval_id,))
-        db.commit()
-        flash(f'Link self-assessment berhasil dikirim ke {emp["email"]}', 'success')
+    results, any_ok, link = _send_self_assessment(
+        db, eval_id, emp, ev['periode'],
+        request.host_url.rstrip('/'),
+        triggered_by=session.get('username', 'manual')
+    )
+    db.commit()
+    if any_ok:
+        flash('Self-assessment dikirim — ' + ' | '.join(results), 'success')
     else:
-        flash(f'Gagal kirim email: {err}. Link: {link}', 'warning')
+        flash('Gagal mengirim — ' + ' | '.join(results) + f'. Link manual: {link}', 'warning')
     return redirect(url_for('eval_summary', eval_id=eval_id))
 
 
