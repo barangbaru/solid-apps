@@ -1,67 +1,111 @@
 #!/bin/bash
-# deploy-ubuntu.sh — Setup awal Evaluasi Kinerja di Ubuntu 20.04/22.04
+# deploy-ubuntu.sh — Install & Update Evaluasi Kinerja di Ubuntu 20.04/22.04
 # Jalankan sebagai root: sudo bash deploy-ubuntu.sh
+#
+# Script ini aman dijalankan berulang (idempotent):
+#   - Install baru  : setup lengkap dari nol
+#   - Update/redeploy : tarik kode baru, update deps, restart — database TIDAK tersentuh
 
 set -e
 
 APP_DIR="/var/www/evaluasi"
+DATA_DIR="/var/lib/evaluasi"          # Database di luar app dir — aman saat update
 SERVICE_NAME="evaluasi"
 REPO_URL="https://github.com/barangbaru/solid-apps.git"
 REPO_SUBDIR="PP/evaluasi"
 
-echo "=== [1/7] Install dependencies ==="
-apt-get update -qq
-apt-get install -y python3 python3-pip python3-venv nginx git
+IS_UPDATE=false
+[ -f "$APP_DIR/wsgi.py" ] && IS_UPDATE=true
 
-echo "=== [2/7] Clone / update repo ==="
-if [ -d "$APP_DIR/.git" ]; then
-    cd "$APP_DIR"
-    git pull origin main
+if $IS_UPDATE; then
+    echo "========================================"
+    echo " MODE: UPDATE APLIKASI"
+    echo "========================================"
 else
-    mkdir -p "$(dirname $APP_DIR)"
-    # Clone full repo lalu pindahkan subfolder evaluasi
-    TMPDIR=$(mktemp -d)
-    git clone "$REPO_URL" "$TMPDIR/repo"
-    rsync -a --delete "$TMPDIR/repo/$REPO_SUBDIR/" "$APP_DIR/"
-    rm -rf "$TMPDIR"
+    echo "========================================"
+    echo " MODE: INSTALL BARU"
+    echo "========================================"
 fi
 
-echo "=== [3/7] Setup virtual environment ==="
+# ─── [1] Sistem dependencies ──────────────────────────────────────────────────
+if ! $IS_UPDATE; then
+    echo "=== [1/7] Install system dependencies ==="
+    apt-get update -qq
+    apt-get install -y python3 python3-pip python3-venv nginx git rsync
+else
+    echo "=== [1/7] Lewati install system (mode update) ==="
+fi
+
+# ─── [2] Tarik kode terbaru ───────────────────────────────────────────────────
+echo "=== [2/7] Tarik kode terbaru dari GitHub ==="
+TMPDIR=$(mktemp -d)
+git clone --depth=1 "$REPO_URL" "$TMPDIR/repo" -q
+
+# rsync: salin kode baru, tapi JANGAN sentuh .env dan venv
+rsync -a --delete \
+    --exclude='.env' \
+    --exclude='venv/' \
+    --exclude='__pycache__/' \
+    --exclude='*.pyc' \
+    "$TMPDIR/repo/$REPO_SUBDIR/" "$APP_DIR/"
+
+rm -rf "$TMPDIR"
+echo "  >> Kode berhasil diperbarui."
+
+# ─── [3] Virtual environment & dependencies ───────────────────────────────────
+echo "=== [3/7] Update virtual environment ==="
 cd "$APP_DIR"
 python3 -m venv venv
 venv/bin/pip install --upgrade pip -q
 venv/bin/pip install -r requirements.txt -q
+echo "  >> Dependencies up to date."
 
-echo "=== [4/7] Setup .env ==="
+# ─── [4] File .env (hanya saat install baru) ──────────────────────────────────
+echo "=== [4/7] Konfigurasi .env ==="
 if [ ! -f "$APP_DIR/.env" ]; then
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     sed -i "s|GANTI_DENGAN_RANDOM_STRING_PANJANG_DI_PRODUCTION|$SECRET|g" "$APP_DIR/.env"
-    sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$APP_DIR/data/evaluasi.db|g" "$APP_DIR/.env"
-    echo "  >> .env dibuat. Edit $APP_DIR/.env untuk konfigurasi SMTP/Telegram."
+    sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$DATA_DIR/evaluasi.db|g" "$APP_DIR/.env"
+    echo "  >> .env baru dibuat. Edit $APP_DIR/.env untuk SMTP/Telegram."
 else
-    echo "  >> .env sudah ada, dilewati."
+    echo "  >> .env sudah ada, dilewati (database aman)."
 fi
 
-echo "=== [5/7] Setup folder data & log ==="
-mkdir -p "$APP_DIR/data"
+# ─── [5] Direktori data & permission ──────────────────────────────────────────
+echo "=== [5/7] Setup direktori & permission ==="
+mkdir -p "$DATA_DIR"
 mkdir -p /var/log/evaluasi
 chown -R www-data:www-data "$APP_DIR"
-chmod 750 "$APP_DIR/data"
+chown -R www-data:www-data "$DATA_DIR"
+chmod 750 "$DATA_DIR"
+# Pastikan venv tetap executable setelah chown
+find "$APP_DIR/venv/bin" -type f -exec chmod +x {} \;
+echo "  >> Data dir: $DATA_DIR (database di sini, aman saat update)"
 
-echo "=== [6/7] Install & aktifkan systemd service ==="
+# ─── [6] Systemd service ──────────────────────────────────────────────────────
+echo "=== [6/7] Install & restart service ==="
 cp "$APP_DIR/evaluasi.service" /etc/systemd/system/${SERVICE_NAME}.service
+
+# Tambah ReadWritePaths untuk DATA_DIR di service jika belum ada
+if ! grep -q "$DATA_DIR" /etc/systemd/system/${SERVICE_NAME}.service; then
+    sed -i "s|ReadWritePaths=.*|ReadWritePaths=$APP_DIR $DATA_DIR /var/log/evaluasi|" \
+        /etc/systemd/system/${SERVICE_NAME}.service
+fi
+
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 sleep 2
-systemctl status "$SERVICE_NAME" --no-pager
+systemctl status "$SERVICE_NAME" --no-pager -l
 
+# ─── [7] Nginx (hanya saat install baru) ──────────────────────────────────────
 echo "=== [7/7] Konfigurasi Nginx ==="
-cat > /etc/nginx/sites-available/evaluasi << 'NGINXCONF'
+if [ ! -f /etc/nginx/sites-available/evaluasi ] || ! $IS_UPDATE; then
+    cat > /etc/nginx/sites-available/evaluasi << 'NGINXCONF'
 server {
     listen 80;
-    server_name _;          # Ganti dengan domain/IP server
+    server_name _;
 
     client_max_body_size 10M;
 
@@ -81,18 +125,34 @@ server {
     }
 }
 NGINXCONF
-
-ln -sf /etc/nginx/sites-available/evaluasi /etc/nginx/sites-enabled/evaluasi
+    ln -sf /etc/nginx/sites-available/evaluasi /etc/nginx/sites-enabled/evaluasi
+    [ -f /etc/nginx/sites-enabled/default ] && rm /etc/nginx/sites-enabled/default && echo "  >> Site 'default' dinonaktifkan."
+    echo "  >> Config Nginx baru dibuat."
+fi
 nginx -t && systemctl reload nginx
+echo "  >> Nginx reloaded."
 
+# ─── Ringkasan ────────────────────────────────────────────────────────────────
 echo ""
-echo "======================================================"
-echo " DEPLOY SELESAI"
-echo "======================================================"
-echo " App berjalan di : http://$(hostname -I | awk '{print $1}')"
-echo " Log service     : journalctl -u evaluasi -f"
-echo " Config .env     : $APP_DIR/.env"
-echo " Restart app     : systemctl restart evaluasi"
-echo "======================================================"
-echo " PENTING: Edit .env untuk SMTP dan Telegram token!"
-echo "======================================================"
+echo "========================================"
+if $IS_UPDATE; then
+    echo " UPDATE SELESAI"
+else
+    echo " INSTALL SELESAI"
+fi
+echo "========================================"
+echo " URL          : http://$(hostname -I | awk '{print $1}')"
+echo " Database     : $DATA_DIR/evaluasi.db"
+echo " Config .env  : $APP_DIR/.env"
+echo " Log          : journalctl -u evaluasi -f"
+echo " Update app   : sudo bash $APP_DIR/deploy-ubuntu.sh"
+echo "========================================"
+if ! $IS_UPDATE; then
+    echo " LOGIN AWAL:"
+    echo "   Username : superadmin"
+    echo "   Password : Admin@123"
+    echo " !! Segera ganti password setelah login !!"
+    echo "========================================"
+    echo " PENTING: Edit .env untuk SMTP & Telegram!"
+    echo "========================================"
+fi

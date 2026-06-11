@@ -37,7 +37,7 @@ SyslogIdentifier=evaluasi
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=/var/www/evaluasi /var/log/evaluasi
+ReadWritePaths=/var/www/evaluasi /var/lib/evaluasi /var/log/evaluasi
 
 [Install]
 WantedBy=multi-user.target
