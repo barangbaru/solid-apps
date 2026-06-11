@@ -1,0 +1,43 @@
+[Unit]
+Description=Evaluasi Kinerja Tim IT — Gunicorn
+Documentation=https://github.com/barangbaru/solid-apps
+After=network.target
+
+[Service]
+# ─── User & Direktori ─────────────────────────────────────────────────────────
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/evaluasi
+
+# ─── Environment ──────────────────────────────────────────────────────────────
+EnvironmentFile=/var/www/evaluasi/.env
+Environment="PATH=/var/www/evaluasi/venv/bin"
+
+# ─── Perintah Start ───────────────────────────────────────────────────────────
+ExecStart=/var/www/evaluasi/venv/bin/gunicorn \
+    --config /var/www/evaluasi/gunicorn.systemd.conf.py \
+    wsgi:app
+
+# ─── Restart Policy ───────────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+# ─── Runtime Directory (socket) ───────────────────────────────────────────────
+RuntimeDirectory=evaluasi
+RuntimeDirectoryMode=0750
+
+# ─── Logging ke journald ──────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=evaluasi
+
+# ─── Keamanan ─────────────────────────────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/www/evaluasi /var/log/evaluasi
+
+[Install]
+WantedBy=multi-user.target
