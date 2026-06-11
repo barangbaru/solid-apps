@@ -2,6 +2,8 @@
 Description=Evaluasi Kinerja Tim IT — Gunicorn
 Documentation=https://github.com/barangbaru/solid-apps
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 # ─── User & Direktori ─────────────────────────────────────────────────────────
@@ -21,8 +23,6 @@ ExecStart=/var/www/evaluasi/venv/bin/gunicorn \
 # ─── Restart Policy ───────────────────────────────────────────────────────────
 Restart=on-failure
 RestartSec=5s
-StartLimitIntervalSec=60
-StartLimitBurst=3
 
 # ─── Runtime Directory (socket) ───────────────────────────────────────────────
 RuntimeDirectory=evaluasi
