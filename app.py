@@ -547,7 +547,7 @@ def send_whatsapp(openwa_url, api_key, phone, message):
         headers = {'Content-Type': 'application/json'}
         if api_key:
             headers['Authorization'] = f'Bearer {api_key}'
-        r = req_lib.post(url, json={'id': chat_id, 'message': message},
+        r = req_lib.post(url, json={'to': chat_id, 'content': message},
                          headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json() if r.text else {}
