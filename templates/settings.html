@@ -145,18 +145,25 @@
               </label>
             </div>
           </div>
-          <div class="col-md-8">
+          <div class="col-md-6">
             <label class="form-label fw-semibold small">URL OpenWA REST API</label>
             <input type="text" name="openwa_url" class="form-control form-control-sm"
                    value="{{ cfg.openwa_url }}"
-                   placeholder="http://localhost:3000">
-            <div class="form-text">URL server OpenWA yang sudah berjalan.</div>
+                   placeholder="http://10.x.x.x:2785">
+            <div class="form-text">URL server OpenWA (tanpa trailing slash).</div>
           </div>
-          <div class="col-md-4">
-            <label class="form-label fw-semibold small">API Key (opsional)</label>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">Session ID</label>
+            <input type="text" name="openwa_session_id" class="form-control form-control-sm"
+                   value="{{ cfg.openwa_session_id or 'default' }}"
+                   placeholder="default">
+            <div class="form-text">Nama sesi di OpenWA dashboard.</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">API Key</label>
             <div class="input-group input-group-sm">
               <input type="password" name="openwa_api_key" id="waKey" class="form-control"
-                     value="{{ cfg.openwa_api_key }}" placeholder="Token jika diaktifkan"
+                     value="{{ cfg.openwa_api_key }}" placeholder="X-API-Key"
                      autocomplete="off">
               <button type="button" class="btn btn-outline-secondary" onclick="toggleField('waKey')">
                 <i class="bi bi-eye"></i>

@@ -246,6 +246,7 @@ DEFAULT_SETTINGS = {
     'notification_telegram_ids': '',
     'openwa_url': '',
     'openwa_api_key': '',
+    'openwa_session_id': 'default',
     'openwa_enabled': '0',
 }
 
@@ -537,17 +538,18 @@ def normalize_phone_wa(phone):
         p = '62' + p
     return f'{p}@c.us'
 
-def send_whatsapp(openwa_url, api_key, phone, message):
-    """Kirim pesan WhatsApp via OpenWA REST API."""
+def send_whatsapp(openwa_url, api_key, session_id, phone, message):
+    """Kirim pesan WhatsApp via OpenWA REST API (rmyndharis/OpenWA)."""
     try:
         chat_id = normalize_phone_wa(phone)
         if not chat_id:
             return False, 'Nomor HP tidak valid'
-        url = openwa_url.rstrip('/') + '/sendText'
+        sid = (session_id or 'default').strip()
+        url = openwa_url.rstrip('/') + f'/api/sessions/{sid}/messages/send-text'
         headers = {'Content-Type': 'application/json'}
         if api_key:
-            headers['Authorization'] = f'Bearer {api_key}'
-        r = req_lib.post(url, json={'to': chat_id, 'content': message},
+            headers['X-API-Key'] = api_key
+        r = req_lib.post(url, json={'chatId': chat_id, 'text': message},
                          headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json() if r.text else {}
@@ -647,6 +649,7 @@ def run_contract_reminders(triggered_by='auto'):
 
             wa_url     = settings.get('openwa_url', '').strip()
             wa_key     = settings.get('openwa_api_key', '').strip()
+            wa_session = settings.get('openwa_session_id', 'default').strip()
             wa_enabled = settings.get('openwa_enabled', '0') == '1'
             if wa_enabled and wa_url and emp['phone']:
                 icon   = '🔴' if days_left <= 7 else '🟡' if days_left <= 30 else '🟢'
@@ -659,7 +662,7 @@ def run_contract_reminders(triggered_by='auto'):
                           f"📅 Akhir kontrak: *{emp['contract_end']}*\n"
                           f"⏳ {status_wa}\n\n"
                           f"_Segera tindak lanjut perpanjangan / pemutusan kontrak._")
-                ok, err = send_whatsapp(wa_url, wa_key, emp['phone'], wa_msg)
+                ok, err = send_whatsapp(wa_url, wa_key, wa_session, emp['phone'], wa_msg)
                 log_reminder(db, emp['id'], 'whatsapp', subject, wa_msg, ok, err, triggered_by)
                 if ok: sent += 1
                 else:  failed += 1
@@ -1066,7 +1069,7 @@ def settings():
                 'telegram_bot_token','telegram_default_chat_id',
                 'reminder_days','reminder_enabled','app_name',
                 'notification_emails','notification_telegram_ids',
-                'openwa_url','openwa_api_key','openwa_enabled']
+                'openwa_url','openwa_api_key','openwa_session_id','openwa_enabled']
         for k in keys:
             v = request.form.get(k, '').strip()
             if k == 'smtp_ssl':
@@ -1113,12 +1116,13 @@ def test_telegram():
 def test_whatsapp():
     db  = get_db()
     cfg = get_settings(db)
-    wa_url  = request.form.get('test_wa_url', '').strip() or cfg.get('openwa_url', '').strip()
-    wa_key  = cfg.get('openwa_api_key', '').strip()
-    phone   = request.form.get('test_wa_phone', '').strip()
+    wa_url     = request.form.get('test_wa_url', '').strip() or cfg.get('openwa_url', '').strip()
+    wa_key     = cfg.get('openwa_api_key', '').strip()
+    wa_session = cfg.get('openwa_session_id', 'default').strip()
+    phone      = request.form.get('test_wa_phone', '').strip()
     if not wa_url or not phone:
         return jsonify({'ok': False, 'msg': 'URL OpenWA dan nomor HP harus diisi'})
-    ok, err = send_whatsapp(wa_url, wa_key, phone,
+    ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone,
                             '✅ *Test berhasil!*\n\nKonfigurasi OpenWA WhatsApp sudah terhubung dengan Evaluasi Kinerja.')
     chat_id = normalize_phone_wa(phone)
     return jsonify({'ok': ok, 'chat_id': chat_id,
@@ -1413,6 +1417,7 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
     # ── WhatsApp (OpenWA) ──
     wa_url     = settings.get('openwa_url', '').strip()
     wa_key     = settings.get('openwa_api_key', '').strip()
+    wa_session = settings.get('openwa_session_id', 'default').strip()
     wa_enabled = settings.get('openwa_enabled', '0') == '1'
     emp_phone  = emp['phone'] or ''
     if wa_enabled and wa_url and emp_phone:
@@ -1425,7 +1430,7 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
             f"Silakan buka link berikut:\n{link}\n\n"
             f"_Mohon segera mengisi sebelum batas waktu._"
         )
-        ok, err = send_whatsapp(wa_url, wa_key, emp_phone, wa_msg)
+        ok, err = send_whatsapp(wa_url, wa_key, wa_session, emp_phone, wa_msg)
         log_reminder(db, emp['id'], 'whatsapp', f'Self-Assessment {emp["name"]}', wa_msg, ok, err, triggered_by)
         if ok:
             results.append(f'WhatsApp {wa_chat_id} ✓')
