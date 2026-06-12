@@ -60,7 +60,7 @@ venv/bin/pip install --upgrade pip -q
 venv/bin/pip install -r requirements.txt -q
 echo "  >> Dependencies up to date."
 
-# ─── [4] File .env (hanya saat install baru) ──────────────────────────────────
+# ─── [4] File .env ────────────────────────────────────────────────────────────
 echo "=== [4/7] Konfigurasi .env ==="
 if [ ! -f "$APP_DIR/.env" ]; then
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
@@ -69,7 +69,22 @@ if [ ! -f "$APP_DIR/.env" ]; then
     sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$DATA_DIR/evaluasi.db|g" "$APP_DIR/.env"
     echo "  >> .env baru dibuat. Edit $APP_DIR/.env untuk SMTP/Telegram."
 else
-    echo "  >> .env sudah ada, dilewati (database aman)."
+    echo "  >> .env sudah ada."
+    # Pastikan DATABASE_PATH mengarah ke DATA_DIR (migrasi dari install lama)
+    CURRENT_DB=$(grep '^DATABASE_PATH=' "$APP_DIR/.env" | cut -d= -f2- || true)
+    if [ -n "$CURRENT_DB" ] && [ "$CURRENT_DB" != "$DATA_DIR/evaluasi.db" ]; then
+        echo "  >> DATABASE_PATH lama: $CURRENT_DB — migrasi ke $DATA_DIR/evaluasi.db"
+        mkdir -p "$DATA_DIR"
+        # Pindahkan file database lama jika ada dan belum dipindahkan
+        if [ -f "$CURRENT_DB" ]; then
+            mv "$CURRENT_DB" "$DATA_DIR/evaluasi.db"
+            echo "  >> Database dipindahkan: $CURRENT_DB → $DATA_DIR/evaluasi.db"
+        fi
+        sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$DATA_DIR/evaluasi.db|g" "$APP_DIR/.env"
+        echo "  >> DATABASE_PATH diperbarui di .env"
+    else
+        echo "  >> DATABASE_PATH sudah benar ($DATA_DIR/evaluasi.db), dilewati."
+    fi
 fi
 
 # ─── [5] Direktori data & permission ──────────────────────────────────────────
@@ -99,9 +114,9 @@ systemctl restart "$SERVICE_NAME"
 sleep 2
 systemctl status "$SERVICE_NAME" --no-pager -l
 
-# ─── [7] Nginx (hanya saat install baru) ──────────────────────────────────────
+# ─── [7] Nginx ────────────────────────────────────────────────────────────────
 echo "=== [7/7] Konfigurasi Nginx ==="
-if [ ! -f /etc/nginx/sites-available/evaluasi ] || ! $IS_UPDATE; then
+if [ ! -f /etc/nginx/sites-available/evaluasi ]; then
     cat > /etc/nginx/sites-available/evaluasi << 'NGINXCONF'
 server {
     listen 80;
@@ -128,6 +143,8 @@ NGINXCONF
     ln -sf /etc/nginx/sites-available/evaluasi /etc/nginx/sites-enabled/evaluasi
     [ -f /etc/nginx/sites-enabled/default ] && rm /etc/nginx/sites-enabled/default && echo "  >> Site 'default' dinonaktifkan."
     echo "  >> Config Nginx baru dibuat."
+else
+    echo "  >> Config Nginx sudah ada, dilewati."
 fi
 nginx -t && systemctl reload nginx
 echo "  >> Nginx reloaded."
