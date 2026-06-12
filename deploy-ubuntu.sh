@@ -12,7 +12,7 @@ APP_DIR="/var/www/evaluasi"
 DATA_DIR="/var/lib/evaluasi"          # Database di luar app dir — aman saat update
 SERVICE_NAME="evaluasi"
 REPO_URL="https://github.com/barangbaru/solid-apps.git"
-REPO_SUBDIR="PP/evaluasi"
+REPO_SUBDIR="."
 
 IS_UPDATE=false
 [ -f "$APP_DIR/wsgi.py" ] && IS_UPDATE=true
