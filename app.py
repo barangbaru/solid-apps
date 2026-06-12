@@ -244,6 +244,9 @@ DEFAULT_SETTINGS = {
     'app_name': 'Evaluasi Kinerja Tim IT',
     'notification_emails': '',
     'notification_telegram_ids': '',
+    'openwa_url': '',
+    'openwa_api_key': '',
+    'openwa_enabled': '0',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director']
@@ -523,6 +526,37 @@ def send_email(settings, to_email, subject, html_body):
     except Exception as e:
         return False, str(e)
 
+def normalize_phone_wa(phone):
+    """Konversi nomor HP ke format WhatsApp chat ID: 628xxx@c.us"""
+    p = ''.join(c for c in (phone or '') if c.isdigit())
+    if not p:
+        return ''
+    if p.startswith('0'):
+        p = '62' + p[1:]
+    elif not p.startswith('62'):
+        p = '62' + p
+    return f'{p}@c.us'
+
+def send_whatsapp(openwa_url, api_key, phone, message):
+    """Kirim pesan WhatsApp via OpenWA REST API."""
+    try:
+        chat_id = normalize_phone_wa(phone)
+        if not chat_id:
+            return False, 'Nomor HP tidak valid'
+        url = openwa_url.rstrip('/') + '/sendText'
+        headers = {'Content-Type': 'application/json'}
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+        r = req_lib.post(url, json={'id': chat_id, 'message': message},
+                         headers=headers, timeout=15)
+        r.raise_for_status()
+        data = r.json() if r.text else {}
+        if isinstance(data, dict) and data.get('error'):
+            return False, str(data['error'])
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
 def send_telegram(bot_token, chat_id, message):
     try:
         r = req_lib.post(
@@ -610,6 +644,25 @@ def run_contract_reminders(triggered_by='auto'):
                     log_reminder(db, emp['id'], 'telegram', subject, tg_msg, ok, err, triggered_by)
                     if ok: sent += 1
                     else:  failed += 1
+
+            wa_url     = settings.get('openwa_url', '').strip()
+            wa_key     = settings.get('openwa_api_key', '').strip()
+            wa_enabled = settings.get('openwa_enabled', '0') == '1'
+            if wa_enabled and wa_url and emp['phone']:
+                icon   = '🔴' if days_left <= 7 else '🟡' if days_left <= 30 else '🟢'
+                status_wa = 'Berakhir HARI INI!' if days_left == 0 else \
+                            f'Berakhir dalam {days_left} hari' if days_left > 0 else \
+                            f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
+                wa_msg = (f"{icon} *Reminder Kontrak Karyawan*\n\n"
+                          f"👤 *{emp['name']}*\n"
+                          f"🏢 {emp['divisi']} — {emp['jabatan'] or '-'}\n"
+                          f"📅 Akhir kontrak: *{emp['contract_end']}*\n"
+                          f"⏳ {status_wa}\n\n"
+                          f"_Segera tindak lanjut perpanjangan / pemutusan kontrak._")
+                ok, err = send_whatsapp(wa_url, wa_key, emp['phone'], wa_msg)
+                log_reminder(db, emp['id'], 'whatsapp', subject, wa_msg, ok, err, triggered_by)
+                if ok: sent += 1
+                else:  failed += 1
         db.commit()
         return sent, failed
     finally:
@@ -1012,13 +1065,16 @@ def settings():
         keys = ['smtp_host','smtp_port','smtp_user','smtp_password','smtp_from','smtp_ssl',
                 'telegram_bot_token','telegram_default_chat_id',
                 'reminder_days','reminder_enabled','app_name',
-                'notification_emails','notification_telegram_ids']
+                'notification_emails','notification_telegram_ids',
+                'openwa_url','openwa_api_key','openwa_enabled']
         for k in keys:
             v = request.form.get(k, '').strip()
             if k == 'smtp_ssl':
                 v = '1' if request.form.get('smtp_ssl') else '0'
             if k == 'reminder_enabled':
                 v = '1' if request.form.get('reminder_enabled') else '0'
+            if k == 'openwa_enabled':
+                v = '1' if request.form.get('openwa_enabled') else '0'
             save_setting(db, k, v)
         db.commit()
         flash('Pengaturan disimpan', 'success')
@@ -1051,6 +1107,22 @@ def test_telegram():
     ok, err = send_telegram(bot_token, chat_id,
                             '✅ <b>Test berhasil!</b>\n\nKonfigurasi Telegram sudah benar.')
     return jsonify({'ok': ok, 'msg': 'Pesan Telegram berhasil dikirim' if ok else str(err)})
+
+@app.route('/settings/test-whatsapp', methods=['POST'])
+@superadmin_required
+def test_whatsapp():
+    db  = get_db()
+    cfg = get_settings(db)
+    wa_url  = request.form.get('test_wa_url', '').strip() or cfg.get('openwa_url', '').strip()
+    wa_key  = cfg.get('openwa_api_key', '').strip()
+    phone   = request.form.get('test_wa_phone', '').strip()
+    if not wa_url or not phone:
+        return jsonify({'ok': False, 'msg': 'URL OpenWA dan nomor HP harus diisi'})
+    ok, err = send_whatsapp(wa_url, wa_key, phone,
+                            '✅ *Test berhasil!*\n\nKonfigurasi OpenWA WhatsApp sudah terhubung dengan Evaluasi Kinerja.')
+    chat_id = normalize_phone_wa(phone)
+    return jsonify({'ok': ok, 'chat_id': chat_id,
+                    'msg': f'Pesan terkirim ke {chat_id}' if ok else str(err)})
 
 @app.route('/settings/run-reminders', methods=['POST'])
 @superadmin_required
@@ -1337,6 +1409,30 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
             results.append(f'Telegram {tg_id} gagal: {err}')
     elif emp['telegram_id'] and not bot_token:
         results.append('Telegram: bot token belum dikonfigurasi')
+
+    # ── WhatsApp (OpenWA) ──
+    wa_url     = settings.get('openwa_url', '').strip()
+    wa_key     = settings.get('openwa_api_key', '').strip()
+    wa_enabled = settings.get('openwa_enabled', '0') == '1'
+    emp_phone  = emp['phone'] or ''
+    if wa_enabled and wa_url and emp_phone:
+        wa_chat_id = normalize_phone_wa(emp_phone)
+        wa_msg = (
+            f"📝 *Self-Assessment Evaluasi Kinerja*\n\n"
+            f"Yth. *{emp['name']}*,\n\n"
+            f"Anda diminta mengisi penilaian diri (self-assessment) untuk evaluasi kinerja "
+            f"periode *{periode}*.\n\n"
+            f"Silakan buka link berikut:\n{link}\n\n"
+            f"_Mohon segera mengisi sebelum batas waktu._"
+        )
+        ok, err = send_whatsapp(wa_url, wa_key, emp_phone, wa_msg)
+        log_reminder(db, emp['id'], 'whatsapp', f'Self-Assessment {emp["name"]}', wa_msg, ok, err, triggered_by)
+        if ok:
+            results.append(f'WhatsApp {wa_chat_id} ✓')
+        else:
+            results.append(f'WhatsApp gagal: {err}')
+    elif wa_enabled and wa_url and not emp_phone:
+        results.append('WhatsApp: nomor HP karyawan belum diisi')
 
     any_ok = any('✓' in r for r in results)
     if any_ok:

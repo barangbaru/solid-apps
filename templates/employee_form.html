@@ -121,13 +121,19 @@
               <div class="form-text">Digunakan untuk reminder kontrak via email.</div>
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Nomor HP / WA</label>
+              <label class="form-label fw-semibold">
+                Nomor HP / WA
+                <span class="badge ms-1 fw-normal" style="background:#25D366;font-size:.65rem">
+                  <i class="bi bi-whatsapp"></i> OpenWA
+                </span>
+              </label>
               <div class="input-group">
                 <span class="input-group-text"><i class="bi bi-phone"></i></span>
                 <input type="text" name="phone" class="form-control"
                        value="{{ emp.phone if emp else '' }}"
                        placeholder="08xxxxxxxxxx">
               </div>
+              <div class="form-text">Digunakan untuk notifikasi WhatsApp via OpenWA.</div>
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Telegram ID / Username</label>

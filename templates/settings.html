@@ -126,6 +126,92 @@
       </div>
     </div>
 
+    <!-- OpenWA WhatsApp -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold d-flex align-items-center gap-2">
+        <span style="background:#25D366;color:#fff;border-radius:6px;padding:2px 7px;font-size:.85rem">
+          <i class="bi bi-whatsapp"></i>
+        </span>
+        Konfigurasi WhatsApp via OpenWA
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" name="openwa_enabled" id="waEnabled"
+                     {{ 'checked' if cfg.openwa_enabled == '1' else '' }}>
+              <label class="form-check-label fw-semibold small" for="waEnabled">
+                Aktifkan Notifikasi WhatsApp
+              </label>
+            </div>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">URL OpenWA REST API</label>
+            <input type="text" name="openwa_url" class="form-control form-control-sm"
+                   value="{{ cfg.openwa_url }}"
+                   placeholder="http://localhost:3000">
+            <div class="form-text">URL server OpenWA yang sudah berjalan.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">API Key (opsional)</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="openwa_api_key" id="waKey" class="form-control"
+                     value="{{ cfg.openwa_api_key }}" placeholder="Token jika diaktifkan"
+                     autocomplete="off">
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('waKey')">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Test WhatsApp -->
+        <hr class="my-3">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-5">
+            <label class="form-label fw-semibold small">Test — Nomor HP tujuan</label>
+            <input type="text" id="testWaPhone" class="form-control form-control-sm"
+                   placeholder="08xxxxxxxxxx">
+          </div>
+          <div class="col-auto">
+            <button type="button" class="btn btn-sm fw-semibold"
+                    style="background:#25D366;color:#fff" onclick="testWhatsapp()">
+              <i class="bi bi-whatsapp"></i> Test WA
+            </button>
+          </div>
+          <div class="col-12">
+            <div id="waResult" class="small"></div>
+          </div>
+        </div>
+
+        <!-- Panduan Koneksi -->
+        <div class="alert alert-success py-2 small mt-3 mb-0" style="border-left:4px solid #25D366">
+          <strong><i class="bi bi-whatsapp me-1"></i>Cara menghubungkan OpenWA ke aplikasi ini:</strong>
+          <ol class="mt-2 mb-0 ps-3">
+            <li class="mb-1">Pastikan OpenWA sudah berjalan di server dan QR code sudah di-scan</li>
+            <li class="mb-1">Cek endpoint REST tersedia:
+              <code>curl http://&lt;IP-openwa&gt;:3000/getConnectionState</code>
+            </li>
+            <li class="mb-1">Isi <strong>URL OpenWA</strong> di atas, contoh:
+              <code>http://192.168.1.x:3000</code> atau <code>http://localhost:3000</code>
+              (jika satu server)
+            </li>
+            <li class="mb-1">Jika OpenWA dikonfigurasi dengan API key, isi kolom <strong>API Key</strong></li>
+            <li class="mb-1">Klik <strong>Test WA</strong> untuk verifikasi koneksi</li>
+            <li>Di data karyawan, pastikan kolom <strong>Nomor HP / WA</strong> diisi dengan format
+              <code>08xxxxxxxxxx</code> — akan otomatis dikonversi ke <code>628xxx@c.us</code></li>
+          </ol>
+          <div class="mt-2 pt-2 border-top">
+            <strong>Setup OpenWA di server Ubuntu (jika belum):</strong><br>
+            <code>npm install -g @open-wa/wa-automate</code><br>
+            <code>wa-automate --key "api-key-anda" --port 3000 --cors</code><br>
+            Atau via Docker:
+            <code>docker run -p 3000:3000 openwa/wa-automate</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Notifikasi Statis -->
     <div class="card mb-3">
       <div class="card-header py-2 fw-bold">
@@ -264,6 +350,19 @@ function testTelegram() {
     fd2.append('test_chat_id', chat);
     return fetch('/settings/test-telegram', {method:'POST', body:fd2});
   }).then(r=>r.json()).then(d=>showResult('telegramResult',d.ok,d.msg));
+}
+
+function testWhatsapp() {
+  const phone = document.getElementById('testWaPhone').value.trim();
+  if (!phone) { alert('Masukkan nomor HP tujuan test'); return; }
+  const fd = new FormData(document.getElementById('settingsForm'));
+  fetch('/settings', {method:'POST', body:fd}).then(() => {
+    const fd2 = new FormData();
+    fd2.append('test_wa_phone', phone);
+    return fetch('/settings/test-whatsapp', {method:'POST', body:fd2});
+  }).then(r=>r.json()).then(d=>{
+    showResult('waResult', d.ok, d.ok ? d.msg + (d.chat_id ? ` (${d.chat_id})` : '') : d.msg);
+  });
 }
 
 function runReminders() {
