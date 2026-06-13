@@ -238,7 +238,7 @@
                  placeholder="hrd@perusahaan.com, manager@perusahaan.com">
           <div class="form-text">Kosongkan jika tidak perlu.</div>
         </div>
-        <div class="mb-0">
+        <div class="mb-3">
           <label class="form-label fw-semibold small">
             <i class="bi bi-telegram me-1" style="color:#0088cc"></i> Telegram Chat ID Statis
           </label>
@@ -251,6 +251,21 @@
             <code>-100123456789</code> numeric ID grup •
             <code>@namakanal</code> atau <code>namakanal</code> username grup/channel publik.
             Username tanpa <code>@</code> akan otomatis ditambah.
+          </div>
+        </div>
+        <div class="mb-0">
+          <label class="form-label fw-semibold small">
+            <span style="background:#25D366;color:#fff;border-radius:4px;padding:1px 5px;font-size:.8rem">
+              <i class="bi bi-whatsapp"></i>
+            </span>
+            Nomor WA Extra (di luar atasan/karyawan terkait)
+          </label>
+          <input type="text" name="openwa_extra_phones" class="form-control form-control-sm"
+                 value="{{ cfg.openwa_extra_phones }}"
+                 placeholder="08111000001, 08222000002">
+          <div class="form-text">
+            Nomor-nomor ini menerima <b>semua</b> notifikasi kontrak via WhatsApp, terlepas dari struktur
+            Co-Leader/Leader/Manager. Pisahkan dengan koma. Format <code>08xxxxxxxxxx</code>.
           </div>
         </div>
       </div>

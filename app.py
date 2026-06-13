@@ -248,6 +248,7 @@ DEFAULT_SETTINGS = {
     'openwa_api_key': '',
     'openwa_session_id': 'default',
     'openwa_enabled': '0',
+    'openwa_extra_phones': '',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director']
@@ -357,6 +358,42 @@ def get_notification_telegram_ids(settings, emp_tg_id='', default_chat=''):
     if not ids and default_chat:
         ids.append(normalize_telegram_id(default_chat))
     return ids
+
+def get_notification_wa_phones(settings, emp_phone=''):
+    """Gabungkan nomor HP karyawan + daftar extra phones dari pengaturan."""
+    phones = []
+    if emp_phone and emp_phone.strip():
+        phones.append(emp_phone.strip())
+    for p in settings.get('openwa_extra_phones', '').split(','):
+        p = p.strip()
+        if p and p not in phones:
+            phones.append(p)
+    return phones
+
+def get_chain_contacts(db, emp):
+    """Ambil data co-leader (supervisor), leader, dan manager dari employee record.
+    Returns list of sqlite3.Row, masing-masing unik dan tidak null."""
+    chain_ids = []
+    for col in ('supervisor_id', 'leader_id', 'manager_id'):
+        try:
+            val = emp[col]
+        except (IndexError, KeyError):
+            val = None
+        if val and val not in chain_ids and val != emp['id']:
+            chain_ids.append(val)
+    if not chain_ids:
+        return []
+    placeholders = ','.join('?' * len(chain_ids))
+    rows = db.execute(
+        f'SELECT * FROM employees WHERE id IN ({placeholders}) AND is_active=1',
+        chain_ids
+    ).fetchall()
+    seen, result = set(), []
+    for r in rows:
+        if r['id'] not in seen:
+            seen.add(r['id'])
+            result.append(r)
+    return result
 
 # ─── Review / Self-Assessment Helpers ─────────────────────────────────────────
 
@@ -603,20 +640,162 @@ def compose_telegram_message(emp, days_left):
             f"⏳ {status}\n\n"
             f"<i>Segera tindak lanjut perpanjangan / pemutusan kontrak.</i>")
 
+def compose_contract_wa_message(emp, days_left):
+    icon = '🔴' if days_left <= 7 else '🟡' if days_left <= 30 else '🟢'
+    status = 'Berakhir HARI INI!' if days_left == 0 else \
+             f'Berakhir dalam {days_left} hari' if days_left > 0 else \
+             f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
+    return (f"{icon} *Reminder Kontrak Karyawan*\n\n"
+            f"👤 *{emp['name']}*\n"
+            f"🏢 {emp['divisi']} — {emp['jabatan'] or '-'}\n"
+            f"📅 Akhir kontrak: *{emp['contract_end']}*\n"
+            f"⏳ {status}\n\n"
+            f"_Segera tindak lanjut perpanjangan / pemutusan kontrak._")
+
+def compose_contract_chain_email(emp, days_left, recipient_role=''):
+    status = 'berakhir hari ini' if days_left == 0 else \
+             f'berakhir dalam <b>{days_left} hari</b>' if days_left > 0 else \
+             f'<b>sudah berakhir {abs(days_left)} hari lalu</b>'
+    role_note = f' (sebagai {recipient_role})' if recipient_role else ''
+    return (f"<h3>⚠️ Info Kontrak Karyawan — Notifikasi Atasan{role_note}</h3>"
+            f"<table>"
+            f"<tr><td><b>Nama</b></td><td>: {emp['name']}</td></tr>"
+            f"<tr><td><b>Jabatan</b></td><td>: {emp['jabatan'] or '-'}</td></tr>"
+            f"<tr><td><b>Divisi</b></td><td>: {emp['divisi']}</td></tr>"
+            f"<tr><td><b>Akhir Kontrak</b></td><td>: {emp['contract_end']}</td></tr>"
+            f"<tr><td><b>Status</b></td><td>: Kontrak {status}</td></tr>"
+            f"</table>"
+            f"<p>Mohon segera tindak lanjut perpanjangan atau pemutusan kontrak karyawan di atas.</p>")
+
+def compose_contract_chain_tg(emp, days_left, recipient_role=''):
+    icon = '🔴' if days_left <= 7 else '🟡' if days_left <= 30 else '🟢'
+    status = 'Berakhir HARI INI!' if days_left == 0 else \
+             f'Berakhir dalam {days_left} hari' if days_left > 0 else \
+             f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
+    role_note = f' [{recipient_role}]' if recipient_role else ''
+    return (f"{icon} <b>Info Kontrak — Notifikasi Atasan{role_note}</b>\n\n"
+            f"👤 <b>{emp['name']}</b>\n"
+            f"🏢 {emp['divisi']} — {emp['jabatan'] or '-'}\n"
+            f"📅 Akhir kontrak: <b>{emp['contract_end']}</b>\n"
+            f"⏳ {status}\n\n"
+            f"<i>Mohon segera tindak lanjut perpanjangan / pemutusan kontrak.</i>")
+
+def compose_contract_chain_wa(emp, days_left, recipient_role=''):
+    icon = '🔴' if days_left <= 7 else '🟡' if days_left <= 30 else '🟢'
+    status = 'Berakhir HARI INI!' if days_left == 0 else \
+             f'Berakhir dalam {days_left} hari' if days_left > 0 else \
+             f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
+    role_note = f' [{recipient_role}]' if recipient_role else ''
+    return (f"{icon} *Info Kontrak — Notifikasi Atasan{role_note}*\n\n"
+            f"👤 *{emp['name']}*\n"
+            f"🏢 {emp['divisi']} — {emp['jabatan'] or '-'}\n"
+            f"📅 Akhir kontrak: *{emp['contract_end']}*\n"
+            f"⏳ {status}\n\n"
+            f"_Mohon segera tindak lanjut perpanjangan / pemutusan kontrak._")
+
+def _send_contract_notification(db, emp, days_left, settings, triggered_by='auto'):
+    """Kirim notifikasi kontrak ke staff + chain (co-leader/leader/manager) + extra WA.
+    Returns (sent, failed)."""
+    sent = failed = 0
+    subject   = f"[Reminder] Kontrak {emp['name']} — {days_left} hari lagi"
+    html      = compose_contract_message(emp, days_left)
+    tg_msg    = compose_telegram_message(emp, days_left)
+    wa_msg    = compose_contract_wa_message(emp, days_left)
+
+    bot_token    = settings.get('telegram_bot_token', '').strip()
+    default_chat = settings.get('telegram_default_chat_id', '').strip()
+    wa_url       = settings.get('openwa_url', '').strip()
+    wa_key       = settings.get('openwa_api_key', '').strip()
+    wa_session   = settings.get('openwa_session_id', 'default').strip()
+    wa_enabled   = settings.get('openwa_enabled', '0') == '1'
+
+    # ── Staff: Email ──
+    if settings.get('smtp_host', '').strip():
+        for to_email in get_notification_emails(settings, emp['email'] or ''):
+            ok, err = send_email(settings, to_email, subject, html)
+            log_reminder(db, emp['id'], 'email', subject, html, ok, err, triggered_by)
+            if ok: sent += 1
+            else:  failed += 1
+
+    # ── Staff: Telegram ──
+    if bot_token:
+        for chat_id in get_notification_telegram_ids(settings, emp['telegram_id'] or '', default_chat):
+            ok, err = send_telegram(bot_token, chat_id, tg_msg)
+            log_reminder(db, emp['id'], 'telegram', subject, tg_msg, ok, err, triggered_by)
+            if ok: sent += 1
+            else:  failed += 1
+
+    # ── Staff: WhatsApp ──
+    if wa_enabled and wa_url and emp['phone']:
+        ok, err = send_whatsapp(wa_url, wa_key, wa_session, emp['phone'], wa_msg)
+        log_reminder(db, emp['id'], 'whatsapp', subject, wa_msg, ok, err, triggered_by)
+        if ok: sent += 1
+        else:  failed += 1
+
+    # ── Chain: Co-Leader / Leader / Manager ──
+    col_role_map = [('supervisor_id', 'Co-Leader'), ('leader_id', 'Leader'), ('manager_id', 'Manager')]
+    notified_chain_ids = set()
+    for col, role_label in col_role_map:
+        try:
+            chain_emp_id = emp[col]
+        except (IndexError, KeyError):
+            chain_emp_id = None
+        if not chain_emp_id or chain_emp_id in notified_chain_ids:
+            continue
+        chain_emp = db.execute('SELECT * FROM employees WHERE id=? AND is_active=1',
+                               (chain_emp_id,)).fetchone()
+        if not chain_emp:
+            continue
+        notified_chain_ids.add(chain_emp_id)
+        c_html = compose_contract_chain_email(emp, days_left, role_label)
+        c_tg   = compose_contract_chain_tg(emp, days_left, role_label)
+        c_wa   = compose_contract_chain_wa(emp, days_left, role_label)
+        c_subj = f"[Info Kontrak] {emp['name']} — {days_left} hari lagi ({role_label})"
+
+        if settings.get('smtp_host', '').strip() and chain_emp['email']:
+            ok, err = send_email(settings, chain_emp['email'], c_subj, c_html)
+            log_reminder(db, emp['id'], 'email', c_subj, c_html, ok, err, triggered_by)
+            if ok: sent += 1
+            else:  failed += 1
+
+        if bot_token and chain_emp['telegram_id']:
+            tg_id = normalize_telegram_id(chain_emp['telegram_id'])
+            ok, err = send_telegram(bot_token, tg_id, c_tg)
+            log_reminder(db, emp['id'], 'telegram', c_subj, c_tg, ok, err, triggered_by)
+            if ok: sent += 1
+            else:  failed += 1
+
+        if wa_enabled and wa_url and chain_emp['phone']:
+            ok, err = send_whatsapp(wa_url, wa_key, wa_session, chain_emp['phone'], c_wa)
+            log_reminder(db, emp['id'], 'whatsapp', c_subj, c_wa, ok, err, triggered_by)
+            if ok: sent += 1
+            else:  failed += 1
+
+    # ── Extra WA phones (diluar orang terkait) ──
+    if wa_enabled and wa_url:
+        extra_wa_msg = compose_contract_wa_message(emp, days_left)
+        for phone in settings.get('openwa_extra_phones', '').split(','):
+            phone = phone.strip()
+            if not phone:
+                continue
+            ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone, extra_wa_msg)
+            log_reminder(db, emp['id'], 'whatsapp', subject, extra_wa_msg, ok, err, triggered_by)
+            if ok: sent += 1
+            else:  failed += 1
+
+    return sent, failed
+
 def run_contract_reminders(triggered_by='auto'):
     """Check contracts and send reminders. Call directly (not in request context)."""
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
     try:
-        settings    = get_settings(db)
+        settings = get_settings(db)
         if settings.get('reminder_enabled', '1') != '1' and triggered_by == 'auto':
             return 0, 0
-        reminder_days = [int(d.strip()) for d in settings.get('reminder_days','30,14,7,1').split(',')
+        reminder_days = [int(d.strip()) for d in settings.get('reminder_days', '30,14,7,1').split(',')
                          if d.strip().isdigit()]
-        bot_token    = settings.get('telegram_bot_token','').strip()
-        default_chat = settings.get('telegram_default_chat_id','').strip()
         sent = failed = 0
-
         today = date.today()
         emps = db.execute('''SELECT * FROM employees
                              WHERE employment_type='kontrak' AND contract_end != ''
@@ -629,43 +808,9 @@ def run_contract_reminders(triggered_by='auto'):
             days_left = (end_date - today).days
             if days_left not in reminder_days and triggered_by == 'auto':
                 continue
-            subject = f"[Reminder] Kontrak {emp['name']} — {days_left} hari lagi"
-            html    = compose_contract_message(emp, days_left)
-            tg_msg  = compose_telegram_message(emp, days_left)
-
-            if settings.get('smtp_host','').strip():
-                for to_email in get_notification_emails(settings, emp['email'] or ''):
-                    ok, err = send_email(settings, to_email, subject, html)
-                    log_reminder(db, emp['id'], 'email', subject, html, ok, err, triggered_by)
-                    if ok: sent += 1
-                    else:  failed += 1
-
-            if bot_token:
-                for chat_id in get_notification_telegram_ids(settings, emp['telegram_id'] or '', default_chat):
-                    ok, err = send_telegram(bot_token, chat_id, tg_msg)
-                    log_reminder(db, emp['id'], 'telegram', subject, tg_msg, ok, err, triggered_by)
-                    if ok: sent += 1
-                    else:  failed += 1
-
-            wa_url     = settings.get('openwa_url', '').strip()
-            wa_key     = settings.get('openwa_api_key', '').strip()
-            wa_session = settings.get('openwa_session_id', 'default').strip()
-            wa_enabled = settings.get('openwa_enabled', '0') == '1'
-            if wa_enabled and wa_url and emp['phone']:
-                icon   = '🔴' if days_left <= 7 else '🟡' if days_left <= 30 else '🟢'
-                status_wa = 'Berakhir HARI INI!' if days_left == 0 else \
-                            f'Berakhir dalam {days_left} hari' if days_left > 0 else \
-                            f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
-                wa_msg = (f"{icon} *Reminder Kontrak Karyawan*\n\n"
-                          f"👤 *{emp['name']}*\n"
-                          f"🏢 {emp['divisi']} — {emp['jabatan'] or '-'}\n"
-                          f"📅 Akhir kontrak: *{emp['contract_end']}*\n"
-                          f"⏳ {status_wa}\n\n"
-                          f"_Segera tindak lanjut perpanjangan / pemutusan kontrak._")
-                ok, err = send_whatsapp(wa_url, wa_key, wa_session, emp['phone'], wa_msg)
-                log_reminder(db, emp['id'], 'whatsapp', subject, wa_msg, ok, err, triggered_by)
-                if ok: sent += 1
-                else:  failed += 1
+            s, f = _send_contract_notification(db, emp, days_left, settings, triggered_by)
+            sent += s
+            failed += f
         db.commit()
         return sent, failed
     finally:
@@ -1008,31 +1153,13 @@ def contract_remind_one(emp_id):
         flash('Format tanggal kontrak tidak valid', 'danger')
         return redirect(url_for('contracts'))
 
-    bot_token    = settings.get('telegram_bot_token','').strip()
-    default_chat = settings.get('telegram_default_chat_id','').strip()
-    subject      = f"[Reminder] Kontrak {emp['name']} — {days_left} hari lagi"
-    html         = compose_contract_message(emp, days_left)
-    tg_msg       = compose_telegram_message(emp, days_left)
-    who          = session.get('username','manual')
-    sent = []
-
-    if settings.get('smtp_host','').strip():
-        for to_email in get_notification_emails(settings, emp['email'] or ''):
-            ok, err = send_email(settings, to_email, subject, html)
-            log_reminder(db, emp_id, 'email', subject, html, ok, err, who)
-            sent.append(f"Email {to_email}: {'✓' if ok else '✗ '+str(err)}")
-
-    if bot_token:
-        for chat_id in get_notification_telegram_ids(settings, emp['telegram_id'] or '', default_chat):
-            ok, err = send_telegram(bot_token, chat_id, tg_msg)
-            log_reminder(db, emp_id, 'telegram', subject, tg_msg, ok, err, who)
-            sent.append(f"Telegram {chat_id}: {'✓' if ok else '✗ '+str(err)}")
-
-    if not sent:
-        flash('Tidak ada channel notifikasi yang dikonfigurasi (email / telegram)', 'warning')
+    who = session.get('username', 'manual')
+    s, f = _send_contract_notification(db, emp, days_left, settings, who)
+    db.commit()
+    if s == 0 and f == 0:
+        flash('Tidak ada channel notifikasi yang dikonfigurasi (email / telegram / whatsapp)', 'warning')
     else:
-        db.commit()
-        flash('Reminder dikirim — ' + ' | '.join(sent), 'success')
+        flash(f'Reminder dikirim — {s} berhasil, {f} gagal (termasuk ke Co-Leader/Leader/Manager)', 'success' if f == 0 else 'warning')
     return redirect(url_for('karyawan'))
 
 @app.route('/contracts/remind-all', methods=['POST'])
@@ -1069,7 +1196,8 @@ def settings():
                 'telegram_bot_token','telegram_default_chat_id',
                 'reminder_days','reminder_enabled','app_name',
                 'notification_emails','notification_telegram_ids',
-                'openwa_url','openwa_api_key','openwa_session_id','openwa_enabled']
+                'openwa_url','openwa_api_key','openwa_session_id','openwa_enabled',
+                'openwa_extra_phones']
         for k in keys:
             v = request.form.get(k, '').strip()
             if k == 'smtp_ssl':
