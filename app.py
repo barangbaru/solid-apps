@@ -489,7 +489,8 @@ def mfa_challenge_required(session_key='mfa_verified'):
             db = get_db()
             user = db.execute('SELECT mfa_enabled FROM users WHERE id=?', (session['user_id'],)).fetchone()
             if user and user['mfa_enabled'] and not mfa_session_valid(session_key):
-                session['mfa_return_to']   = request.url
+                qs = request.query_string.decode()
+                session['mfa_return_to']   = request.path + ('?' + qs if qs else '')
                 session['mfa_session_key'] = session_key
                 return redirect(url_for('mfa_challenge'))
             return f(*args, **kwargs)
