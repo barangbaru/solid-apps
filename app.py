@@ -260,6 +260,7 @@ MIGRATIONS = [
     ('users',       'totp_secret',       "TEXT DEFAULT ''"),
     ('users',       'mfa_enabled',       "INTEGER DEFAULT 0"),
     ('employees',   'salary',            "TEXT DEFAULT ''"),
+    ('employee_salary', 'increase_date', "TEXT DEFAULT ''"),
 ]
 
 DEFAULT_SETTINGS = {
@@ -2333,21 +2334,26 @@ def _salary_total(row):
 @permission_required('view_salary')
 @mfa_challenge_required('mfa_salary_verified')
 def salary_table():
-    db   = get_db()
-    year = request.args.get('year', date.today().year, type=int)
+    db       = get_db()
+    year     = request.args.get('year', date.today().year, type=int)
+    prev_year = year - 1
     emps = db.execute('''
-        SELECT e.*, s.id AS sal_id, s.base_salary, s.al_001, s.al_002,
-               s.al_003, s.al_004, s.increase_pct, s.notes
+        SELECT e.*, s.id AS sal_id,
+               s.base_salary, s.al_001, s.al_002, s.al_003, s.al_004,
+               s.increase_pct, s.increase_date, s.notes,
+               p.base_salary AS p_base_salary, p.al_001 AS p_al_001,
+               p.al_002 AS p_al_002, p.al_003 AS p_al_003, p.al_004 AS p_al_004
         FROM employees e
         LEFT JOIN employee_salary s ON s.employee_id = e.id AND s.year = ?
+        LEFT JOIN employee_salary p ON p.employee_id = e.id AND p.year = ?
         WHERE e.is_active = 1
         ORDER BY e.employment_type DESC, e.divisi, e.name
-    ''', (year,)).fetchall()
+    ''', (year, prev_year)).fetchall()
     years = [r['year'] for r in db.execute(
         'SELECT DISTINCT year FROM employee_salary ORDER BY year DESC').fetchall()]
     if year not in years:
         years = sorted(set(years + [year]), reverse=True)
-    return render_template('salary.html', emps=emps, year=year, years=years,
+    return render_template('salary.html', emps=emps, year=year, prev_year=prev_year, years=years,
                            salary_cols=SALARY_COLS, salary_total=_salary_total,
                            can_edit='manage_salary' in get_role_permissions(db, session.get('user_role','')))
 
@@ -2360,11 +2366,11 @@ def salary_save():
     year    = request.form.get('year', type=int)
     field   = request.form.get('field', '').strip()
     value   = request.form.get('value', '').strip()
-    valid_fields = {c for c, *_ in SALARY_COLS} | {'increase_pct', 'notes'}
+    valid_fields = {c for c, *_ in SALARY_COLS} | {'increase_pct', 'increase_date', 'notes'}
     if not emp_id or not year or field not in valid_fields:
         return jsonify({'ok': False, 'msg': 'Parameter tidak valid'})
     try:
-        val = float(value) if field != 'notes' else value
+        val = value if field in ('notes', 'increase_date') else float(value)
     except ValueError:
         val = 0.0
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

@@ -10,7 +10,6 @@
     {% endif %}
   </div>
   <div class="d-flex gap-2 align-items-center flex-wrap">
-    <!-- Year selector -->
     <form method="GET" class="d-flex align-items-center gap-1">
       <label class="form-label mb-0 small fw-semibold">Tahun:</label>
       <select name="year" class="form-select form-select-sm" style="width:90px" onchange="this.form.submit()">
@@ -21,7 +20,7 @@
     </form>
     {% if can_edit %}
     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addYearModal">
-      <i class="bi bi-calendar-plus me-1"></i>Buat Tahun Baru
+      <i class="bi bi-calendar-plus me-1"></i>Buka Tahun
     </button>
     {% endif %}
     <button class="btn btn-sm btn-outline-secondary" onclick="exportCSV()">
@@ -41,16 +40,16 @@
   {% endfor %}
 {% endwith %}
 
-<!-- Summary Cards -->
+<!-- Summary Cards — nilai diisi JS agar live update setelah edit -->
+{% set ns = namespace(total_gross=0, total_emp=0, kontrak=0, tetap=0) %}
+{% for emp in emps %}
+  {% set ns.total_emp = ns.total_emp + 1 %}
+  {% set ns.total_gross = ns.total_gross + salary_total(emp) %}
+  {% if emp.employment_type == 'kontrak' %}{% set ns.kontrak = ns.kontrak + 1 %}
+  {% else %}{% set ns.tetap = ns.tetap + 1 %}{% endif %}
+{% endfor %}
+
 <div class="row g-2 mb-3">
-  {% set ns = namespace(total_gross=0, total_emp=0, kontrak=0, tetap=0) %}
-  {% for emp in emps %}
-    {% set ns.total_emp = ns.total_emp + 1 %}
-    {% set gross = salary_total(emp) %}
-    {% set ns.total_gross = ns.total_gross + gross %}
-    {% if emp.employment_type == 'kontrak' %}{% set ns.kontrak = ns.kontrak + 1 %}
-    {% else %}{% set ns.tetap = ns.tetap + 1 %}{% endif %}
-  {% endfor %}
   <div class="col-6 col-md-3">
     <div class="card border-0 bg-light text-center py-2">
       <div class="small text-muted">Total Karyawan</div>
@@ -66,13 +65,13 @@
   <div class="col-6 col-md-3">
     <div class="card border-0 bg-success bg-opacity-10 text-center py-2">
       <div class="small text-muted">Total Gross/Bulan</div>
-      <div class="fw-bold fs-6 text-success">{{ "{:,.0f}".format(ns.total_gross) }}</div>
+      <div class="fw-bold fs-6 text-success" id="sum-gross-month">{{ "{:,.0f}".format(ns.total_gross) }}</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card border-0 bg-primary bg-opacity-10 text-center py-2">
       <div class="small text-muted">Total Gross/Tahun</div>
-      <div class="fw-bold fs-6 text-primary">{{ "{:,.0f}".format(ns.total_gross * 12) }}</div>
+      <div class="fw-bold fs-6 text-primary" id="sum-gross-annual">{{ "{:,.0f}".format(ns.total_gross * 12) }}</div>
     </div>
   </div>
 </div>
@@ -83,36 +82,43 @@
     <div class="table-responsive">
       <table class="table table-bordered table-sm mb-0" id="salaryTable">
         <thead>
-          <tr class="table-dark text-center" style="font-size:.78rem">
-            <th rowspan="2" class="align-middle" style="min-width:40px">#</th>
-            <th rowspan="2" class="align-middle text-start" style="min-width:160px">Nama Karyawan</th>
+          <tr class="table-dark text-center" style="font-size:.75rem">
+            <th rowspan="2" class="align-middle" style="min-width:36px">#</th>
+            <th rowspan="2" class="align-middle text-start" style="min-width:150px">Nama</th>
             <th rowspan="2" class="align-middle" style="min-width:80px">Jabatan</th>
-            <th rowspan="2" class="align-middle" style="min-width:80px">Divisi</th>
-            <th rowspan="2" class="align-middle" style="min-width:70px">Tipe</th>
-            <th colspan="{{ salary_cols|length + 1 }}" class="py-1" style="background:#1a7a3a">
+            <th rowspan="2" class="align-middle" style="min-width:75px">Divisi</th>
+            <th rowspan="2" class="align-middle" style="min-width:60px">Tipe</th>
+            <th colspan="{{ salary_cols|length + 1 }}" class="py-1" style="background:#1a5c2e">
               KOMPONEN GAJI — TAHUN {{ year }}
             </th>
-            <th colspan="2" class="py-1" style="background:#1a3d7a">
-              PROYEKSI {{ year + 1 }}
+            <th colspan="4" class="py-1" style="background:#1a3d7a">
+              KENAIKAN &amp; PROYEKSI
             </th>
           </tr>
-          <tr class="text-center" style="font-size:.72rem;background:#2d2d2d;color:#fff">
+          <tr class="text-center" style="font-size:.7rem;background:#2d2d2d;color:#fff">
             {% for col, code, label in salary_cols %}
-            <th style="min-width:110px">
+            <th style="min-width:108px">
               <div class="fw-bold" style="color:#7fd7a8">{{ code }}</div>
-              <div style="color:#aaa">{{ label }}</div>
+              <div style="color:#aaa;font-size:.65rem">{{ label }}</div>
             </th>
             {% endfor %}
-            <th style="min-width:120px;background:#155724;color:#d4edda">
+            <th style="min-width:115px;background:#155724;color:#d4edda">
               <div class="fw-bold">TOTAL GROSS</div>
-              <div style="color:#aaa;font-size:.68rem">per bulan</div>
+              <div style="color:#aaa;font-size:.65rem">tahun {{ year }}</div>
+            </th>
+            <th style="min-width:108px;background:#3a2060;color:#d9c6ff">
+              <div class="fw-bold">GROSS {{ prev_year }}</div>
+              <div style="color:#b09dd4;font-size:.65rem">tahun sebelumnya</div>
             </th>
             <th style="min-width:80px;background:#0d2a4d;color:#cce5ff">
               <div class="fw-bold">% NAIK</div>
             </th>
-            <th style="min-width:120px;background:#0d2a4d;color:#cce5ff">
-              <div class="fw-bold">PROYEKSI GROSS</div>
-              <div style="color:#99b8d4;font-size:.68rem">{{ year + 1 }}</div>
+            <th style="min-width:100px;background:#0d2a4d;color:#cce5ff">
+              <div class="fw-bold">BLN NAIK</div>
+              <div style="color:#99b8d4;font-size:.65rem">mis. Apr-2025</div>
+            </th>
+            <th style="min-width:115px;background:#0d2a4d;color:#cce5ff">
+              <div class="fw-bold">PROYEKSI {{ year + 1 }}</div>
             </th>
           </tr>
         </thead>
@@ -121,8 +127,8 @@
           {% for emp in emps %}
           {% if emp.employment_type != group_ns.cur_type %}
             {% set group_ns.cur_type = emp.employment_type %}
-            <tr>
-              <td colspan="{{ 5 + salary_cols|length + 3 }}"
+            <tr class="group-header">
+              <td colspan="{{ 5 + salary_cols|length + 5 }}"
                   class="fw-bold small py-1 px-3"
                   style="background:{% if emp.employment_type=='kontrak' %}#fff3cd{% else %}#d1ecf1{% endif %}">
                 <i class="bi bi-{% if emp.employment_type=='kontrak' %}file-earmark-text{% else %}person-check{% endif %} me-1"></i>
@@ -131,18 +137,21 @@
             </tr>
           {% endif %}
           {% set gross = salary_total(emp) %}
+          {% set prev_gross = (emp.p_base_salary or 0) + (emp.p_al_001 or 0) + (emp.p_al_002 or 0) + (emp.p_al_003 or 0) + (emp.p_al_004 or 0) %}
           {% set inc_pct = emp.increase_pct or 0 %}
           {% set next_gross = (gross * (1 + inc_pct / 100)) | round | int %}
           <tr data-emp-id="{{ emp.id }}" data-year="{{ year }}">
-            <td class="text-center text-muted small">{{ loop.index }}</td>
-            <td class="fw-semibold small">{{ emp.name }}</td>
-            <td class="small text-muted">{{ emp.jabatan or '—' }}</td>
-            <td class="small text-muted">{{ emp.divisi }}</td>
-            <td class="text-center">
-              <span class="badge {% if emp.employment_type=='kontrak' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}" style="font-size:.65rem">
+            <td class="text-center text-muted small align-middle">{{ loop.index }}</td>
+            <td class="fw-semibold small align-middle">{{ emp.name }}</td>
+            <td class="small text-muted align-middle">{{ emp.jabatan or '—' }}</td>
+            <td class="small text-muted align-middle">{{ emp.divisi }}</td>
+            <td class="text-center align-middle">
+              <span class="badge {% if emp.employment_type=='kontrak' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}" style="font-size:.62rem">
                 {{ emp.employment_type | upper }}
               </span>
             </td>
+
+            {# ── Komponen gaji ── #}
             {% for col, code, label in salary_cols %}
             <td class="text-end salary-cell {% if can_edit %}editable{% endif %}"
                 data-field="{{ col }}" data-emp="{{ emp.id }}" data-year="{{ year }}">
@@ -153,10 +162,20 @@
               {% endif %}
             </td>
             {% endfor %}
-            <td class="text-end fw-bold text-success salary-total" style="background:#f0fff4;font-size:.82rem">
+
+            {# ── Total gross tahun ini ── #}
+            <td class="text-end fw-bold text-success salary-total align-middle"
+                style="background:#f0fff4;font-size:.82rem;white-space:nowrap">
               {{ "{:,.0f}".format(gross) if gross else '—' }}
             </td>
-            <td class="text-center salary-cell {% if can_edit %}editable{% endif %}"
+
+            {# ── Gross tahun sebelumnya (read-only) ── #}
+            <td class="text-end align-middle" style="background:#f3eeff;color:#5a3b99;font-size:.8rem;white-space:nowrap">
+              {{ "{:,.0f}".format(prev_gross) if prev_gross else '—' }}
+            </td>
+
+            {# ── % Kenaikan ── #}
+            <td class="text-center salary-cell {% if can_edit %}editable{% endif %} align-middle"
                 data-field="increase_pct" data-emp="{{ emp.id }}" data-year="{{ year }}"
                 style="background:#eef4ff">
               <span class="cell-display {% if inc_pct > 0 %}text-primary fw-bold{% else %}text-muted{% endif %}">
@@ -167,27 +186,43 @@
                      value="{{ inc_pct }}" min="0" max="100" step="0.5">
               {% endif %}
             </td>
-            <td class="text-end fw-bold next-gross" style="background:#eef4ff;color:#1a3d7a;font-size:.82rem">
+
+            {# ── Bulan kenaikan ── #}
+            <td class="text-center salary-cell {% if can_edit %}editable-text{% endif %} align-middle"
+                data-field="increase_date" data-emp="{{ emp.id }}" data-year="{{ year }}"
+                style="background:#eef4ff;font-size:.8rem">
+              <span class="cell-display text-muted">{{ emp.increase_date or '—' }}</span>
+              {% if can_edit %}
+              <input type="text" class="cell-input form-control form-control-sm d-none"
+                     value="{{ emp.increase_date or '' }}" placeholder="Apr-2025" maxlength="20">
+              {% endif %}
+            </td>
+
+            {# ── Proyeksi tahun depan ── #}
+            <td class="text-end fw-bold next-gross align-middle"
+                style="background:#eef4ff;color:#1a3d7a;font-size:.82rem;white-space:nowrap">
               {% if gross %}{{ "{:,.0f}".format(next_gross) }}{% else %}—{% endif %}
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="{{ 5 + salary_cols|length + 3 }}" class="text-center text-muted py-4">
-            Belum ada data karyawan
+          <tr><td colspan="{{ 5 + salary_cols|length + 5 }}" class="text-center text-muted py-4">
+            Belum ada data karyawan untuk tahun {{ year }}. Klik "Buka Tahun" untuk membuat.
           </td></tr>
           {% endfor %}
         </tbody>
-        <tfoot>
+        <tfoot id="salaryFoot">
           <tr class="fw-bold" style="background:#f8f9fa;font-size:.8rem">
-            <td colspan="5" class="text-end pe-2">TOTAL</td>
+            <td colspan="5" class="text-end pe-2 align-middle">TOTAL</td>
             {% for col, code, label in salary_cols %}
             {% set ns2 = namespace(col_sum=0) %}
             {% for emp in emps %}{% set ns2.col_sum = ns2.col_sum + (emp[col] or 0) %}{% endfor %}
-            <td class="text-end text-muted small">{{ "{:,.0f}".format(ns2.col_sum) }}</td>
+            <td class="text-end text-muted small align-middle">{{ "{:,.0f}".format(ns2.col_sum) }}</td>
             {% endfor %}
-            <td class="text-end text-success">{{ "{:,.0f}".format(ns.total_gross) }}</td>
-            <td></td>
-            <td class="text-end text-primary">
+            <td class="text-end text-success align-middle" id="foot-total-gross">{{ "{:,.0f}".format(ns.total_gross) }}</td>
+            <td class="align-middle"></td>{# prev gross total — skip #}
+            <td class="align-middle"></td>{# % naik — skip #}
+            <td class="align-middle"></td>{# bulan naik — skip #}
+            <td class="text-end text-primary align-middle" id="foot-next-gross">
               {% set ns3 = namespace(next_sum=0) %}
               {% for emp in emps %}
                 {% set g = salary_total(emp) %}
@@ -202,8 +237,9 @@
   </div>
 </div>
 <p class="text-muted small mt-2 mb-0">
-  <i class="bi bi-info-circle me-1"></i>Nilai dalam Rupiah. Total Gross = Gaji Pokok + semua tunjangan.
-  Proyeksi {{ year+1 }} dihitung dari Total Gross × (1 + % Kenaikan).
+  <i class="bi bi-info-circle me-1"></i>Nilai dalam Rupiah.
+  Total Gross = Gaji Pokok + semua tunjangan.
+  Proyeksi {{ year+1 }} = Total Gross × (1 + % Kenaikan).
 </p>
 
 <!-- Add Year Modal -->
@@ -255,15 +291,42 @@
 
 <script>
 const YEAR = {{ year }};
-let saveTimer = null;
+
+// ── Summary recalc (live update setelah edit) ──
+function recalcSummary() {
+  let total = 0;
+  document.querySelectorAll('#salaryBody tr[data-emp-id] .salary-total').forEach(td => {
+    const txt = td.textContent.trim().replace(/[^0-9]/g, '');
+    total += parseInt(txt) || 0;
+  });
+  const fmt = n => n.toLocaleString('id-ID');
+  const el1 = document.getElementById('sum-gross-month');
+  const el2 = document.getElementById('sum-gross-annual');
+  const el3 = document.getElementById('foot-total-gross');
+  if (el1) el1.textContent = fmt(total);
+  if (el2) el2.textContent = fmt(total * 12);
+  if (el3) el3.textContent = fmt(total);
+  // Proyeksi total
+  let nextTotal = 0;
+  document.querySelectorAll('#salaryBody tr[data-emp-id] .next-gross').forEach(td => {
+    const txt = td.textContent.trim().replace(/[^0-9]/g, '');
+    nextTotal += parseInt(txt) || 0;
+  });
+  const el4 = document.getElementById('foot-next-gross');
+  if (el4) el4.textContent = fmt(nextTotal);
+}
 
 {% if can_edit %}
-// ── Inline Edit ──
+// ── Inline Edit (angka) ──
 document.querySelectorAll('.editable').forEach(cell => {
-  cell.addEventListener('click', () => activateCell(cell));
+  cell.addEventListener('click', () => activateCell(cell, 'number'));
+});
+// ── Inline Edit (teks) ──
+document.querySelectorAll('.editable-text').forEach(cell => {
+  cell.addEventListener('click', () => activateCell(cell, 'text'));
 });
 
-function activateCell(cell) {
+function activateCell(cell, type) {
   if (cell.classList.contains('active-edit')) return;
   cell.classList.add('active-edit');
   const display = cell.querySelector('.cell-display');
@@ -271,24 +334,26 @@ function activateCell(cell) {
   display.classList.add('d-none');
   input.classList.remove('d-none');
   input.focus();
-  input.select();
+  if (type === 'number') input.select();
 
-  input.addEventListener('blur', () => deactivateCell(cell, true), { once: true });
+  input.addEventListener('blur', () => deactivateCell(cell, true, type), { once: true });
   input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); deactivateCell(cell, true); }
-    if (e.key === 'Escape') { e.preventDefault(); deactivateCell(cell, false); }
+    if (e.key === 'Enter')  { e.preventDefault(); deactivateCell(cell, true, type); }
+    if (e.key === 'Escape') { e.preventDefault(); deactivateCell(cell, false, type); }
     if (e.key === 'Tab') {
       e.preventDefault();
-      deactivateCell(cell, true);
-      const row = cell.closest('tr');
-      const cells = [...row.querySelectorAll('.editable')];
-      const idx = cells.indexOf(cell);
-      if (idx >= 0 && idx < cells.length - 1) activateCell(cells[idx + 1]);
+      deactivateCell(cell, true, type);
+      const allEditable = [...document.querySelectorAll('#salaryBody tr[data-emp-id="' + cell.dataset.emp + '"] .editable, #salaryBody tr[data-emp-id="' + cell.dataset.emp + '"] .editable-text')];
+      const idx = allEditable.indexOf(cell);
+      if (idx >= 0 && idx < allEditable.length - 1) {
+        const next = allEditable[idx + 1];
+        activateCell(next, next.classList.contains('editable-text') ? 'text' : 'number');
+      }
     }
   });
 }
 
-function deactivateCell(cell, save) {
+function deactivateCell(cell, save, type) {
   cell.classList.remove('active-edit');
   const display = cell.querySelector('.cell-display');
   const input   = cell.querySelector('.cell-input');
@@ -296,14 +361,20 @@ function deactivateCell(cell, save) {
     const empId = cell.dataset.emp;
     const field = cell.dataset.field;
     const val   = input.value;
-    // Update display optimistically
+
+    // Optimistic display update
     if (field === 'increase_pct') {
-      display.textContent = val ? val + '%' : '—';
-      display.className = 'cell-display ' + (parseFloat(val) > 0 ? 'text-primary fw-bold' : 'text-muted');
+      const pct = parseFloat(val) || 0;
+      display.textContent = pct ? pct + '%' : '—';
+      display.className = 'cell-display ' + (pct > 0 ? 'text-primary fw-bold' : 'text-muted');
+    } else if (field === 'increase_date') {
+      display.textContent = val || '—';
+      display.className = 'cell-display text-muted';
     } else {
       const num = parseFloat(val) || 0;
       display.textContent = num ? num.toLocaleString('id-ID') : '—';
     }
+
     saveCell(empId, YEAR, field, val, cell.closest('tr'));
   }
   display.classList.remove('d-none');
@@ -322,8 +393,13 @@ function saveCell(empId, year, field, value, row) {
       if (data.ok && row) {
         const totalCell = row.querySelector('.salary-total');
         const nextCell  = row.querySelector('.next-gross');
-        if (totalCell) totalCell.textContent = data.total ? data.total.toLocaleString('id-ID') : '—';
-        if (nextCell)  nextCell.textContent  = data.next_total ? data.next_total.toLocaleString('id-ID') : '—';
+        if (totalCell && data.total !== undefined) {
+          totalCell.textContent = data.total ? data.total.toLocaleString('id-ID') : '—';
+        }
+        if (nextCell && data.next_total !== undefined) {
+          nextCell.textContent = data.next_total ? data.next_total.toLocaleString('id-ID') : '—';
+        }
+        recalcSummary();
       } else if (!data.ok) {
         showToast('Gagal simpan: ' + (data.msg || ''), 'danger');
       }
@@ -337,8 +413,8 @@ function toggleApplyInc() {
 }
 
 function addYear() {
-  const year    = parseInt(document.getElementById('newYearInput').value);
-  const srcYear = document.getElementById('srcYearInput').value;
+  const year     = parseInt(document.getElementById('newYearInput').value);
+  const srcYear  = document.getElementById('srcYearInput').value;
   const applyInc = document.getElementById('applyIncrease')?.checked ? '1' : '0';
   if (!year || year < 2000 || year > 2100) {
     alert('Masukkan tahun yang valid (mis. 2022).');
@@ -366,26 +442,19 @@ function addYear() {
 
 // ── Export CSV ──
 function exportCSV() {
-  const rows = [];
-  const headers = [];
-  document.querySelectorAll('#salaryTable thead tr:last-child th').forEach(th => {
-    headers.push('"' + th.textContent.trim().replace(/\n/g,' ').replace(/"/g,'""') + '"');
-  });
-
-  // Add static header columns
-  const allHeaders = ['"#"','"Nama"','"Jabatan"','"Divisi"','"Tipe"',
-    ...headers.slice(0,-2), '"Total Gross"', '"% Naik"', '"Proyeksi {{ year+1 }}"'];
-  rows.push(allHeaders.join(','));
-
+  const rows = [
+    ['"#"','"Nama"','"Jabatan"','"Divisi"','"Tipe"',
+     {% for col, code, label in salary_cols %}'"{{ code }} {{ label }}"',{% endfor %}
+     '"Total Gross {{ year }}"','"Gross {{ prev_year }}"','"% Naik"','"Bulan Naik"','"Proyeksi {{ year+1 }}"'].join(',')
+  ];
   document.querySelectorAll('#salaryBody tr[data-emp-id]').forEach(tr => {
     const cols = [...tr.querySelectorAll('td')].map(td => {
       const display = td.querySelector('.cell-display');
-      const val = (display ? display.textContent : td.textContent).trim().replace(/\n/g,' ');
+      const val = (display ? display.textContent : td.textContent).trim().replace(/\s+/g,' ');
       return '"' + val.replace(/"/g,'""') + '"';
     });
     rows.push(cols.join(','));
   });
-
   const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -404,11 +473,18 @@ function showToast(msg, type='success') {
 </script>
 
 <style>
-.salary-cell { cursor: pointer; min-width: 110px; padding: 4px 8px !important; }
-.salary-cell.editable:hover { background: #fffbcc !important; }
-.salary-cell.active-edit { background: #fff9c4 !important; padding: 2px !important; }
+.salary-cell, .editable-text {
+  cursor: pointer;
+  min-width: 100px;
+  padding: 4px 8px !important;
+}
+.salary-cell.editable:hover,
+.editable-text:hover { background: #fffbcc !important; }
+.salary-cell.active-edit,
+.editable-text.active-edit { background: #fff9c4 !important; padding: 2px !important; }
 .cell-input { width: 100%; text-align: right; font-size: .8rem; padding: 2px 4px; }
-.salary-total { white-space: nowrap; }
+.cell-input[type=text] { text-align: center; }
+.salary-total, .next-gross { white-space: nowrap; }
 </style>
 
 {% endblock %}
