@@ -261,11 +261,385 @@
     </div>
   </div>
 </div>
-<p class="text-muted small mt-2 mb-0">
+<p class="text-muted small mt-2 mb-4">
   <i class="bi bi-info-circle me-1"></i>Nilai dalam Rupiah.
   Total Gross = Gaji Pokok + semua tunjangan.
   Proyeksi {{ year+1 }} = Total Gross × (1 + % Kenaikan).
 </p>
+
+{# ════════════════════════════════════════════════════════ #}
+{# DASHBOARD ANALITIK GAJI                                  #}
+{# ════════════════════════════════════════════════════════ #}
+
+{# ── Pre-compute semua angka yang dibutuhkan dashboard ── #}
+{% set d = namespace(
+  cur_gross=0, prev_gross=0, next_proj=0,
+  kontrak_gross=0, tetap_gross=0,
+  kontrak_prev=0, tetap_prev=0,
+  kontrak_n=0, tetap_n=0,
+  no_data=0, with_increase=0, no_increase=0,
+  top_name='', top_gross=0,
+  max_yoy_name='', max_yoy_pct=0,
+  min_yoy_name='', min_yoy_pct=0, min_yoy_set=false
+) %}
+{% set divisi_data = {} %}
+{% for emp in emps %}
+  {% set g  = salary_total(emp) %}
+  {% set pg = (emp.p_base_salary or 0)+(emp.p_al_001 or 0)+(emp.p_al_002 or 0)+(emp.p_al_003 or 0)+(emp.p_al_004 or 0) %}
+  {% set d.cur_gross  = d.cur_gross  + g %}
+  {% set d.prev_gross = d.prev_gross + pg %}
+  {% set d.next_proj  = d.next_proj  + (g * (1 + (emp.increase_pct or 0) / 100)) %}
+  {% if emp.employment_type == 'kontrak' %}
+    {% set d.kontrak_n     = d.kontrak_n + 1 %}
+    {% set d.kontrak_gross = d.kontrak_gross + g %}
+    {% set d.kontrak_prev  = d.kontrak_prev + pg %}
+  {% else %}
+    {% set d.tetap_n     = d.tetap_n + 1 %}
+    {% set d.tetap_gross = d.tetap_gross + g %}
+    {% set d.tetap_prev  = d.tetap_prev + pg %}
+  {% endif %}
+  {% if g == 0 %}{% set d.no_data = d.no_data + 1 %}{% endif %}
+  {% if (emp.increase_pct or 0) > 0 %}{% set d.with_increase = d.with_increase + 1 %}
+  {% else %}{% set d.no_increase = d.no_increase + 1 %}{% endif %}
+  {% if g > d.top_gross %}{% set d.top_gross = g %}{% set d.top_name = emp.name %}{% endif %}
+  {% if pg > 0 and g > 0 %}
+    {% set yoy_i = ((g - pg) / pg * 100) | round(1) %}
+    {% if yoy_i > d.max_yoy_pct %}{% set d.max_yoy_pct = yoy_i %}{% set d.max_yoy_name = emp.name %}{% endif %}
+    {% if not d.min_yoy_set or yoy_i < d.min_yoy_pct %}
+      {% set d.min_yoy_pct = yoy_i %}{% set d.min_yoy_name = emp.name %}{% set d.min_yoy_set = true %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+
+{# YoY delta total #}
+{% if d.prev_gross > 0 %}
+  {% set yoy_total_pct  = ((d.cur_gross - d.prev_gross) / d.prev_gross * 100) | round(1) %}
+  {% set yoy_total_abs  = (d.cur_gross - d.prev_gross) | round | int %}
+{% else %}
+  {% set yoy_total_pct  = 0 %}
+  {% set yoy_total_abs  = 0 %}
+{% endif %}
+{% set avg_gross = (d.cur_gross / emps|length) | round | int if emps|length > 0 else 0 %}
+{% set total_emp = emps|length %}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-fill text-primary me-2"></i>Dashboard Analitik Gaji {{ year }}</h6>
+  <span class="badge bg-light text-dark border small">Data otomatis dari tabel di atas</span>
+</div>
+
+{# ── Row 1: KPI Cards ── #}
+<div class="row g-3 mb-3">
+
+  {# Beban gaji tahun ini #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 h-100" style="background:linear-gradient(135deg,#1a7a3a,#25a85a)">
+      <div class="card-body text-white py-3">
+        <div class="small opacity-75 mb-1"><i class="bi bi-calendar-check me-1"></i>Total Beban Gaji {{ year }}</div>
+        <div class="fw-bold" style="font-size:1.05rem" id="kpi-cur-annual">{{ "{:,.0f}".format(d.cur_gross * 12) }}</div>
+        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.cur_gross) }}/bulan</div>
+      </div>
+    </div>
+  </div>
+
+  {# Beban gaji tahun lalu #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 h-100" style="background:linear-gradient(135deg,#3a2060,#5a3b99)">
+      <div class="card-body text-white py-3">
+        <div class="small opacity-75 mb-1"><i class="bi bi-calendar3 me-1"></i>Total Beban Gaji {{ prev_year }}</div>
+        <div class="fw-bold" style="font-size:1.05rem">{{ "{:,.0f}".format(d.prev_gross * 12) if d.prev_gross else '—' }}</div>
+        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.prev_gross) }}/bulan</div>
+      </div>
+    </div>
+  </div>
+
+  {# Delta YoY #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 h-100"
+         style="background:linear-gradient(135deg,{% if yoy_total_pct > 0 %}#b52a2a,#e53935{% elif yoy_total_pct < 0 %}#1a5c2e,#25a85a{% else %}#495057,#6c757d{% endif %})">
+      <div class="card-body text-white py-3">
+        <div class="small opacity-75 mb-1"><i class="bi bi-arrow-{% if yoy_total_pct >= 0 %}up{% else %}down{% endif %}-circle me-1"></i>Perubahan vs {{ prev_year }}</div>
+        <div class="fw-bold" style="font-size:1.1rem">
+          {% if d.prev_gross %}
+            {% if yoy_total_pct > 0 %}▲{% elif yoy_total_pct < 0 %}▼{% endif %}{{ yoy_total_pct | abs }}%
+          {% else %}—{% endif %}
+        </div>
+        <div class="small opacity-75 mt-1">
+          {% if yoy_total_abs != 0 %}
+            {{ "+" if yoy_total_abs > 0 }}{{ "{:,.0f}".format(yoy_total_abs) }}/bulan
+          {% else %}Tidak ada data tahun lalu{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Proyeksi tahun depan #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 h-100" style="background:linear-gradient(135deg,#0d2a4d,#1a4f8a)">
+      <div class="card-body text-white py-3">
+        <div class="small opacity-75 mb-1"><i class="bi bi-graph-up-arrow me-1"></i>Proyeksi Beban {{ year + 1 }}</div>
+        <div class="fw-bold" style="font-size:1.05rem">{{ "{:,.0f}".format(d.next_proj | round | int * 12) }}</div>
+        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.next_proj | round | int) }}/bulan</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Row 2: Charts ── #}
+<div class="row g-3 mb-3">
+
+  {# Komposisi Kontrak vs Tetap #}
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold small mb-3"><i class="bi bi-pie-chart-fill text-primary me-1"></i>Komposisi Beban Gaji</h6>
+        <canvas id="chartType" style="max-height:180px"></canvas>
+        <div class="mt-3 small">
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span><span class="badge bg-warning text-dark me-1">KONTRAK</span>{{ d.kontrak_n }} orang</span>
+            <span class="fw-semibold">{{ "{:,.0f}".format(d.kontrak_gross) }}/bln</span>
+          </div>
+          <div class="d-flex justify-content-between py-1">
+            <span><span class="badge bg-info text-dark me-1">TETAP</span>{{ d.tetap_n }} orang</span>
+            <span class="fw-semibold">{{ "{:,.0f}".format(d.tetap_gross) }}/bln</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Beban gaji per divisi bar chart #}
+  <div class="col-md-8">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <h6 class="fw-bold small mb-3"><i class="bi bi-bar-chart-fill text-success me-1"></i>Beban Gaji per Divisi ({{ year }} vs {{ prev_year }})</h6>
+        <canvas id="chartDivisi" style="max-height:200px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Row 3: Insight Cards ── #}
+<div class="row g-3 mb-3">
+
+  {# Rata-rata gaji #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-3">
+        <div class="small text-muted mb-1"><i class="bi bi-person-fill me-1"></i>Rata-rata Gaji/Orang</div>
+        <div class="fw-bold text-success fs-6">{{ "{:,.0f}".format(avg_gross) }}</div>
+        <div class="small text-muted">dari {{ total_emp }} karyawan aktif</div>
+      </div>
+    </div>
+  </div>
+
+  {# Kenaikan terbesar individual #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-3">
+        <div class="small text-muted mb-1"><i class="bi bi-trophy-fill text-warning me-1"></i>Kenaikan YoY Terbesar</div>
+        {% if d.max_yoy_name %}
+        <div class="fw-bold text-success">▲{{ d.max_yoy_pct | abs }}%</div>
+        <div class="small text-truncate" title="{{ d.max_yoy_name }}">{{ d.max_yoy_name }}</div>
+        {% else %}
+        <div class="text-muted small">Belum ada data pembanding</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Penurunan / kenaikan terkecil #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-3">
+        <div class="small text-muted mb-1"><i class="bi bi-arrow-down-circle-fill text-danger me-1"></i>Perubahan YoY Terkecil</div>
+        {% if d.min_yoy_set %}
+        <div class="fw-bold {% if d.min_yoy_pct < 0 %}text-danger{% else %}text-success{% endif %}">
+          {% if d.min_yoy_pct > 0 %}▲{% elif d.min_yoy_pct < 0 %}▼{% endif %}{{ d.min_yoy_pct | abs }}%
+        </div>
+        <div class="small text-truncate" title="{{ d.min_yoy_name }}">{{ d.min_yoy_name }}</div>
+        {% else %}
+        <div class="text-muted small">Belum ada data pembanding</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Status kenaikan #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body py-3">
+        <div class="small text-muted mb-1"><i class="bi bi-people-fill me-1"></i>Status % Kenaikan</div>
+        <div class="d-flex gap-2 align-items-center mt-1">
+          <span class="badge bg-success">{{ d.with_increase }}</span>
+          <span class="small text-muted">sudah diisi</span>
+        </div>
+        <div class="d-flex gap-2 align-items-center mt-1">
+          <span class="badge bg-secondary">{{ d.no_increase }}</span>
+          <span class="small text-muted">belum diisi</span>
+        </div>
+        {% if d.no_data > 0 %}
+        <div class="d-flex gap-2 align-items-center mt-1">
+          <span class="badge bg-danger">{{ d.no_data }}</span>
+          <span class="small text-muted">belum ada data gaji</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Row 4: Ringkasan Kontrak vs Tetap YoY ── #}
+{% if d.prev_gross > 0 %}
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <h6 class="fw-bold small mb-3">
+          <i class="bi bi-table text-info me-1"></i>Perbandingan Beban Gaji {{ prev_year }} → {{ year }}
+        </h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered mb-0" style="font-size:.82rem">
+            <thead class="table-dark">
+              <tr class="text-center">
+                <th>Kategori</th>
+                <th>Headcount</th>
+                <th>Total Gross {{ prev_year }}/bln</th>
+                <th>Total Gross {{ year }}/bln</th>
+                <th>Δ Absolut/bln</th>
+                <th>Δ %</th>
+                <th>Beban Tahunan {{ year }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% set rows_cmp = [
+                ('Kontrak', d.kontrak_n, d.kontrak_prev, d.kontrak_gross, 'warning'),
+                ('Tetap',   d.tetap_n,   d.tetap_prev,   d.tetap_gross,   'info'),
+                ('TOTAL',   total_emp,   d.prev_gross,    d.cur_gross,     'success'),
+              ] %}
+              {% for label, n, prev_g, cur_g, color in rows_cmp %}
+              {% set delta_abs = (cur_g - prev_g) | round | int %}
+              {% set delta_pct = ((cur_g - prev_g) / prev_g * 100) | round(1) if prev_g else 0 %}
+              <tr {% if label == 'TOTAL' %}class="fw-bold" style="background:#f8f9fa"{% endif %}>
+                <td><span class="badge bg-{{ color }} {% if color in ('warning','info') %}text-dark{% endif %}">{{ label }}</span></td>
+                <td class="text-center">{{ n }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(prev_g) if prev_g else '—' }}</td>
+                <td class="text-end">{{ "{:,.0f}".format(cur_g) if cur_g else '—' }}</td>
+                <td class="text-end {% if delta_abs > 0 %}text-danger{% elif delta_abs < 0 %}text-success{% endif %}">
+                  {% if prev_g %}{{ "+" if delta_abs > 0 }}{{ "{:,.0f}".format(delta_abs) }}{% else %}—{% endif %}
+                </td>
+                <td class="text-center">
+                  {% if prev_g and delta_pct != 0 %}
+                  <span class="badge {% if delta_pct > 0 %}bg-danger{% else %}bg-success{% endif %}">
+                    {% if delta_pct > 0 %}▲{% else %}▼{% endif %}{{ delta_pct | abs }}%
+                  </span>
+                  {% elif prev_g %}—
+                  {% else %}<span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td class="text-end fw-semibold">{{ "{:,.0f}".format(cur_g * 12) if cur_g else '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Chart.js scripts ── #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+// ── Data untuk chart dari Jinja ──
+const CHART_TYPE_DATA = {
+  labels: ['Kontrak ({{ d.kontrak_n }})', 'Tetap ({{ d.tetap_n }})'],
+  values: [{{ d.kontrak_gross | round | int }}, {{ d.tetap_gross | round | int }}],
+};
+
+// Divisi data — build dari emps
+const divisiMap = {};
+const divisiPrev = {};
+{% for emp in emps %}
+  {% set g  = salary_total(emp) %}
+  {% set pg = (emp.p_base_salary or 0)+(emp.p_al_001 or 0)+(emp.p_al_002 or 0)+(emp.p_al_003 or 0)+(emp.p_al_004 or 0) %}
+  (function() {
+    const div = {{ emp.divisi | tojson }};
+    divisiMap[div]  = (divisiMap[div]  || 0) + {{ g | round | int }};
+    divisiPrev[div] = (divisiPrev[div] || 0) + {{ pg | round | int }};
+  })();
+{% endfor %}
+const divisiLabels = Object.keys(divisiMap).sort();
+const divisiCur    = divisiLabels.map(d => divisiMap[d]);
+const divisiPrevArr= divisiLabels.map(d => divisiPrev[d] || 0);
+
+// ── Doughnut: Kontrak vs Tetap ──
+new Chart(document.getElementById('chartType'), {
+  type: 'doughnut',
+  data: {
+    labels: CHART_TYPE_DATA.labels,
+    datasets: [{
+      data: CHART_TYPE_DATA.values,
+      backgroundColor: ['#ffc107','#0dcaf0'],
+      borderWidth: 2,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ' Rp ' + ctx.raw.toLocaleString('id-ID') + '/bln'
+        }
+      }
+    }
+  }
+});
+
+// ── Bar: Per Divisi ──
+new Chart(document.getElementById('chartDivisi'), {
+  type: 'bar',
+  data: {
+    labels: divisiLabels,
+    datasets: [
+      {
+        label: '{{ year }}',
+        data: divisiCur,
+        backgroundColor: '#25a85a',
+        borderRadius: 4,
+      },
+      {
+        label: '{{ prev_year }}',
+        data: divisiPrevArr,
+        backgroundColor: '#9b72cf',
+        borderRadius: 4,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'top', labels: { font: { size: 11 } } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ' Rp ' + ctx.raw.toLocaleString('id-ID') + '/bln'
+        }
+      }
+    },
+    scales: {
+      y: {
+        ticks: {
+          callback: v => 'Rp ' + (v/1000000).toFixed(1) + 'jt',
+          font: { size: 10 }
+        },
+        grid: { color: '#f0f0f0' }
+      },
+      x: { ticks: { font: { size: 10 } } }
+    }
+  }
+});
+</script>
 
 <!-- Add Year Modal -->
 {% if can_edit %}
