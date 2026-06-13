@@ -22,6 +22,12 @@
     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addYearModal">
       <i class="bi bi-calendar-plus me-1"></i>Buka Tahun
     </button>
+    <a href="/salary/import/template?year={{ year }}" class="btn btn-sm btn-outline-success">
+      <i class="bi bi-file-earmark-arrow-down me-1"></i>Template
+    </a>
+    <button class="btn btn-sm btn-outline-warning text-dark" data-bs-toggle="modal" data-bs-target="#importSalaryModal">
+      <i class="bi bi-file-earmark-excel me-1"></i>Import Excel
+    </button>
     {% endif %}
     <button class="btn btn-sm btn-outline-secondary" onclick="exportCSV()">
       <i class="bi bi-download me-1"></i>Export CSV
@@ -640,6 +646,48 @@ new Chart(document.getElementById('chartDivisi'), {
   }
 });
 </script>
+
+<!-- Modal Import Gaji -->
+{% if can_edit %}
+<div class="modal fade" id="importSalaryModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold">
+          <i class="bi bi-file-earmark-excel me-1 text-success"></i>Import Data Gaji dari Excel
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="/salary/import" enctype="multipart/form-data">
+        <input type="hidden" name="year_redirect" value="{{ year }}">
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Gunakan <a href="/salary/import/template" class="alert-link">template Excel</a> —
+            sudah berisi daftar karyawan aktif. Isi kolom gaji lalu upload.
+            Data yang ada di tahun tersebut akan <b>ditimpa</b>.
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">File Excel (.xlsx) <span class="text-danger">*</span></label>
+            <input type="file" name="file" class="form-control form-control-sm" accept=".xlsx" required>
+          </div>
+          <div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Kolom <b>ID Karyawan</b> dan <b>Tahun</b> wajib diisi dan tidak boleh diubah dari template.
+            Baris tanpa ID valid akan dilewati.
+          </div>
+        </div>
+        <div class="modal-footer py-1">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-upload me-1"></i>Upload & Import
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Add Year Modal -->
 {% if can_edit %}

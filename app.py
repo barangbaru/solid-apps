@@ -1346,6 +1346,363 @@ def emp_delete(emp_id):
         flash(f'Karyawan {emp["name"]} dinonaktifkan', 'warning')
     return redirect(url_for('index'))
 
+# ─── Import Excel: Karyawan & Gaji ────────────────────────────────────────────
+
+@app.route('/emp/import/template')
+@permission_required('manage_employees')
+def emp_import_template():
+    """Download template Excel untuk import karyawan."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Data Karyawan'
+
+    headers = [
+        ('name',            'Nama Lengkap *',         30, 'Wajib diisi'),
+        ('jabatan',         'Jabatan',                 25, 'Contoh: Staff IT, Manager HRD'),
+        ('divisi',          'Divisi *',                20, 'Wajib. Harus sesuai divisi di sistem'),
+        ('level',           'Level',                   15, 'Staff / Leader / Manager / Director'),
+        ('employment_type', 'Tipe *',                  12, 'tetap / kontrak'),
+        ('contract_start',  'Mulai Kontrak',           15, 'Format: YYYY-MM-DD, kosongkan jika tetap'),
+        ('contract_end',    'Akhir Kontrak',           15, 'Format: YYYY-MM-DD, kosongkan jika tetap'),
+        ('email',           'Email',                   28, 'Alamat email karyawan'),
+        ('phone',           'No. HP/WA',               18, 'Contoh: 628123456789'),
+        ('telegram_id',     'Telegram ID',             18, 'Contoh: @username atau chat_id'),
+        ('notes',           'Catatan',                 30, 'Catatan tambahan (opsional)'),
+    ]
+
+    hdr_fill = PatternFill('solid', fgColor='1F4E79')
+    req_fill = PatternFill('solid', fgColor='2E7D32')
+    tip_fill = PatternFill('solid', fgColor='F5F5F5')
+    hdr_font = Font(color='FFFFFF', bold=True, size=10)
+    tip_font = Font(color='555555', italic=True, size=9)
+    thin = Side(style='thin', color='CCCCCC')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # Row 1: header; Row 2: tips; Row 3+: data
+    for col_idx, (field, label, width, tip) in enumerate(headers, 1):
+        fill = req_fill if '*' in label else hdr_fill
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.font = hdr_font; cell.fill = fill
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = border
+
+        tip_cell = ws.cell(row=2, column=col_idx, value=tip)
+        tip_cell.font = tip_font; tip_cell.fill = tip_fill
+        tip_cell.alignment = Alignment(wrap_text=True, vertical='top')
+        tip_cell.border = border
+
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
+
+    ws.row_dimensions[1].height = 28
+    ws.row_dimensions[2].height = 36
+    ws.freeze_panes = 'A3'
+
+    # Data validation: tipe
+    dv_type = DataValidation(type='list', formula1='"tetap,kontrak"', showDropDown=False)
+    ws.add_data_validation(dv_type)
+    dv_type.sqref = 'E3:E1000'
+
+    # Contoh baris data
+    sample = ['Budi Santoso', 'Staff IT', 'IT', 'Staff', 'tetap', '', '', 'budi@company.com', '6281234567890', '', '']
+    for col_idx, val in enumerate(sample, 1):
+        c = ws.cell(row=3, column=col_idx, value=val)
+        c.border = border
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    return Response(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    headers={'Content-Disposition': 'attachment; filename=template_import_karyawan.xlsx'})
+
+
+@app.route('/emp/import', methods=['POST'])
+@permission_required('manage_employees')
+def emp_import():
+    """Import karyawan dari file Excel."""
+    from openpyxl import load_workbook
+    f = request.files.get('file')
+    if not f or not f.filename.endswith('.xlsx'):
+        flash('Upload file .xlsx yang valid', 'danger')
+        return redirect(url_for('karyawan'))
+
+    try:
+        wb = load_workbook(f, read_only=True, data_only=True)
+        ws = wb.active
+        db = get_db()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Header row = 1, tip row = 2, data starts row 3
+        FIELD_MAP = {
+            'nama lengkap': 'name', 'jabatan': 'jabatan', 'divisi': 'divisi',
+            'level': 'level', 'tipe': 'employment_type',
+            'mulai kontrak': 'contract_start', 'akhir kontrak': 'contract_end',
+            'email': 'email', 'no. hp/wa': 'phone', 'telegram id': 'telegram_id',
+            'catatan': 'notes',
+        }
+        # Read header row to get column mapping
+        hdr_row = [str(c.value or '').lower().strip().rstrip(' *') for c in ws[1]]
+        col_map = {}
+        for idx, hdr in enumerate(hdr_row):
+            field = FIELD_MAP.get(hdr)
+            if field:
+                col_map[field] = idx
+
+        inserted = updated = skipped = 0
+        errors = []
+        mode = request.form.get('mode', 'insert')  # insert | upsert
+
+        for row_num, row in enumerate(ws.iter_rows(min_row=3, values_only=True), start=3):
+            if all(v is None or str(v).strip() == '' for v in row):
+                continue
+            def get(field):
+                idx = col_map.get(field)
+                v = row[idx] if idx is not None and idx < len(row) else None
+                return str(v).strip() if v is not None else ''
+
+            name   = get('name')
+            divisi = get('divisi')
+            if not name or not divisi:
+                errors.append(f'Baris {row_num}: name/divisi wajib diisi')
+                skipped += 1
+                continue
+
+            emp_type = get('employment_type') or 'tetap'
+            if emp_type not in ('tetap', 'kontrak'):
+                emp_type = 'tetap'
+
+            fields = {
+                'name': name, 'jabatan': get('jabatan'), 'divisi': divisi,
+                'level': get('level') or 'Staff', 'employment_type': emp_type,
+                'contract_start': get('contract_start'), 'contract_end': get('contract_end'),
+                'email': get('email'), 'phone': get('phone'),
+                'telegram_id': get('telegram_id'), 'notes': get('notes'),
+                'is_active': 1,
+            }
+
+            existing = db.execute('SELECT id FROM employees WHERE name=? AND divisi=?',
+                                  (name, divisi)).fetchone()
+            if existing:
+                if mode == 'upsert':
+                    sets = ', '.join(f'{k}=?' for k in fields if k != 'name')
+                    vals = [fields[k] for k in fields if k != 'name'] + [existing['id']]
+                    db.execute(f'UPDATE employees SET {sets} WHERE id=?', vals)
+                    updated += 1
+                else:
+                    skipped += 1
+            else:
+                cols = ', '.join(fields.keys())
+                phs  = ', '.join('?' for _ in fields)
+                db.execute(f'INSERT INTO employees ({cols}) VALUES ({phs})', list(fields.values()))
+                inserted += 1
+
+        db.commit()
+        msg = f'Import selesai: {inserted} ditambah, {updated} diperbarui, {skipped} dilewati'
+        if errors:
+            msg += f'. {len(errors)} baris error (lihat log)'
+        flash(msg, 'success' if not errors else 'warning')
+    except Exception as e:
+        flash(f'Gagal import: {e}', 'danger')
+
+    return redirect(url_for('karyawan'))
+
+
+@app.route('/salary/import/template')
+@permission_required('manage_salary')
+@mfa_challenge_required('mfa_salary_verified')
+def salary_import_template():
+    """Download template Excel untuk import data gaji."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Data Gaji'
+
+    db = get_db()
+    year = date.today().year
+    emps = db.execute(
+        "SELECT id, name, jabatan, divisi, employment_type FROM employees WHERE is_active=1 ORDER BY employment_type DESC, divisi, name"
+    ).fetchall()
+
+    headers = [
+        ('employee_id',   'ID Karyawan *', 12),
+        ('name',          'Nama Karyawan', 30),
+        ('jabatan',       'Jabatan',       22),
+        ('divisi',        'Divisi',        15),
+        ('year',          'Tahun *',       10),
+        ('base_salary',   'SALARY (Gaji Pokok)', 20),
+        ('al_001',        'AL_001 (Tj. Jabatan)', 20),
+        ('al_002',        'AL_002 (Tj. Komunikasi)', 22),
+        ('al_003',        'AL_003 (Tj. Performance)', 22),
+        ('al_004',        'AL_004 (Tj. Kehadiran)', 20),
+        ('increase_pct',  '% Kenaikan', 14),
+        ('increase_date', 'Bulan Kenaikan', 16),
+        ('notes',         'Catatan', 25),
+    ]
+
+    hdr_fill = PatternFill('solid', fgColor='1F4E79')
+    req_fill = PatternFill('solid', fgColor='2E7D32')
+    emp_fill = PatternFill('solid', fgColor='EFF7EF')
+    num_fill = PatternFill('solid', fgColor='FAFEFF')
+    hdr_font = Font(color='FFFFFF', bold=True, size=10)
+    thin = Side(style='thin', color='CCCCCC')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    from openpyxl.styles import numbers as xl_numbers
+
+    for col_idx, (field, label, width) in enumerate(headers, 1):
+        fill = req_fill if '*' in label else hdr_fill
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.font = hdr_font; cell.fill = fill
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = border
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
+
+    ws.row_dimensions[1].height = 32
+    ws.freeze_panes = 'F2'
+
+    from openpyxl.utils import get_column_letter
+    for row_idx, emp in enumerate(emps, start=2):
+        row_fill = PatternFill('solid', fgColor='FFF8E1' if emp['employment_type'] == 'kontrak' else 'F0F9FF')
+        vals = [emp['id'], emp['name'], emp['jabatan'] or '', emp['divisi'], year,
+                0, 0, 0, 0, 0, 0, '', '']
+        for col_idx, val in enumerate(vals, 1):
+            c = ws.cell(row=row_idx, column=col_idx, value=val)
+            c.border = border
+            # Read-only info columns
+            if col_idx <= 4:
+                c.fill = emp_fill
+                if col_idx == 1:
+                    c.font = Font(bold=True, color='1F4E79')
+            elif col_idx == 5:
+                c.fill = emp_fill
+            elif 6 <= col_idx <= 10:
+                c.fill = num_fill
+                c.number_format = '#,##0'
+            elif col_idx == 11:
+                c.fill = num_fill
+                c.number_format = '0.00'
+
+    ws.row_dimensions[1].height = 30
+
+    # Second sheet: instructions
+    ws2 = wb.create_sheet('Petunjuk')
+    instructions = [
+        ['PETUNJUK IMPORT DATA GAJI'],
+        [''],
+        ['1. Jangan ubah kolom ID Karyawan — digunakan sebagai kunci pencarian'],
+        ['2. Kolom Tahun wajib diisi dengan angka 4 digit (mis. 2024)'],
+        ['3. Kolom gaji diisi angka tanpa titik/koma (mis. 5000000)'],
+        ['4. % Kenaikan: angka desimal mis. 7.5 untuk 7.5%'],
+        ['5. Bulan Kenaikan: format bebas mis. Apr-2025'],
+        ['6. Data yang sudah ada di tahun tersebut akan DITIMPA (update)'],
+        ['7. Baris dengan ID kosong akan dilewati'],
+    ]
+    for r, row in enumerate(instructions, 1):
+        c = ws2.cell(row=r, column=1, value=row[0])
+        if r == 1:
+            c.font = Font(bold=True, size=13, color='1F4E79')
+        ws2.column_dimensions['A'].width = 65
+
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    return Response(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    headers={'Content-Disposition': 'attachment; filename=template_import_gaji.xlsx'})
+
+
+@app.route('/salary/import', methods=['POST'])
+@permission_required('manage_salary')
+@mfa_challenge_required('mfa_salary_verified')
+def salary_import():
+    """Import data gaji dari file Excel."""
+    from openpyxl import load_workbook
+    f = request.files.get('file')
+    if not f or not f.filename.endswith('.xlsx'):
+        flash('Upload file .xlsx yang valid', 'danger')
+        return redirect(url_for('salary_table'))
+
+    try:
+        wb   = load_workbook(f, read_only=True, data_only=True)
+        ws   = wb.active
+        db   = get_db()
+        now  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Header row 1 → field map
+        FIELD_MAP = {
+            'id karyawan': 'employee_id', 'tahun': 'year',
+            'salary (gaji pokok)': 'base_salary', 'al_001 (tj. jabatan)': 'al_001',
+            'al_002 (tj. komunikasi)': 'al_002', 'al_003 (tj. performance)': 'al_003',
+            'al_004 (tj. kehadiran)': 'al_004',
+            '% kenaikan': 'increase_pct', 'bulan kenaikan': 'increase_date',
+            'catatan': 'notes',
+        }
+        hdr_row = [str(c.value or '').lower().strip().rstrip(' *') for c in ws[1]]
+        col_map = {field: idx for idx, hdr in enumerate(hdr_row)
+                   for key, field in FIELD_MAP.items() if hdr == key}
+
+        upserted = skipped = 0
+        errors   = []
+
+        for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            if all(v is None or str(v).strip() == '' for v in row):
+                continue
+            def get(field, default=''):
+                idx = col_map.get(field)
+                v = row[idx] if idx is not None and idx < len(row) else None
+                return v if v is not None else default
+
+            emp_id = get('employee_id')
+            year   = get('year')
+            try:
+                emp_id = int(emp_id)
+                year   = int(year)
+            except (TypeError, ValueError):
+                errors.append(f'Baris {row_num}: ID/tahun tidak valid')
+                skipped += 1
+                continue
+
+            emp = db.execute('SELECT id FROM employees WHERE id=?', (emp_id,)).fetchone()
+            if not emp:
+                errors.append(f'Baris {row_num}: ID {emp_id} tidak ditemukan')
+                skipped += 1
+                continue
+
+            def num(field):
+                v = get(field, 0)
+                try: return float(v) if v != '' else 0.0
+                except (TypeError, ValueError): return 0.0
+
+            db.execute('''
+                INSERT INTO employee_salary
+                    (employee_id, year, base_salary, al_001, al_002, al_003, al_004,
+                     increase_pct, increase_date, notes, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(employee_id, year) DO UPDATE SET
+                    base_salary=excluded.base_salary, al_001=excluded.al_001,
+                    al_002=excluded.al_002, al_003=excluded.al_003,
+                    al_004=excluded.al_004, increase_pct=excluded.increase_pct,
+                    increase_date=excluded.increase_date, notes=excluded.notes,
+                    updated_at=excluded.updated_at
+            ''', (emp_id, year, num('base_salary'), num('al_001'), num('al_002'),
+                  num('al_003'), num('al_004'), num('increase_pct'),
+                  str(get('increase_date', '')), str(get('notes', '')), now))
+            upserted += 1
+
+        db.commit()
+        msg = f'Import gaji selesai: {upserted} baris disimpan, {skipped} dilewati'
+        if errors:
+            msg += f'. Error: ' + '; '.join(errors[:5])
+            if len(errors) > 5:
+                msg += f' (+{len(errors)-5} lainnya)'
+        flash(msg, 'success' if not errors else 'warning')
+    except Exception as e:
+        flash(f'Gagal import gaji: {e}', 'danger')
+
+    year_param = request.form.get('year_redirect', date.today().year)
+    return redirect(url_for('salary_table', year=year_param))
+
 # ─── Contract Management ───────────────────────────────────────────────────────
 
 @app.route('/karyawan')
