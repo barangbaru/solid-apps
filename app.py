@@ -218,6 +218,22 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     permission TEXT NOT NULL,
     PRIMARY KEY (role_name, permission)
 );
+CREATE TABLE IF NOT EXISTS employee_salary (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    base_salary REAL DEFAULT 0,
+    al_001 REAL DEFAULT 0,
+    al_002 REAL DEFAULT 0,
+    al_003 REAL DEFAULT 0,
+    al_004 REAL DEFAULT 0,
+    increase_pct REAL DEFAULT 0,
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(employee_id, year),
+    FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
 """
 
 MIGRATIONS = [
@@ -2270,25 +2286,121 @@ def admin_template_edit(divisi):
 
 # ─── Salary (MFA protected) ───────────────────────────────────────────────────
 
+SALARY_COLS = [
+    ('base_salary', 'SALARY',    'Gaji Pokok'),
+    ('al_001',      'AL_001',    'Tunjangan Jabatan'),
+    ('al_002',      'AL_002',    'Tunjangan Komunikasi'),
+    ('al_003',      'AL_003',    'Tunjangan Performance'),
+    ('al_004',      'AL_004',    'Tunjangan Kehadiran'),
+]
+
+def _salary_total(row):
+    if not row:
+        return 0
+    return sum(row[col] or 0 for col, *_ in SALARY_COLS)
+
+@app.route('/salary')
+@permission_required('view_salary')
+@mfa_challenge_required('mfa_salary_verified')
+def salary_table():
+    db   = get_db()
+    year = request.args.get('year', date.today().year, type=int)
+    emps = db.execute('''
+        SELECT e.*, s.id AS sal_id, s.base_salary, s.al_001, s.al_002,
+               s.al_003, s.al_004, s.increase_pct, s.notes
+        FROM employees e
+        LEFT JOIN employee_salary s ON s.employee_id = e.id AND s.year = ?
+        WHERE e.is_active = 1
+        ORDER BY e.employment_type DESC, e.divisi, e.name
+    ''', (year,)).fetchall()
+    years = [r['year'] for r in db.execute(
+        'SELECT DISTINCT year FROM employee_salary ORDER BY year DESC').fetchall()]
+    if year not in years:
+        years = sorted(set(years + [year]), reverse=True)
+    return render_template('salary.html', emps=emps, year=year, years=years,
+                           salary_cols=SALARY_COLS, salary_total=_salary_total,
+                           can_edit='manage_salary' in get_role_permissions(db, session.get('user_role','')))
+
+@app.route('/salary/save', methods=['POST'])
+@permission_required('manage_salary')
+@mfa_challenge_required('mfa_salary_verified')
+def salary_save():
+    db      = get_db()
+    emp_id  = request.form.get('employee_id', type=int)
+    year    = request.form.get('year', type=int)
+    field   = request.form.get('field', '').strip()
+    value   = request.form.get('value', '').strip()
+    valid_fields = {c for c, *_ in SALARY_COLS} | {'increase_pct', 'notes'}
+    if not emp_id or not year or field not in valid_fields:
+        return jsonify({'ok': False, 'msg': 'Parameter tidak valid'})
+    try:
+        val = float(value) if field != 'notes' else value
+    except ValueError:
+        val = 0.0
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    db.execute(f'''
+        INSERT INTO employee_salary(employee_id, year, {field}, updated_at)
+        VALUES(?,?,?,?)
+        ON CONFLICT(employee_id, year) DO UPDATE SET {field}=excluded.{field}, updated_at=excluded.updated_at
+    ''', (emp_id, year, val, now))
+    db.commit()
+    # Return updated row totals
+    row = db.execute('SELECT * FROM employee_salary WHERE employee_id=? AND year=?',
+                     (emp_id, year)).fetchone()
+    total = _salary_total(row)
+    next_pct  = (row['increase_pct'] or 0) if row else 0
+    next_total = round(total * (1 + next_pct / 100))
+    return jsonify({'ok': True, 'total': total, 'next_total': next_total})
+
+@app.route('/salary/add-year', methods=['POST'])
+@permission_required('manage_salary')
+@mfa_challenge_required('mfa_salary_verified')
+def salary_add_year():
+    """Copy data gaji tahun sebelumnya ke tahun baru dengan kenaikan."""
+    db       = get_db()
+    year     = request.form.get('year', type=int)
+    src_year = year - 1
+    now      = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    rows     = db.execute('SELECT * FROM employee_salary WHERE year=?', (src_year,)).fetchall()
+    copied   = 0
+    for r in rows:
+        pct    = r['increase_pct'] or 0
+        factor = 1 + pct / 100
+        try:
+            db.execute('''
+                INSERT OR IGNORE INTO employee_salary
+                (employee_id, year, base_salary, al_001, al_002, al_003, al_004,
+                 increase_pct, notes, updated_at)
+                VALUES(?,?,?,?,?,?,?,0,'',?)
+            ''', (r['employee_id'], year,
+                  round((r['base_salary'] or 0) * factor),
+                  round((r['al_001'] or 0) * factor),
+                  round((r['al_002'] or 0) * factor),
+                  round((r['al_003'] or 0) * factor),
+                  round((r['al_004'] or 0) * factor),
+                  now))
+            copied += 1
+        except Exception:
+            pass
+    db.commit()
+    return jsonify({'ok': True, 'copied': copied,
+                    'msg': f'{copied} data gaji disalin ke tahun {year} dengan kenaikan masing-masing'})
+
 @app.route('/emp/<int:emp_id>/salary', methods=['GET'])
 @permission_required('view_salary')
 @mfa_challenge_required('mfa_salary_verified')
 def emp_salary_view(emp_id):
     db  = get_db()
-    emp = db.execute('SELECT id, name, salary FROM employees WHERE id=?', (emp_id,)).fetchone()
+    emp = db.execute('SELECT id, name FROM employees WHERE id=?', (emp_id,)).fetchone()
     if not emp:
         return jsonify({'ok': False, 'msg': 'Karyawan tidak ditemukan'})
-    return jsonify({'ok': True, 'salary': emp['salary'] or '', 'name': emp['name']})
+    return jsonify({'ok': True, 'name': emp['name']})
 
 @app.route('/emp/<int:emp_id>/salary', methods=['POST'])
 @permission_required('manage_salary')
 @mfa_challenge_required('mfa_salary_verified')
 def emp_salary_update(emp_id):
-    db     = get_db()
-    salary = request.form.get('salary', '').strip()
-    db.execute('UPDATE employees SET salary=? WHERE id=?', (salary, emp_id))
-    db.commit()
-    return jsonify({'ok': True, 'msg': 'Gaji disimpan'})
+    return jsonify({'ok': True, 'msg': 'Gunakan /salary untuk edit komponen gaji'})
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,388 @@
+{% extends 'base.html' %}
+{% block title %}Tabel Gaji Karyawan{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div class="d-flex align-items-center gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-cash-stack text-success me-2"></i>Tabel Gaji Karyawan</h5>
+    {% if can_edit %}
+    <span class="badge bg-warning text-dark"><i class="bi bi-pencil me-1"></i>Mode Edit</span>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <!-- Year selector -->
+    <form method="GET" class="d-flex align-items-center gap-1">
+      <label class="form-label mb-0 small fw-semibold">Tahun:</label>
+      <select name="year" class="form-select form-select-sm" style="width:90px" onchange="this.form.submit()">
+        {% for y in years %}
+        <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% if can_edit %}
+    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addYearModal">
+      <i class="bi bi-calendar-plus me-1"></i>Buat Tahun Baru
+    </button>
+    {% endif %}
+    <button class="btn btn-sm btn-outline-secondary" onclick="exportCSV()">
+      <i class="bi bi-download me-1"></i>Export CSV
+    </button>
+  </div>
+</div>
+
+<div class="alert alert-info py-2 small mb-3 d-flex align-items-center gap-2">
+  <i class="bi bi-shield-lock-fill text-primary fs-6"></i>
+  <span>Data gaji dilindungi MFA. Klik sel untuk mengedit nilai. <kbd>Tab</kbd> pindah kolom, <kbd>Enter</kbd> simpan.</span>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} py-2 small alert-dismissible fade show">{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+  {% endfor %}
+{% endwith %}
+
+<!-- Summary Cards -->
+<div class="row g-2 mb-3">
+  {% set ns = namespace(total_gross=0, total_emp=0, kontrak=0, tetap=0) %}
+  {% for emp in emps %}
+    {% set ns.total_emp = ns.total_emp + 1 %}
+    {% set gross = salary_total(emp) %}
+    {% set ns.total_gross = ns.total_gross + gross %}
+    {% if emp.employment_type == 'kontrak' %}{% set ns.kontrak = ns.kontrak + 1 %}
+    {% else %}{% set ns.tetap = ns.tetap + 1 %}{% endif %}
+  {% endfor %}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 bg-light text-center py-2">
+      <div class="small text-muted">Total Karyawan</div>
+      <div class="fw-bold fs-5">{{ ns.total_emp }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 bg-light text-center py-2">
+      <div class="small text-muted">Kontrak / Tetap</div>
+      <div class="fw-bold fs-5">{{ ns.kontrak }} / {{ ns.tetap }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 bg-success bg-opacity-10 text-center py-2">
+      <div class="small text-muted">Total Gross/Bulan</div>
+      <div class="fw-bold fs-6 text-success">{{ "{:,.0f}".format(ns.total_gross) }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 bg-primary bg-opacity-10 text-center py-2">
+      <div class="small text-muted">Total Gross/Tahun</div>
+      <div class="fw-bold fs-6 text-primary">{{ "{:,.0f}".format(ns.total_gross * 12) }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Salary Table -->
+<div class="card shadow-sm border-0">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm mb-0" id="salaryTable">
+        <thead>
+          <tr class="table-dark text-center" style="font-size:.78rem">
+            <th rowspan="2" class="align-middle" style="min-width:40px">#</th>
+            <th rowspan="2" class="align-middle text-start" style="min-width:160px">Nama Karyawan</th>
+            <th rowspan="2" class="align-middle" style="min-width:80px">Jabatan</th>
+            <th rowspan="2" class="align-middle" style="min-width:80px">Divisi</th>
+            <th rowspan="2" class="align-middle" style="min-width:70px">Tipe</th>
+            <th colspan="{{ salary_cols|length + 1 }}" class="py-1" style="background:#1a7a3a">
+              KOMPONEN GAJI — TAHUN {{ year }}
+            </th>
+            <th colspan="2" class="py-1" style="background:#1a3d7a">
+              PROYEKSI {{ year + 1 }}
+            </th>
+          </tr>
+          <tr class="text-center" style="font-size:.72rem;background:#2d2d2d;color:#fff">
+            {% for col, code, label in salary_cols %}
+            <th style="min-width:110px">
+              <div class="fw-bold" style="color:#7fd7a8">{{ code }}</div>
+              <div style="color:#aaa">{{ label }}</div>
+            </th>
+            {% endfor %}
+            <th style="min-width:120px;background:#155724;color:#d4edda">
+              <div class="fw-bold">TOTAL GROSS</div>
+              <div style="color:#aaa;font-size:.68rem">per bulan</div>
+            </th>
+            <th style="min-width:80px;background:#0d2a4d;color:#cce5ff">
+              <div class="fw-bold">% NAIK</div>
+            </th>
+            <th style="min-width:120px;background:#0d2a4d;color:#cce5ff">
+              <div class="fw-bold">PROYEKSI GROSS</div>
+              <div style="color:#99b8d4;font-size:.68rem">{{ year + 1 }}</div>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="salaryBody">
+          {% set group_ns = namespace(cur_type='') %}
+          {% for emp in emps %}
+          {% if emp.employment_type != group_ns.cur_type %}
+            {% set group_ns.cur_type = emp.employment_type %}
+            <tr>
+              <td colspan="{{ 5 + salary_cols|length + 3 }}"
+                  class="fw-bold small py-1 px-3"
+                  style="background:{% if emp.employment_type=='kontrak' %}#fff3cd{% else %}#d1ecf1{% endif %}">
+                <i class="bi bi-{% if emp.employment_type=='kontrak' %}file-earmark-text{% else %}person-check{% endif %} me-1"></i>
+                Karyawan {{ emp.employment_type | upper }}
+              </td>
+            </tr>
+          {% endif %}
+          {% set gross = salary_total(emp) %}
+          {% set inc_pct = emp.increase_pct or 0 %}
+          {% set next_gross = (gross * (1 + inc_pct / 100)) | round | int %}
+          <tr data-emp-id="{{ emp.id }}" data-year="{{ year }}">
+            <td class="text-center text-muted small">{{ loop.index }}</td>
+            <td class="fw-semibold small">{{ emp.name }}</td>
+            <td class="small text-muted">{{ emp.jabatan or '—' }}</td>
+            <td class="small text-muted">{{ emp.divisi }}</td>
+            <td class="text-center">
+              <span class="badge {% if emp.employment_type=='kontrak' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}" style="font-size:.65rem">
+                {{ emp.employment_type | upper }}
+              </span>
+            </td>
+            {% for col, code, label in salary_cols %}
+            <td class="text-end salary-cell {% if can_edit %}editable{% endif %}"
+                data-field="{{ col }}" data-emp="{{ emp.id }}" data-year="{{ year }}">
+              <span class="cell-display">{{ "{:,.0f}".format(emp[col] or 0) if emp[col] else '—' }}</span>
+              {% if can_edit %}
+              <input type="number" class="cell-input form-control form-control-sm d-none"
+                     value="{{ (emp[col] or 0) | int }}" min="0" step="1000">
+              {% endif %}
+            </td>
+            {% endfor %}
+            <td class="text-end fw-bold text-success salary-total" style="background:#f0fff4;font-size:.82rem">
+              {{ "{:,.0f}".format(gross) if gross else '—' }}
+            </td>
+            <td class="text-center salary-cell {% if can_edit %}editable{% endif %}"
+                data-field="increase_pct" data-emp="{{ emp.id }}" data-year="{{ year }}"
+                style="background:#eef4ff">
+              <span class="cell-display {% if inc_pct > 0 %}text-primary fw-bold{% else %}text-muted{% endif %}">
+                {% if inc_pct %}{{ inc_pct }}%{% else %}—{% endif %}
+              </span>
+              {% if can_edit %}
+              <input type="number" class="cell-input form-control form-control-sm d-none"
+                     value="{{ inc_pct }}" min="0" max="100" step="0.5">
+              {% endif %}
+            </td>
+            <td class="text-end fw-bold next-gross" style="background:#eef4ff;color:#1a3d7a;font-size:.82rem">
+              {% if gross %}{{ "{:,.0f}".format(next_gross) }}{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ 5 + salary_cols|length + 3 }}" class="text-center text-muted py-4">
+            Belum ada data karyawan
+          </td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="fw-bold" style="background:#f8f9fa;font-size:.8rem">
+            <td colspan="5" class="text-end pe-2">TOTAL</td>
+            {% for col, code, label in salary_cols %}
+            {% set ns2 = namespace(col_sum=0) %}
+            {% for emp in emps %}{% set ns2.col_sum = ns2.col_sum + (emp[col] or 0) %}{% endfor %}
+            <td class="text-end text-muted small">{{ "{:,.0f}".format(ns2.col_sum) }}</td>
+            {% endfor %}
+            <td class="text-end text-success">{{ "{:,.0f}".format(ns.total_gross) }}</td>
+            <td></td>
+            <td class="text-end text-primary">
+              {% set ns3 = namespace(next_sum=0) %}
+              {% for emp in emps %}
+                {% set g = salary_total(emp) %}
+                {% set ns3.next_sum = ns3.next_sum + (g * (1 + (emp.increase_pct or 0) / 100)) %}
+              {% endfor %}
+              {{ "{:,.0f}".format(ns3.next_sum | round | int) }}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+<p class="text-muted small mt-2 mb-0">
+  <i class="bi bi-info-circle me-1"></i>Nilai dalam Rupiah. Total Gross = Gaji Pokok + semua tunjangan.
+  Proyeksi {{ year+1 }} dihitung dari Total Gross × (1 + % Kenaikan).
+</p>
+
+<!-- Add Year Modal -->
+{% if can_edit %}
+<div class="modal fade" id="addYearModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold"><i class="bi bi-calendar-plus me-1"></i>Buat Data Tahun Baru</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted">
+          Salin data gaji tahun <strong>{{ year }}</strong> ke tahun baru dengan menerapkan
+          % kenaikan masing-masing karyawan.
+        </p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Tahun Baru</label>
+          <input type="number" id="newYearInput" class="form-control form-control-sm"
+                 value="{{ year + 1 }}" min="{{ year + 1 }}" max="{{ year + 5 }}">
+        </div>
+        <div class="alert alert-warning py-2 small">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Data yang sudah ada di tahun tujuan tidak akan ditimpa.
+        </div>
+      </div>
+      <div class="modal-footer py-1">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="addYear()">
+          <i class="bi bi-copy me-1"></i>Salin & Terapkan Kenaikan
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+const YEAR = {{ year }};
+let saveTimer = null;
+
+{% if can_edit %}
+// ── Inline Edit ──
+document.querySelectorAll('.editable').forEach(cell => {
+  cell.addEventListener('click', () => activateCell(cell));
+});
+
+function activateCell(cell) {
+  if (cell.classList.contains('active-edit')) return;
+  cell.classList.add('active-edit');
+  const display = cell.querySelector('.cell-display');
+  const input   = cell.querySelector('.cell-input');
+  display.classList.add('d-none');
+  input.classList.remove('d-none');
+  input.focus();
+  input.select();
+
+  input.addEventListener('blur', () => deactivateCell(cell, true), { once: true });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); deactivateCell(cell, true); }
+    if (e.key === 'Escape') { e.preventDefault(); deactivateCell(cell, false); }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      deactivateCell(cell, true);
+      const row = cell.closest('tr');
+      const cells = [...row.querySelectorAll('.editable')];
+      const idx = cells.indexOf(cell);
+      if (idx >= 0 && idx < cells.length - 1) activateCell(cells[idx + 1]);
+    }
+  });
+}
+
+function deactivateCell(cell, save) {
+  cell.classList.remove('active-edit');
+  const display = cell.querySelector('.cell-display');
+  const input   = cell.querySelector('.cell-input');
+  if (save) {
+    const empId = cell.dataset.emp;
+    const field = cell.dataset.field;
+    const val   = input.value;
+    // Update display optimistically
+    if (field === 'increase_pct') {
+      display.textContent = val ? val + '%' : '—';
+      display.className = 'cell-display ' + (parseFloat(val) > 0 ? 'text-primary fw-bold' : 'text-muted');
+    } else {
+      const num = parseFloat(val) || 0;
+      display.textContent = num ? num.toLocaleString('id-ID') : '—';
+    }
+    saveCell(empId, YEAR, field, val, cell.closest('tr'));
+  }
+  display.classList.remove('d-none');
+  input.classList.add('d-none');
+}
+
+function saveCell(empId, year, field, value, row) {
+  const fd = new FormData();
+  fd.append('employee_id', empId);
+  fd.append('year', year);
+  fd.append('field', field);
+  fd.append('value', value);
+  fetch('/salary/save', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok && row) {
+        const totalCell = row.querySelector('.salary-total');
+        const nextCell  = row.querySelector('.next-gross');
+        if (totalCell) totalCell.textContent = data.total ? data.total.toLocaleString('id-ID') : '—';
+        if (nextCell)  nextCell.textContent  = data.next_total ? data.next_total.toLocaleString('id-ID') : '—';
+      } else if (!data.ok) {
+        showToast('Gagal simpan: ' + (data.msg || ''), 'danger');
+      }
+    })
+    .catch(() => showToast('Koneksi gagal', 'danger'));
+}
+
+function addYear() {
+  const year = parseInt(document.getElementById('newYearInput').value);
+  if (!year) return;
+  const fd = new FormData();
+  fd.append('year', year);
+  fetch('/salary/add-year', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      bootstrap.Modal.getInstance(document.getElementById('addYearModal')).hide();
+      if (data.ok) {
+        showToast(data.msg, 'success');
+        setTimeout(() => window.location.href = '/salary?year=' + year, 1200);
+      } else {
+        showToast(data.msg || 'Gagal', 'danger');
+      }
+    });
+}
+{% endif %}
+
+// ── Export CSV ──
+function exportCSV() {
+  const rows = [];
+  const headers = [];
+  document.querySelectorAll('#salaryTable thead tr:last-child th').forEach(th => {
+    headers.push('"' + th.textContent.trim().replace(/\n/g,' ').replace(/"/g,'""') + '"');
+  });
+
+  // Add static header columns
+  const allHeaders = ['"#"','"Nama"','"Jabatan"','"Divisi"','"Tipe"',
+    ...headers.slice(0,-2), '"Total Gross"', '"% Naik"', '"Proyeksi {{ year+1 }}"'];
+  rows.push(allHeaders.join(','));
+
+  document.querySelectorAll('#salaryBody tr[data-emp-id]').forEach(tr => {
+    const cols = [...tr.querySelectorAll('td')].map(td => {
+      const display = td.querySelector('.cell-display');
+      const val = (display ? display.textContent : td.textContent).trim().replace(/\n/g,' ');
+      return '"' + val.replace(/"/g,'""') + '"';
+    });
+    rows.push(cols.join(','));
+  });
+
+  const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'gaji_{{ year }}.csv';
+  a.click();
+}
+
+function showToast(msg, type='success') {
+  const div = document.createElement('div');
+  div.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3 py-2 small shadow`;
+  div.style.zIndex = 9999;
+  div.textContent = msg;
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 3000);
+}
+</script>
+
+<style>
+.salary-cell { cursor: pointer; min-width: 110px; padding: 4px 8px !important; }
+.salary-cell.editable:hover { background: #fffbcc !important; }
+.salary-cell.active-edit { background: #fff9c4 !important; padding: 2px !important; }
+.cell-input { width: 100%; text-align: right; font-size: .8rem; padding: 2px 4px; }
+.salary-total { white-space: nowrap; }
+</style>
+
+{% endblock %}
