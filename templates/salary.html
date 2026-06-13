@@ -212,28 +212,40 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header py-2">
-        <h6 class="modal-title fw-bold"><i class="bi bi-calendar-plus me-1"></i>Buat Data Tahun Baru</h6>
+        <h6 class="modal-title fw-bold"><i class="bi bi-calendar-plus me-1"></i>Buka / Buat Tahun Gaji</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p class="small text-muted">
-          Salin data gaji tahun <strong>{{ year }}</strong> ke tahun baru dengan menerapkan
-          % kenaikan masing-masing karyawan.
-        </p>
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Tahun Baru</label>
+          <label class="form-label fw-semibold small">Tahun yang Ingin Dibuka <span class="text-danger">*</span></label>
           <input type="number" id="newYearInput" class="form-control form-control-sm"
-                 value="{{ year + 1 }}" min="{{ year + 1 }}" max="{{ year + 5 }}">
+                 value="{{ year }}" min="2000" max="2100" placeholder="mis. 2022">
+          <div class="form-text">Bisa tahun lalu, tahun ini, maupun mendatang.</div>
         </div>
-        <div class="alert alert-warning py-2 small">
-          <i class="bi bi-exclamation-triangle me-1"></i>
-          Data yang sudah ada di tahun tujuan tidak akan ditimpa.
+        <div class="mb-2">
+          <label class="form-label fw-semibold small">Sumber Data (opsional)</label>
+          <select id="srcYearInput" class="form-select form-select-sm" onchange="toggleApplyInc()">
+            <option value="">— Mulai dari kosong —</option>
+            {% for y in years %}
+            <option value="{{ y }}">Salin dari tahun {{ y }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-check mb-3 d-none" id="applyIncRow">
+          <input class="form-check-input" type="checkbox" id="applyIncrease" checked>
+          <label class="form-check-label small" for="applyIncrease">
+            Terapkan % kenaikan masing-masing karyawan
+          </label>
+        </div>
+        <div class="alert alert-info py-2 small mb-0">
+          <i class="bi bi-info-circle me-1"></i>
+          Data yang sudah ada di tahun tujuan <b>tidak</b> akan ditimpa.
         </div>
       </div>
       <div class="modal-footer py-1">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
         <button type="button" class="btn btn-primary btn-sm" onclick="addYear()">
-          <i class="bi bi-copy me-1"></i>Salin & Terapkan Kenaikan
+          <i class="bi bi-calendar-check me-1"></i>Buat Tahun
         </button>
       </div>
     </div>
@@ -319,11 +331,25 @@ function saveCell(empId, year, field, value, row) {
     .catch(() => showToast('Koneksi gagal', 'danger'));
 }
 
+function toggleApplyInc() {
+  const src = document.getElementById('srcYearInput').value;
+  document.getElementById('applyIncRow').classList.toggle('d-none', !src);
+}
+
 function addYear() {
-  const year = parseInt(document.getElementById('newYearInput').value);
-  if (!year) return;
+  const year    = parseInt(document.getElementById('newYearInput').value);
+  const srcYear = document.getElementById('srcYearInput').value;
+  const applyInc = document.getElementById('applyIncrease')?.checked ? '1' : '0';
+  if (!year || year < 2000 || year > 2100) {
+    alert('Masukkan tahun yang valid (mis. 2022).');
+    return;
+  }
   const fd = new FormData();
   fd.append('year', year);
+  if (srcYear) {
+    fd.append('src_year', srcYear);
+    fd.append('apply_increase', applyInc);
+  }
   fetch('/salary/add-year', { method: 'POST', body: fd })
     .then(r => r.json())
     .then(data => {

@@ -51,6 +51,14 @@
             <a href="/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-pencil"></i> Edit
             </a>
+            {% if u.mfa_enabled and u.id != current_user.id %}
+            <form action="/admin/users/{{ u.id }}/mfa-reset" method="post" class="d-inline"
+                  onsubmit="return confirm('Reset MFA {{ u.username }}? User harus setup ulang saat login berikutnya.')">
+              <button class="btn btn-sm btn-outline-warning" title="Reset MFA">
+                <i class="bi bi-shield-x"></i>
+              </button>
+            </form>
+            {% endif %}
             {% if u.id != current_user.id %}
             <form action="/users/{{ u.id }}/delete" method="post" class="d-inline"
                   onsubmit="return confirm('Hapus user {{ u.username }}?')">

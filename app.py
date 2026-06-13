@@ -617,6 +617,25 @@ def inject_globals():
         'ALL_PERMISSIONS': ALL_PERMISSIONS,
     }
 
+# ─── Force MFA setup for all logged-in users ───────────────────────────────────
+
+@app.before_request
+def enforce_mfa_setup():
+    if 'user_id' not in session:
+        return
+    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'static'}
+    if request.endpoint in exempt or (request.endpoint or '').startswith('static'):
+        return
+    try:
+        db   = get_db()
+        user = db.execute('SELECT mfa_enabled FROM users WHERE id=?',
+                          (session['user_id'],)).fetchone()
+        if user and not user['mfa_enabled']:
+            flash('Aktifkan Google Authenticator MFA terlebih dahulu untuk melanjutkan.', 'warning')
+            return redirect(url_for('mfa_setup'))
+    except Exception:
+        pass
+
 # ─── Score Helpers ──────────────────────────────────────────────────────────────
 
 def calc_hs_total(db, eval_id, divisi):
@@ -1058,13 +1077,24 @@ def mfa_setup():
             qr  = qr_png_base64(uri)
             return render_template('mfa_setup.html', user=user, secret=secret, qr=qr, step='verify')
         elif action == 'disable':
-            if session.get('user_role') == 'superadmin':
-                db.execute('UPDATE users SET totp_secret=\'\', mfa_enabled=0 WHERE id=?', (user['id'],))
+            code = request.form.get('code', '').strip()
+            if user['totp_secret'] and verify_totp(user['totp_secret'], code):
+                db.execute("UPDATE users SET totp_secret='', mfa_enabled=0 WHERE id=?", (user['id'],))
                 db.commit()
-                flash('MFA dinonaktifkan', 'warning')
-                return redirect(url_for('profile'))
-            flash('Hanya superadmin yang bisa menonaktifkan MFA', 'danger')
-    return render_template('mfa_setup.html', user=user, step='intro')
+                flash('MFA berhasil dinonaktifkan.', 'warning')
+                return redirect(url_for('mfa_setup'))
+            flash('Kode Authenticator salah. MFA tidak dinonaktifkan.', 'danger')
+    mfa_on = bool(user['mfa_enabled'] and user['totp_secret'])
+    return render_template('mfa_setup.html', user=user, step='intro', mfa_on=mfa_on)
+
+@app.route('/admin/users/<int:uid>/mfa-reset', methods=['POST'])
+@superadmin_required
+def admin_mfa_reset(uid):
+    db = get_db()
+    db.execute("UPDATE users SET totp_secret='', mfa_enabled=0 WHERE id=?", (uid,))
+    db.commit()
+    flash('MFA user berhasil direset. User harus setup ulang saat login berikutnya.', 'warning')
+    return redirect(url_for('users_list'))
 
 @app.route('/logout')
 def logout():
@@ -2356,35 +2386,57 @@ def salary_save():
 @permission_required('manage_salary')
 @mfa_challenge_required('mfa_salary_verified')
 def salary_add_year():
-    """Copy data gaji tahun sebelumnya ke tahun baru dengan kenaikan."""
+    """Buat data gaji untuk tahun baru (salin dari tahun sumber jika ada)."""
     db       = get_db()
     year     = request.form.get('year', type=int)
-    src_year = year - 1
+    src_year = request.form.get('src_year', type=int)
     now      = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    rows     = db.execute('SELECT * FROM employee_salary WHERE year=?', (src_year,)).fetchall()
-    copied   = 0
-    for r in rows:
-        pct    = r['increase_pct'] or 0
-        factor = 1 + pct / 100
-        try:
-            db.execute('''
-                INSERT OR IGNORE INTO employee_salary
-                (employee_id, year, base_salary, al_001, al_002, al_003, al_004,
-                 increase_pct, notes, updated_at)
-                VALUES(?,?,?,?,?,?,?,0,'',?)
-            ''', (r['employee_id'], year,
-                  round((r['base_salary'] or 0) * factor),
-                  round((r['al_001'] or 0) * factor),
-                  round((r['al_002'] or 0) * factor),
-                  round((r['al_003'] or 0) * factor),
-                  round((r['al_004'] or 0) * factor),
-                  now))
-            copied += 1
-        except Exception:
-            pass
+    if not year or year < 2000 or year > 2100:
+        return jsonify({'ok': False, 'msg': 'Tahun tidak valid'})
+
+    # Copy from source year if provided and data exists
+    copied = 0
+    if src_year:
+        rows = db.execute('SELECT * FROM employee_salary WHERE year=?', (src_year,)).fetchall()
+        pct_apply = request.form.get('apply_increase', '0') == '1'
+        for r in rows:
+            pct    = (r['increase_pct'] or 0) if pct_apply else 0
+            factor = 1 + pct / 100
+            try:
+                db.execute('''
+                    INSERT OR IGNORE INTO employee_salary
+                    (employee_id, year, base_salary, al_001, al_002, al_003, al_004,
+                     increase_pct, notes, updated_at)
+                    VALUES(?,?,?,?,?,?,?,0,'',?)
+                ''', (r['employee_id'], year,
+                      round((r['base_salary'] or 0) * factor),
+                      round((r['al_001'] or 0) * factor),
+                      round((r['al_002'] or 0) * factor),
+                      round((r['al_003'] or 0) * factor),
+                      round((r['al_004'] or 0) * factor),
+                      now))
+                copied += 1
+            except Exception:
+                pass
+    else:
+        # Buat baris kosong untuk semua karyawan aktif
+        emps = db.execute("SELECT id FROM employees WHERE status='aktif'").fetchall()
+        for e in emps:
+            try:
+                db.execute('''
+                    INSERT OR IGNORE INTO employee_salary(employee_id, year, updated_at)
+                    VALUES(?,?,?)
+                ''', (e['id'], year, now))
+                copied += 1
+            except Exception:
+                pass
     db.commit()
-    return jsonify({'ok': True, 'copied': copied,
-                    'msg': f'{copied} data gaji disalin ke tahun {year} dengan kenaikan masing-masing'})
+
+    years_available = [r['year'] for r in db.execute(
+        'SELECT DISTINCT year FROM employee_salary ORDER BY year DESC').fetchall()]
+    msg = (f'{copied} data gaji disalin dari tahun {src_year} ke {year}'
+           if src_year else f'Tahun {year} dibuat dengan {copied} baris kosong')
+    return jsonify({'ok': True, 'copied': copied, 'msg': msg, 'years': years_available})
 
 @app.route('/emp/<int:emp_id>/salary', methods=['GET'])
 @permission_required('view_salary')
