@@ -91,7 +91,7 @@
             <th colspan="{{ salary_cols|length + 1 }}" class="py-1" style="background:#1a5c2e">
               KOMPONEN GAJI — TAHUN {{ year }}
             </th>
-            <th colspan="4" class="py-1" style="background:#1a3d7a">
+            <th colspan="5" class="py-1" style="background:#1a3d7a">
               KENAIKAN &amp; PROYEKSI
             </th>
           </tr>
@@ -109,6 +109,10 @@
             <th style="min-width:108px;background:#3a2060;color:#d9c6ff">
               <div class="fw-bold">GROSS {{ prev_year }}</div>
               <div style="color:#b09dd4;font-size:.65rem">tahun sebelumnya</div>
+            </th>
+            <th style="min-width:72px;background:#3a2060;color:#d9c6ff">
+              <div class="fw-bold">% ΔYoY</div>
+              <div style="color:#b09dd4;font-size:.65rem">vs {{ prev_year }}</div>
             </th>
             <th style="min-width:80px;background:#0d2a4d;color:#cce5ff">
               <div class="fw-bold">% NAIK</div>
@@ -128,7 +132,7 @@
           {% if emp.employment_type != group_ns.cur_type %}
             {% set group_ns.cur_type = emp.employment_type %}
             <tr class="group-header">
-              <td colspan="{{ 5 + salary_cols|length + 5 }}"
+              <td colspan="{{ 5 + salary_cols|length + 6 }}"
                   class="fw-bold small py-1 px-3"
                   style="background:{% if emp.employment_type=='kontrak' %}#fff3cd{% else %}#d1ecf1{% endif %}">
                 <i class="bi bi-{% if emp.employment_type=='kontrak' %}file-earmark-text{% else %}person-check{% endif %} me-1"></i>
@@ -170,8 +174,28 @@
             </td>
 
             {# ── Gross tahun sebelumnya (read-only) ── #}
-            <td class="text-end align-middle" style="background:#f3eeff;color:#5a3b99;font-size:.8rem;white-space:nowrap">
+            <td class="text-end align-middle prev-gross-cell"
+                data-prev="{{ prev_gross | int }}"
+                style="background:#f3eeff;color:#5a3b99;font-size:.8rem;white-space:nowrap">
               {{ "{:,.0f}".format(prev_gross) if prev_gross else '—' }}
+            </td>
+
+            {# ── % aktual YoY (gross tahun ini vs tahun lalu) ── #}
+            {% if prev_gross and gross %}
+              {% set yoy = ((gross - prev_gross) / prev_gross * 100) | round(1) %}
+            {% else %}
+              {% set yoy = none %}
+            {% endif %}
+            <td class="text-center align-middle actual-yoy"
+                style="background:#f3eeff;font-size:.8rem;white-space:nowrap">
+              {% if yoy is not none %}
+                <span class="badge {% if yoy > 0 %}bg-success{% elif yoy < 0 %}bg-danger{% else %}bg-secondary{% endif %}"
+                      style="font-size:.72rem">
+                  {% if yoy > 0 %}▲{% elif yoy < 0 %}▼{% endif %}{{ yoy | abs }}%
+                </span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
             </td>
 
             {# ── % Kenaikan ── #}
@@ -205,7 +229,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="{{ 5 + salary_cols|length + 5 }}" class="text-center text-muted py-4">
+          <tr><td colspan="{{ 5 + salary_cols|length + 6 }}" class="text-center text-muted py-4">
             Belum ada data karyawan untuk tahun {{ year }}. Klik "Buka Tahun" untuk membuat.
           </td></tr>
           {% endfor %}
@@ -219,7 +243,8 @@
             <td class="text-end text-muted small align-middle">{{ "{:,.0f}".format(ns2.col_sum) }}</td>
             {% endfor %}
             <td class="text-end text-success align-middle" id="foot-total-gross">{{ "{:,.0f}".format(ns.total_gross) }}</td>
-            <td class="align-middle"></td>{# prev gross total — skip #}
+            <td class="align-middle"></td>{# prev gross — skip #}
+            <td class="align-middle"></td>{# % YoY — skip #}
             <td class="align-middle"></td>{# % naik — skip #}
             <td class="align-middle"></td>{# bulan naik — skip #}
             <td class="text-end text-primary align-middle" id="foot-next-gross">
@@ -296,8 +321,7 @@ const YEAR = {{ year }};
 function recalcSummary() {
   let total = 0;
   document.querySelectorAll('#salaryBody tr[data-emp-id] .salary-total').forEach(td => {
-    const txt = td.textContent.trim().replace(/[^0-9]/g, '');
-    total += parseInt(txt) || 0;
+    total += parseInt(td.textContent.trim().replace(/[^0-9]/g, '')) || 0;
   });
   const fmt = n => n.toLocaleString('id-ID');
   const el1 = document.getElementById('sum-gross-month');
@@ -306,14 +330,30 @@ function recalcSummary() {
   if (el1) el1.textContent = fmt(total);
   if (el2) el2.textContent = fmt(total * 12);
   if (el3) el3.textContent = fmt(total);
-  // Proyeksi total
   let nextTotal = 0;
   document.querySelectorAll('#salaryBody tr[data-emp-id] .next-gross').forEach(td => {
-    const txt = td.textContent.trim().replace(/[^0-9]/g, '');
-    nextTotal += parseInt(txt) || 0;
+    nextTotal += parseInt(td.textContent.trim().replace(/[^0-9]/g, '')) || 0;
   });
   const el4 = document.getElementById('foot-next-gross');
   if (el4) el4.textContent = fmt(nextTotal);
+}
+
+function recalcYoY(row) {
+  const totalTd = row.querySelector('.salary-total');
+  const prevTd  = row.querySelector('.prev-gross-cell');
+  const yoyTd   = row.querySelector('.actual-yoy');
+  if (!totalTd || !prevTd || !yoyTd) return;
+  const cur  = parseInt(totalTd.textContent.replace(/[^0-9]/g, '')) || 0;
+  const prev = parseInt(prevTd.dataset.prev) || 0;
+  if (prev && cur) {
+    const pct  = ((cur - prev) / prev * 100).toFixed(1);
+    const abs  = Math.abs(pct);
+    const cls  = pct > 0 ? 'bg-success' : pct < 0 ? 'bg-danger' : 'bg-secondary';
+    const arr  = pct > 0 ? '▲' : pct < 0 ? '▼' : '';
+    yoyTd.innerHTML = `<span class="badge ${cls}" style="font-size:.72rem">${arr}${abs}%</span>`;
+  } else {
+    yoyTd.innerHTML = '<span class="text-muted">—</span>';
+  }
 }
 
 {% if can_edit %}
@@ -399,6 +439,7 @@ function saveCell(empId, year, field, value, row) {
         if (nextCell && data.next_total !== undefined) {
           nextCell.textContent = data.next_total ? data.next_total.toLocaleString('id-ID') : '—';
         }
+        recalcYoY(row);
         recalcSummary();
       } else if (!data.ok) {
         showToast('Gagal simpan: ' + (data.msg || ''), 'danger');
