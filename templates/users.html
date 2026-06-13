@@ -11,7 +11,7 @@
       <thead class="table-light">
         <tr>
           <th>Username</th><th>Nama Lengkap</th><th class="text-center">Role</th>
-          <th class="text-center">Status</th><th>Login Terakhir</th><th></th>
+          <th class="text-center">Status</th><th class="text-center">MFA</th><th>Login Terakhir</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -33,6 +33,17 @@
               <span class="badge bg-success">Aktif</span>
             {% else %}
               <span class="badge bg-secondary">Nonaktif</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if u.mfa_enabled %}
+              <span class="badge bg-success" title="MFA Aktif">
+                <i class="bi bi-shield-lock-fill me-1"></i>Aktif
+              </span>
+            {% else %}
+              <span class="badge bg-light text-muted border" title="MFA Nonaktif">
+                <i class="bi bi-shield me-1"></i>Off
+              </span>
             {% endif %}
           </td>
           <td class="text-muted small">{{ u.last_login or 'Belum pernah' }}</td>

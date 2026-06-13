@@ -262,11 +262,18 @@
                 <span class="text-muted">{{ emp.phone or '—' }}</span>
               </td>
               <td class="text-end pe-2">
-                <div class="d-flex gap-1 justify-content-end">
+                <div class="d-flex gap-1 justify-content-end flex-wrap">
                   <a href="/emp/{{ emp.id }}/edit" class="btn btn-xs btn-outline-secondary"
                      style="padding:.2rem .5rem;font-size:.75rem" title="Edit">
                     <i class="bi bi-pencil"></i>
                   </a>
+                  {% if 'view_salary' in user_perms %}
+                  <button class="btn btn-xs btn-outline-success"
+                          style="padding:.2rem .5rem;font-size:.75rem" title="Lihat Gaji"
+                          onclick="viewSalary({{ emp.id }}, '{{ emp.name }}')">
+                    <i class="bi bi-cash-coin"></i>
+                  </button>
+                  {% endif %}
                   {% if current_user and current_user.role == 'superadmin' %}
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
                         onsubmit="return confirm('Nonaktifkan {{ emp.name }}?')">
@@ -288,6 +295,36 @@
   </div>
 
 </div><!-- end tab-content -->
+
+<!-- Salary Modal -->
+{% if 'view_salary' in user_perms %}
+<div class="modal fade" id="salaryModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold"><i class="bi bi-cash-coin me-1 text-success"></i> Data Gaji</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="salaryEmpName" class="fw-semibold mb-2 text-muted small"></div>
+        <div id="salaryDisplay" class="text-center py-2">
+          <div class="spinner-border spinner-border-sm text-secondary"></div>
+        </div>
+        {% if 'manage_salary' in user_perms %}
+        <div id="salaryEditArea" class="d-none mt-3">
+          <label class="form-label small fw-semibold">Edit Gaji</label>
+          <input type="text" id="salaryInput" class="form-control form-control-sm"
+                 placeholder="contoh: 5.000.000">
+          <button class="btn btn-sm btn-success w-100 mt-2" onclick="saveSalary()">
+            <i class="bi bi-save me-1"></i>Simpan
+          </button>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Promote Role Modal -->
 {% if current_user and current_user.role == 'superadmin' %}
@@ -335,6 +372,62 @@
 {% endblock %}
 {% block scripts %}
 <script>
+let _salaryEmpId = null;
+
+function viewSalary(empId, empName) {
+  _salaryEmpId = empId;
+  document.getElementById('salaryEmpName').textContent = empName;
+  document.getElementById('salaryDisplay').innerHTML = '<div class="spinner-border spinner-border-sm text-secondary"></div>';
+  const editArea = document.getElementById('salaryEditArea');
+  if (editArea) editArea.classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('salaryModal')).show();
+  fetch('/emp/' + empId + '/salary')
+    .then(r => {
+      if (r.status === 302 || r.redirected) {
+        window.location.href = r.url;
+        return null;
+      }
+      return r.json();
+    })
+    .then(data => {
+      if (!data) return;
+      if (data.ok) {
+        const val = data.salary || '—';
+        document.getElementById('salaryDisplay').innerHTML =
+          `<span class="fs-4 fw-bold text-success">Rp ${val}</span>`;
+        const editArea = document.getElementById('salaryEditArea');
+        if (editArea) {
+          document.getElementById('salaryInput').value = data.salary || '';
+          editArea.classList.remove('d-none');
+        }
+      } else {
+        document.getElementById('salaryDisplay').innerHTML =
+          `<span class="text-danger small">${data.msg}</span>`;
+      }
+    })
+    .catch(() => {
+      window.location.href = '/mfa/challenge';
+    });
+}
+
+function saveSalary() {
+  const salary = document.getElementById('salaryInput').value.trim();
+  fetch('/emp/' + _salaryEmpId + '/salary', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'salary=' + encodeURIComponent(salary)
+  }).then(r => r.json()).then(data => {
+    if (data.ok) {
+      document.getElementById('salaryDisplay').innerHTML =
+        `<span class="fs-4 fw-bold text-success">Rp ${salary}</span>`;
+      document.getElementById('salaryEditArea').classList.add('d-none');
+      setTimeout(() => document.getElementById('salaryEditArea').classList.remove('d-none'), 1500);
+    } else {
+      alert(data.msg || 'Gagal simpan');
+    }
+  });
+}
+
 function openPromote(empId, name, username, role) {
   document.getElementById('promoteEmpName').textContent = name;
   document.getElementById('promoteForm').action = '/emp/' + empId + '/promote-role';

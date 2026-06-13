@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}Kelola Role & Permission{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h5 class="fw-bold mb-0"><i class="bi bi-person-badge text-primary me-2"></i>Kelola Role & Permission</h5>
+  <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addRoleModal">
+    <i class="bi bi-plus-lg me-1"></i>Tambah Role
+  </button>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} py-2 small alert-dismissible fade show">
+    {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+{% endwith %}
+
+{% for role in roles %}
+<div class="card mb-3 shadow-sm">
+  <div class="card-header py-2 d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge {% if role.name == 'superadmin' %}bg-danger{% elif role.name == 'admin' %}bg-primary{% elif role.name == 'viewer' %}bg-secondary{% else %}bg-success{% endif %} fw-semibold">
+        {{ role.name | upper }}
+      </span>
+      <span class="text-muted small">{{ role.description }}</span>
+      {% if role.is_system %}<span class="badge bg-light text-muted border small">sistem</span>{% endif %}
+    </div>
+    {% if not role.is_system %}
+    <form method="POST" class="mb-0" onsubmit="return confirm('Hapus role {{ role.name }}?')">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="role_name" value="{{ role.name }}">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash"></i></button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin_role_perms', role_name=role.name) }}">
+      <div class="row g-2">
+        {% for perm, label in all_permissions.items() %}
+        <div class="col-md-6 col-lg-4">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="permissions"
+                   value="{{ perm }}" id="perm_{{ role.name }}_{{ perm }}"
+                   {% if perm in perms_by_role[role.name] %}checked{% endif %}
+                   {% if role.name == 'superadmin' %}disabled{% endif %}>
+            <label class="form-check-label small" for="perm_{{ role.name }}_{{ perm }}">
+              <b>{{ perm }}</b><br>
+              <span class="text-muted" style="font-size:.78rem">{{ label }}</span>
+            </label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if role.name != 'superadmin' %}
+      <div class="mt-3">
+        <button type="submit" class="btn btn-sm btn-primary">
+          <i class="bi bi-save me-1"></i>Simpan Permission
+        </button>
+      </div>
+      {% else %}
+      <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>Superadmin selalu memiliki semua permission dan tidak dapat diubah.</p>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+<!-- Modal Tambah Role -->
+<div class="modal fade" id="addRoleModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST">
+        <input type="hidden" name="action" value="add">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold"><i class="bi bi-plus-circle me-1"></i>Tambah Role Baru</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Nama Role</label>
+            <input type="text" name="name" class="form-control form-control-sm"
+                   placeholder="contoh: hr_manager" required>
+            <div class="form-text">Huruf kecil, tanpa spasi (spasi otomatis jadi _)</div>
+          </div>
+          <div class="mb-0">
+            <label class="form-label fw-semibold small">Deskripsi</label>
+            <input type="text" name="description" class="form-control form-control-sm"
+                   placeholder="HR Manager — kelola data karyawan">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary btn-sm">Tambah Role</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

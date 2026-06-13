@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block title %}Setup MFA{% endblock %}
+{% block content %}
+<div class="row justify-content-center mt-3">
+  <div class="col-md-7 col-lg-6">
+
+    {% if step == 'intro' %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <div class="text-center mb-4">
+          <div style="width:60px;height:60px;background:linear-gradient(135deg,#25D366,#1a9e4a);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px">
+            <i class="bi bi-shield-lock-fill text-white" style="font-size:1.6rem"></i>
+          </div>
+          <h5 class="fw-bold mb-1">Google Authenticator MFA</h5>
+          <p class="text-muted small">Tambahkan lapisan keamanan ekstra ke akun Anda</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} py-2 small">{{ msg }}</div>
+          {% endfor %}
+        {% endwith %}
+
+        {% if user.mfa_enabled %}
+        <div class="alert alert-success d-flex align-items-center gap-2 py-2">
+          <i class="bi bi-shield-check-fill text-success fs-5"></i>
+          <div><b>MFA Aktif</b> — Akun Anda dilindungi Google Authenticator</div>
+        </div>
+        {% if current_user.role == 'superadmin' %}
+        <form method="POST" class="mt-3" onsubmit="return confirm('Yakin nonaktifkan MFA? Ini akan menurunkan keamanan akun.')">
+          <input type="hidden" name="action" value="disable">
+          <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+            <i class="bi bi-shield-x me-1"></i> Nonaktifkan MFA
+          </button>
+        </form>
+        {% endif %}
+        {% else %}
+        <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
+          <i class="bi bi-exclamation-triangle-fill text-warning fs-5"></i>
+          <div>MFA belum aktif — akun rentan tanpa 2FA</div>
+        </div>
+        <ol class="small text-muted ps-3 mb-4">
+          <li class="mb-1">Install <b>Google Authenticator</b> di HP Anda</li>
+          <li class="mb-1">Klik <b>Aktifkan MFA</b> di bawah</li>
+          <li class="mb-1">Scan QR code yang muncul</li>
+          <li>Masukkan kode 6 digit untuk verifikasi</li>
+        </ol>
+        <form method="POST">
+          <input type="hidden" name="action" value="generate">
+          <button type="submit" class="btn btn-primary w-100 fw-bold">
+            <i class="bi bi-qr-code me-1"></i> Aktifkan MFA — Tampilkan QR Code
+          </button>
+        </form>
+        {% endif %}
+
+        <div class="text-center mt-3">
+          <a href="{{ url_for('profile') }}" class="text-muted small">
+            <i class="bi bi-arrow-left me-1"></i>Kembali ke Profil
+          </a>
+        </div>
+      </div>
+    </div>
+
+    {% elif step == 'verify' %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-1"><i class="bi bi-qr-code me-2 text-primary"></i>Scan QR Code</h5>
+        <p class="text-muted small mb-3">Buka Google Authenticator → Tambah akun → Scan QR</p>
+
+        <div class="text-center my-3">
+          <img src="data:image/png;base64,{{ qr }}" alt="QR Code MFA"
+               style="width:200px;height:200px;border:8px solid #fff;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.15)">
+        </div>
+
+        <div class="alert alert-light border py-2 text-center small mb-3">
+          <b>Tidak bisa scan?</b> Masukkan kode manual:<br>
+          <code class="fw-bold" style="letter-spacing:.15em;font-size:1rem">{{ secret }}</code>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} py-2 small">{{ msg }}</div>
+          {% endfor %}
+        {% endwith %}
+
+        <form method="POST" autocomplete="off">
+          <input type="hidden" name="action" value="verify">
+          <input type="hidden" name="secret" value="{{ secret }}">
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Kode Verifikasi (6 digit)</label>
+            <input type="text" name="code" class="form-control form-control-lg text-center fw-bold"
+                   inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="000000" autofocus
+                   style="letter-spacing:.5em;font-size:2rem">
+          </div>
+          <button type="submit" class="btn btn-success w-100 fw-bold">
+            <i class="bi bi-check-circle me-1"></i> Verifikasi & Aktifkan MFA
+          </button>
+        </form>
+        <div class="text-center mt-2">
+          <a href="{{ url_for('mfa_setup') }}" class="text-muted small">Batal</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

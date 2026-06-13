@@ -350,21 +350,32 @@
   <div class="sidebar-section">Konfigurasi</div>
   <ul class="sidebar-nav">
     <li>
-      <a href="/admin" class="{{ 'active' if '/admin' in request.path and '/divisions' not in request.path }}">
+      <a href="/admin" class="{{ 'active' if '/admin' in request.path and '/divisions' not in request.path and '/roles' not in request.path }}">
         <i class="bi bi-sliders nav-icon"></i> Template Evaluasi
       </a>
     </li>
-    {% if current_user.role == 'superadmin' %}
+    {% if 'manage_roles' in user_perms %}
+    <li>
+      <a href="/admin/roles" class="{{ 'active' if '/admin/roles' in request.path }}">
+        <i class="bi bi-person-badge nav-icon"></i> Role & Permission
+      </a>
+    </li>
+    {% endif %}
+    {% if 'manage_users' in user_perms %}
     <li>
       <a href="/users" class="{{ 'active' if '/users' in request.path }}">
         <i class="bi bi-person-gear nav-icon"></i> Kelola User
       </a>
     </li>
+    {% endif %}
+    {% if 'manage_divisions' in user_perms %}
     <li>
       <a href="/admin/divisions" class="{{ 'active' if '/divisions' in request.path }}">
         <i class="bi bi-diagram-3 nav-icon"></i> Manajemen Divisi
       </a>
     </li>
+    {% endif %}
+    {% if 'manage_settings' in user_perms %}
     <li>
       <a href="/settings" class="{{ 'active' if '/settings' in request.path }}">
         <i class="bi bi-gear nav-icon"></i> Pengaturan Notifikasi
@@ -382,12 +393,20 @@
         </div>
         <div class="user-info">
           <div class="user-name">{{ current_user.name }}</div>
-          <div class="user-role">{{ current_user.role | upper }}</div>
+          <div class="user-role">
+            {{ current_user.role | upper }}
+            {% if session.get('user_id') %}
+              {# MFA indicator — needs request context; use inline check #}
+            {% endif %}
+          </div>
         </div>
       </div>
       <ul class="dropdown-menu dropdown-menu-end">
         <li><a class="dropdown-item" href="/profile">
           <i class="bi bi-person-gear me-1"></i> Profil & Password
+        </a></li>
+        <li><a class="dropdown-item" href="{{ url_for('mfa_setup') }}">
+          <i class="bi bi-shield-lock me-1"></i> Keamanan MFA
         </a></li>
         <li><hr class="dropdown-divider"></li>
         <li><a class="dropdown-item text-danger" href="/logout">

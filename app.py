@@ -1,12 +1,13 @@
 from flask import (Flask, render_template, request, redirect, url_for,
-                   flash, g, session, jsonify)
+                   flash, g, session, jsonify, Response)
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-import sqlite3, os, smtplib, json, secrets, requests as req_lib
+import sqlite3, os, smtplib, json, secrets, requests as req_lib, io, base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, date, timedelta
 from seed_data import ALL_DIVISIONS, ABILITY_ITEMS
+import pyotp, qrcode
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'evalkey-2024-superadmin-secure!')
@@ -205,6 +206,18 @@ CREATE TABLE IF NOT EXISTS divisions (
     sort_order INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT DEFAULT '',
+    is_system INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role_name TEXT NOT NULL,
+    permission TEXT NOT NULL,
+    PRIMARY KEY (role_name, permission)
+);
 """
 
 MIGRATIONS = [
@@ -228,6 +241,9 @@ MIGRATIONS = [
     ('evaluations', 'reviewed_by',       'INTEGER DEFAULT NULL'),
     ('evaluations', 'reviewed_at',       "TEXT DEFAULT ''"),
     ('evaluations', 'review_notes',      "TEXT DEFAULT ''"),
+    ('users',       'totp_secret',       "TEXT DEFAULT ''"),
+    ('users',       'mfa_enabled',       "INTEGER DEFAULT 0"),
+    ('employees',   'salary',            "TEXT DEFAULT ''"),
 ]
 
 DEFAULT_SETTINGS = {
@@ -252,6 +268,27 @@ DEFAULT_SETTINGS = {
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director']
+
+ALL_PERMISSIONS = {
+    'manage_users':       'Kelola pengguna (tambah/edit/hapus)',
+    'manage_roles':       'Kelola role dan permission',
+    'manage_settings':    'Pengaturan notifikasi sistem',
+    'manage_template':    'Edit template evaluasi (skill/kompetensi/ability)',
+    'manage_employees':   'Tambah/edit/hapus data karyawan',
+    'manage_divisions':   'Kelola divisi',
+    'manage_evaluations': 'Buat/hapus evaluasi karyawan',
+    'view_evaluations':   'Lihat hasil evaluasi',
+    'send_reminders':     'Kirim reminder kontrak',
+    'view_salary':        'Lihat data gaji karyawan',
+    'manage_salary':      'Edit data gaji karyawan',
+}
+
+SYSTEM_ROLE_DEFAULTS = {
+    'superadmin': list(ALL_PERMISSIONS.keys()),
+    'admin': ['manage_employees','manage_divisions','manage_evaluations',
+              'view_evaluations','send_reminders','manage_template'],
+    'viewer': ['view_evaluations'],
+}
 
 def init_db():
     db = sqlite3.connect(DB_PATH)
@@ -287,6 +324,12 @@ def init_db():
     if db.execute('SELECT COUNT(*) FROM divisions').fetchone()[0] == 0:
         for i, name in enumerate(ALL_DIVISIONS.keys()):
             db.execute('INSERT OR IGNORE INTO divisions(name, sort_order) VALUES(?,?)', (name, i))
+    # Seed system roles
+    for rname, rdesc, rsys in [('superadmin','Super Administrator',1),('admin','Administrator',1),('viewer','Viewer Read-Only',1)]:
+        db.execute('INSERT OR IGNORE INTO roles(name,description,is_system) VALUES(?,?,?)', (rname, rdesc, rsys))
+    for rname, perms in SYSTEM_ROLE_DEFAULTS.items():
+        for perm in perms:
+            db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
     db.commit()
     db.close()
 
@@ -369,6 +412,72 @@ def get_notification_wa_phones(settings, emp_phone=''):
         if p and p not in phones:
             phones.append(p)
     return phones
+
+# ─── RBAC Helpers ─────────────────────────────────────────────────────────────
+
+def get_role_permissions(db, role_name):
+    rows = db.execute('SELECT permission FROM role_permissions WHERE role_name=?', (role_name,)).fetchall()
+    return {r['permission'] for r in rows}
+
+def has_permission(role_name, permission, db=None):
+    if role_name == 'superadmin':
+        return True
+    if db is None:
+        return False
+    return permission in get_role_permissions(db, role_name)
+
+def permission_required(perm):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+            db = get_db()
+            if not has_permission(session.get('user_role', ''), perm, db):
+                flash(f'Akses ditolak — permission "{perm}" diperlukan', 'danger')
+                return redirect(url_for('index'))
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+# ─── MFA Helpers ──────────────────────────────────────────────────────────────
+
+MFA_CHALLENGE_TTL = 900  # 15 menit
+
+def generate_totp_secret():
+    return pyotp.random_base32()
+
+def get_totp_uri(secret, username, issuer='Evaluasi Kinerja'):
+    return pyotp.totp.TOTP(secret).provisioning_uri(name=username, issuer_name=issuer)
+
+def verify_totp(secret, code):
+    return pyotp.TOTP(secret).verify((code or '').strip(), valid_window=1)
+
+def qr_png_base64(uri):
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return base64.b64encode(buf.getvalue()).decode()
+
+def mfa_session_valid(session_key):
+    ts = session.get(session_key, 0)
+    return (datetime.now().timestamp() - ts) < MFA_CHALLENGE_TTL
+
+def mfa_challenge_required(session_key='mfa_verified'):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+            db = get_db()
+            user = db.execute('SELECT mfa_enabled FROM users WHERE id=?', (session['user_id'],)).fetchone()
+            if user and user['mfa_enabled'] and not mfa_session_valid(session_key):
+                session['mfa_return_to']   = request.url
+                session['mfa_session_key'] = session_key
+                return redirect(url_for('mfa_challenge'))
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 def get_chain_contacts(db, emp):
     """Ambil data co-leader (supervisor), leader, dan manager dari employee record.
@@ -465,11 +574,15 @@ def superadmin_required(f):
 def inject_globals():
     pending    = 0
     divisi_list = DIVISI_LIST
+    user_perms  = set()
     if 'user_id' in session:
         try:
             db = get_db()
             pending     = get_pending_review_count(db, session['user_id'], session.get('user_role', ''))
             divisi_list = get_divisi_list(db)
+            user_perms  = get_role_permissions(db, session.get('user_role', ''))
+            if session.get('user_role') == 'superadmin':
+                user_perms = set(ALL_PERMISSIONS.keys())
         except Exception:
             pass
     return {
@@ -479,11 +592,13 @@ def inject_globals():
             'name':     session.get('user_name'),
             'role':     session.get('user_role'),
         } if 'user_id' in session else None,
-        'now_year':      date.today().year,
-        'today_date':    date.today().isoformat(),
+        'now_year':        date.today().year,
+        'today_date':      date.today().isoformat(),
         'pending_reviews': pending,
-        'divisi_list':   divisi_list,
-        'level_choices': LEVEL_CHOICES,
+        'divisi_list':     divisi_list,
+        'level_choices':   LEVEL_CHOICES,
+        'user_perms':      user_perms,
+        'ALL_PERMISSIONS': ALL_PERMISSIONS,
     }
 
 # ─── Score Helpers ──────────────────────────────────────────────────────────────
@@ -845,6 +960,10 @@ def login():
         user = db.execute('SELECT * FROM users WHERE username=? AND is_active=1',
                           (username,)).fetchone()
         if user and check_password_hash(user['password_hash'], password):
+            if user['mfa_enabled'] and user['totp_secret']:
+                session['pending_mfa_user_id']   = user['id']
+                session['pending_mfa_next']       = request.args.get('next') or url_for('index')
+                return redirect(url_for('login_mfa'))
             session['user_id']   = user['id']
             session['username']  = user['username']
             session['user_name'] = user['full_name'] or user['username']
@@ -856,6 +975,80 @@ def login():
             return redirect(request.args.get('next') or url_for('index'))
         flash('Username atau password salah', 'danger')
     return render_template('login.html')
+
+@app.route('/login/mfa', methods=['GET', 'POST'])
+def login_mfa():
+    pending_id = session.get('pending_mfa_user_id')
+    if not pending_id:
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        code = request.form.get('code', '').strip()
+        db   = get_db()
+        user = db.execute('SELECT * FROM users WHERE id=?', (pending_id,)).fetchone()
+        if user and verify_totp(user['totp_secret'], code):
+            session.pop('pending_mfa_user_id', None)
+            next_url = session.pop('pending_mfa_next', url_for('index'))
+            session['user_id']   = user['id']
+            session['username']  = user['username']
+            session['user_name'] = user['full_name'] or user['username']
+            session['user_role'] = user['role']
+            db.execute('UPDATE users SET last_login=? WHERE id=?',
+                       (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
+            db.commit()
+            flash(f'Selamat datang, {session["user_name"]}!', 'success')
+            return redirect(next_url)
+        flash('Kode MFA salah atau kadaluarsa. Coba lagi.', 'danger')
+    return render_template('mfa_login.html')
+
+@app.route('/mfa/challenge', methods=['GET', 'POST'])
+@login_required
+def mfa_challenge():
+    if request.method == 'POST':
+        code = request.form.get('code', '').strip()
+        db   = get_db()
+        user = db.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        if user and verify_totp(user['totp_secret'], code):
+            sk = session.pop('mfa_session_key', 'mfa_verified')
+            session[sk] = datetime.now().timestamp()
+            return redirect(session.pop('mfa_return_to', url_for('index')))
+        flash('Kode MFA salah', 'danger')
+    return render_template('mfa_challenge.html')
+
+@app.route('/profile/mfa/setup', methods=['GET', 'POST'])
+@login_required
+def mfa_setup():
+    db   = get_db()
+    user = db.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone()
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'generate':
+            secret = generate_totp_secret()
+            session['pending_totp_secret'] = secret
+            uri    = get_totp_uri(secret, user['username'])
+            qr     = qr_png_base64(uri)
+            return render_template('mfa_setup.html', user=user, secret=secret, qr=qr, step='verify')
+        elif action == 'verify':
+            secret = session.get('pending_totp_secret', '')
+            code   = request.form.get('code', '').strip()
+            if secret and verify_totp(secret, code):
+                db.execute('UPDATE users SET totp_secret=?, mfa_enabled=1 WHERE id=?',
+                           (secret, user['id']))
+                db.commit()
+                session.pop('pending_totp_secret', None)
+                flash('Google Authenticator MFA berhasil diaktifkan!', 'success')
+                return redirect(url_for('profile'))
+            flash('Kode verifikasi salah. Scan ulang QR dan coba lagi.', 'danger')
+            uri = get_totp_uri(secret, user['username'])
+            qr  = qr_png_base64(uri)
+            return render_template('mfa_setup.html', user=user, secret=secret, qr=qr, step='verify')
+        elif action == 'disable':
+            if session.get('user_role') == 'superadmin':
+                db.execute('UPDATE users SET totp_secret=\'\', mfa_enabled=0 WHERE id=?', (user['id'],))
+                db.commit()
+                flash('MFA dinonaktifkan', 'warning')
+                return redirect(url_for('profile'))
+            flash('Hanya superadmin yang bisa menonaktifkan MFA', 'danger')
+    return render_template('mfa_setup.html', user=user, step='intro')
 
 @app.route('/logout')
 def logout():
@@ -1906,6 +2099,196 @@ def emp_promote_role(emp_id):
             flash(f'Akun "{username}" dibuat untuk {emp["name"]} sebagai {role.upper()}', 'success')
     return redirect(url_for('karyawan'))
 
+
+# ─── Role Management ──────────────────────────────────────────────────────────
+
+@app.route('/admin/roles', methods=['GET', 'POST'])
+@permission_required('manage_roles')
+def admin_roles():
+    db = get_db()
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            name = request.form.get('name', '').strip().lower().replace(' ', '_')
+            desc = request.form.get('description', '').strip()
+            if name:
+                try:
+                    db.execute('INSERT INTO roles(name,description,is_system) VALUES(?,?,0)', (name, desc))
+                    db.commit()
+                    flash(f'Role "{name}" ditambahkan', 'success')
+                except Exception:
+                    flash('Nama role sudah ada', 'danger')
+        elif action == 'delete':
+            rname = request.form.get('role_name', '')
+            is_sys = db.execute('SELECT is_system FROM roles WHERE name=?', (rname,)).fetchone()
+            if is_sys and is_sys['is_system']:
+                flash('Role sistem tidak bisa dihapus', 'danger')
+            else:
+                db.execute('DELETE FROM roles WHERE name=?', (rname,))
+                db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
+                db.commit()
+                flash(f'Role "{rname}" dihapus', 'warning')
+        return redirect(url_for('admin_roles'))
+    roles = db.execute('SELECT * FROM roles ORDER BY is_system DESC, name').fetchall()
+    perms_by_role = {}
+    for r in roles:
+        perms_by_role[r['name']] = get_role_permissions(db, r['name'])
+    return render_template('admin_roles.html', roles=roles, perms_by_role=perms_by_role,
+                           all_permissions=ALL_PERMISSIONS)
+
+@app.route('/admin/roles/<role_name>/permissions', methods=['POST'])
+@permission_required('manage_roles')
+def admin_role_perms(role_name):
+    db = get_db()
+    selected = set(request.form.getlist('permissions'))
+    db.execute('DELETE FROM role_permissions WHERE role_name=?', (role_name,))
+    for perm in selected:
+        if perm in ALL_PERMISSIONS:
+            db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)',
+                       (role_name, perm))
+    db.commit()
+    flash(f'Permission role "{role_name}" diperbarui', 'success')
+    return redirect(url_for('admin_roles'))
+
+# ─── Template Editor ──────────────────────────────────────────────────────────
+
+@app.route('/admin/template/<path:divisi>', methods=['POST'])
+@permission_required('manage_template')
+def admin_template_edit(divisi):
+    db     = get_db()
+    action = request.form.get('action')
+
+    if action == 'add_category':
+        name  = request.form.get('name', '').strip()
+        if name:
+            max_o = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM skill_categories WHERE divisi=?', (divisi,)).fetchone()[0]
+            db.execute('INSERT INTO skill_categories(divisi,name,sort_order) VALUES(?,?,?)', (divisi, name, max_o+1))
+            db.commit()
+            flash(f'Kategori "{name}" ditambahkan', 'success')
+
+    elif action == 'edit_category':
+        cid  = request.form.get('id')
+        name = request.form.get('name', '').strip()
+        if cid and name:
+            db.execute('UPDATE skill_categories SET name=? WHERE id=? AND divisi=?', (name, cid, divisi))
+            db.commit()
+            flash('Kategori diperbarui', 'success')
+
+    elif action == 'delete_category':
+        cid = request.form.get('id')
+        if cid:
+            db.execute('DELETE FROM skill_categories WHERE id=? AND divisi=?', (cid, divisi))
+            db.commit()
+            flash('Kategori dihapus', 'warning')
+
+    elif action == 'add_skill':
+        cat_id = request.form.get('category_id')
+        name   = request.form.get('name', '').strip()
+        desc   = request.form.get('description', '').strip()
+        bobot  = request.form.get('bobot', '1')
+        if cat_id and name:
+            max_o = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM skill_items WHERE category_id=?', (cat_id,)).fetchone()[0]
+            db.execute('INSERT INTO skill_items(category_id,name,description,bobot,sort_order) VALUES(?,?,?,?,?)',
+                       (cat_id, name, desc, float(bobot), max_o+1))
+            db.commit()
+            flash(f'Skill "{name}" ditambahkan', 'success')
+
+    elif action == 'edit_skill':
+        sid   = request.form.get('id')
+        name  = request.form.get('name', '').strip()
+        desc  = request.form.get('description', '').strip()
+        bobot = request.form.get('bobot', '1')
+        if sid and name:
+            db.execute('UPDATE skill_items SET name=?,description=?,bobot=? WHERE id=?',
+                       (name, desc, float(bobot), sid))
+            db.commit()
+            flash('Skill diperbarui', 'success')
+
+    elif action == 'delete_skill':
+        sid = request.form.get('id')
+        if sid:
+            db.execute('DELETE FROM skill_items WHERE id=?', (sid,))
+            db.commit()
+            flash('Skill dihapus', 'warning')
+
+    elif action == 'add_competency':
+        measurement = request.form.get('point_measurement', '').strip()
+        bobot       = request.form.get('bobot', '0')
+        is_hs       = 1 if request.form.get('is_hardskill') else 0
+        if measurement:
+            max_o = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM competency_items WHERE divisi=?', (divisi,)).fetchone()[0]
+            db.execute('INSERT INTO competency_items(divisi,point_measurement,bobot,sort_order,is_hardskill) VALUES(?,?,?,?,?)',
+                       (divisi, measurement, float(bobot), max_o+1, is_hs))
+            db.commit()
+            flash('Kompetensi ditambahkan', 'success')
+
+    elif action == 'edit_competency':
+        cid  = request.form.get('id')
+        meas = request.form.get('point_measurement', '').strip()
+        bob  = request.form.get('bobot', '0')
+        is_hs = 1 if request.form.get('is_hardskill') else 0
+        if cid and meas:
+            db.execute('UPDATE competency_items SET point_measurement=?,bobot=?,is_hardskill=? WHERE id=?',
+                       (meas, float(bob), is_hs, cid))
+            db.commit()
+            flash('Kompetensi diperbarui', 'success')
+
+    elif action == 'delete_competency':
+        cid = request.form.get('id')
+        if cid:
+            db.execute('DELETE FROM competency_items WHERE id=?', (cid,))
+            db.commit()
+            flash('Kompetensi dihapus', 'warning')
+
+    elif action == 'add_ability':
+        name = request.form.get('name','').strip()
+        if name:
+            max_o = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM ability_items WHERE divisi=?', (divisi,)).fetchone()[0]
+            db.execute('INSERT INTO ability_items(divisi,name,desc_a,desc_b,desc_c,desc_d,sort_order) VALUES(?,?,?,?,?,?,?)',
+                       (divisi, name, request.form.get('desc_a',''), request.form.get('desc_b',''),
+                        request.form.get('desc_c',''), request.form.get('desc_d',''), max_o+1))
+            db.commit()
+            flash('Ability ditambahkan', 'success')
+
+    elif action == 'edit_ability':
+        aid = request.form.get('id')
+        if aid:
+            db.execute('UPDATE ability_items SET name=?,desc_a=?,desc_b=?,desc_c=?,desc_d=? WHERE id=?',
+                       (request.form.get('name',''), request.form.get('desc_a',''), request.form.get('desc_b',''),
+                        request.form.get('desc_c',''), request.form.get('desc_d',''), aid))
+            db.commit()
+            flash('Ability diperbarui', 'success')
+
+    elif action == 'delete_ability':
+        aid = request.form.get('id')
+        if aid:
+            db.execute('DELETE FROM ability_items WHERE id=?', (aid,))
+            db.commit()
+            flash('Ability dihapus', 'warning')
+
+    return redirect(url_for('admin_divisi', divisi=divisi) + '#' + request.form.get('tab','tab-skill'))
+
+# ─── Salary (MFA protected) ───────────────────────────────────────────────────
+
+@app.route('/emp/<int:emp_id>/salary', methods=['GET'])
+@permission_required('view_salary')
+@mfa_challenge_required('mfa_salary_verified')
+def emp_salary_view(emp_id):
+    db  = get_db()
+    emp = db.execute('SELECT id, name, salary FROM employees WHERE id=?', (emp_id,)).fetchone()
+    if not emp:
+        return jsonify({'ok': False, 'msg': 'Karyawan tidak ditemukan'})
+    return jsonify({'ok': True, 'salary': emp['salary'] or '', 'name': emp['name']})
+
+@app.route('/emp/<int:emp_id>/salary', methods=['POST'])
+@permission_required('manage_salary')
+@mfa_challenge_required('mfa_salary_verified')
+def emp_salary_update(emp_id):
+    db     = get_db()
+    salary = request.form.get('salary', '').strip()
+    db.execute('UPDATE employees SET salary=? WHERE id=?', (salary, emp_id))
+    db.commit()
+    return jsonify({'ok': True, 'msg': 'Gaji disimpan'})
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 
