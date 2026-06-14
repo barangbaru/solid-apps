@@ -333,6 +333,16 @@
     </li>
     {% if current_user.role == 'superadmin' %}
     <li>
+      <a href="/portal/users" class="{{ 'active' if '/portal/users' in request.path }}">
+        <i class="bi bi-people nav-icon"></i> Kelola User
+      </a>
+    </li>
+    <li>
+      <a href="/portal/roles" class="{{ 'active' if '/portal/roles' in request.path }}">
+        <i class="bi bi-person-badge nav-icon"></i> Role & Permission
+      </a>
+    </li>
+    <li>
       <a href="/portal/settings" class="{{ 'active' if request.path == '/portal/settings' }}">
         <i class="bi bi-shield-lock nav-icon"></i> Akses Aplikasi
       </a>
@@ -391,20 +401,6 @@
         <i class="bi bi-sliders nav-icon"></i> Template Evaluasi
       </a>
     </li>
-    {% if 'manage_roles' in user_perms %}
-    <li>
-      <a href="/admin/roles" class="{{ 'active' if '/admin/roles' in request.path }}">
-        <i class="bi bi-person-badge nav-icon"></i> Role & Permission
-      </a>
-    </li>
-    {% endif %}
-    {% if 'manage_users' in user_perms %}
-    <li>
-      <a href="/users" class="{{ 'active' if '/users' in request.path }}">
-        <i class="bi bi-person-gear nav-icon"></i> Kelola User
-      </a>
-    </li>
-    {% endif %}
     {% if 'manage_divisions' in user_perms %}
     <li>
       <a href="/admin/divisions" class="{{ 'active' if '/divisions' in request.path }}">

@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% block title %}Kelola User — super-us{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Kelola User</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-people text-primary me-2"></i>Kelola User</h5>
+    <div class="text-muted small mt-1">Manajemen akun pengguna super-us</div>
+  </div>
+  <a href="/portal/users/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-person-plus me-1"></i>Tambah User
+  </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">Username</th>
+          <th>Nama / Kontak</th>
+          <th class="text-center">Role</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">MFA</th>
+          <th>Akses App</th>
+          <th>Login Terakhir</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td class="ps-3 fw-semibold">
+            <i class="bi bi-{% if u.role=='superadmin' %}shield-fill-check text-warning{% else %}person-badge text-primary{% endif %} me-1"></i>
+            {{ u.username }}
+            {% if u.id == current_user.id %}<span class="badge bg-info ms-1" style="font-size:.6rem">Anda</span>{% endif %}
+          </td>
+          <td class="small">
+            {% set emp_c = linked_emps.get(u.id) %}
+            <div class="fw-semibold" style="font-size:.85rem">{{ u.full_name or '—' }}</div>
+            {% if u.email or (emp_c and emp_c.email) %}
+            <div class="text-muted"><i class="bi bi-envelope me-1"></i>{{ u.email or emp_c.email }}
+              {% if not u.email and emp_c %}<span class="badge bg-light text-muted border ms-1" style="font-size:.58rem">karyawan</span>{% endif %}
+            </div>{% endif %}
+            {% if u.phone or (emp_c and emp_c.phone) %}
+            <div class="text-muted"><i class="bi bi-whatsapp me-1 text-success"></i>{{ u.phone or emp_c.phone }}</div>{% endif %}
+          </td>
+          <td class="text-center">
+            <span class="badge {{ 'bg-warning text-dark' if u.role=='superadmin' else 'bg-primary' }}">{{ u.role|upper }}</span>
+          </td>
+          <td class="text-center">
+            <span class="badge {{ 'bg-success' if u.is_active else 'bg-secondary' }}">
+              {{ 'Aktif' if u.is_active else 'Nonaktif' }}
+            </span>
+          </td>
+          <td class="text-center">
+            {% if u.mfa_enabled %}
+            <span class="badge bg-success"><i class="bi bi-shield-lock-fill me-1"></i>Aktif</span>
+            {% else %}
+            <span class="badge bg-light text-muted border"><i class="bi bi-shield me-1"></i>Off</span>
+            {% endif %}
+          </td>
+          <td class="small">
+            {% if u.role == 'superadmin' %}
+            <span class="text-muted"><i class="bi bi-infinity me-1"></i>Semua App</span>
+            {% else %}
+              {% set acc = user_access.get(u.id, {}) %}
+              {% for app in apps %}
+                {% if app.slug in acc %}
+                <span class="badge bg-light border text-dark me-1" style="font-size:.68rem">
+                  {{ app.name }} <span class="text-muted">({{ acc[app.slug] }})</span>
+                </span>
+                {% endif %}
+              {% endfor %}
+              {% if not acc %}<span class="text-muted">—</span>{% endif %}
+            {% endif %}
+          </td>
+          <td class="text-muted small">{{ u.last_login or '—' }}</td>
+          <td class="text-end pe-3">
+            <a href="/portal/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-pencil"></i>
+            </a>
+            {% if u.email or u.phone or u.telegram_id %}
+            <form action="/portal/users/{{ u.id }}/send-reset" method="post" class="d-inline"
+                  data-confirm="Kirim link reset password ke {{ u.username | e }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
+              <button class="btn btn-sm btn-outline-info" title="Reset Password">
+                <i class="bi bi-key"></i>
+              </button>
+            </form>
+            {% endif %}
+            {% if u.mfa_enabled and u.id != current_user.id %}
+            <form action="/portal/users/{{ u.id }}/mfa-reset" method="post" class="d-inline"
+                  data-confirm="Reset MFA {{ u.username | e }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
+              <button class="btn btn-sm btn-outline-warning" title="Reset MFA">
+                <i class="bi bi-shield-x"></i>
+              </button>
+            </form>
+            {% endif %}
+            {% if u.id != current_user.id %}
+            <form action="/portal/users/{{ u.id }}/delete" method="post" class="d-inline"
+                  data-confirm="Nonaktifkan user {{ u.username | e }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
+              <button class="btn btn-sm btn-outline-danger" title="Nonaktifkan">
+                <i class="bi bi-person-x"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -306,6 +306,7 @@ MIGRATIONS = [
     ('users',       'telegram_id',       "TEXT DEFAULT ''"),
     ('employees',   'salary',            "TEXT DEFAULT ''"),
     ('employee_salary', 'increase_date', "TEXT DEFAULT ''"),
+    ('roles',           'app_slug',      "TEXT DEFAULT 'evaluasi'"),
 ]
 
 DEFAULT_SETTINGS = {
@@ -332,19 +333,30 @@ DEFAULT_SETTINGS = {
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director']
 
-ALL_PERMISSIONS = {
-    'manage_users':       'Kelola pengguna (tambah/edit/hapus)',
-    'manage_roles':       'Kelola role dan permission',
-    'manage_settings':    'Pengaturan notifikasi sistem',
-    'manage_template':    'Edit template evaluasi (skill/kompetensi/ability)',
-    'manage_employees':   'Tambah/edit/hapus data karyawan',
-    'manage_divisions':   'Kelola divisi',
-    'manage_evaluations': 'Buat/hapus evaluasi karyawan',
-    'view_evaluations':   'Lihat hasil evaluasi',
-    'send_reminders':     'Kirim reminder kontrak',
-    'view_salary':        'Lihat data gaji karyawan',
-    'manage_salary':      'Edit data gaji karyawan',
+# Permissions per-app. Portal-level (manage_users, manage_roles) dikelola via superadmin.
+APP_PERMISSIONS = {
+    'evaluasi': {
+        'manage_settings':    'Pengaturan notifikasi sistem',
+        'manage_template':    'Edit template evaluasi (skill/kompetensi/ability)',
+        'manage_employees':   'Tambah/edit/hapus data karyawan',
+        'manage_divisions':   'Kelola divisi',
+        'manage_evaluations': 'Buat/hapus evaluasi karyawan',
+        'view_evaluations':   'Lihat hasil evaluasi',
+        'send_reminders':     'Kirim reminder kontrak',
+        'view_salary':        'Lihat data gaji karyawan',
+        'manage_salary':      'Edit data gaji karyawan',
+    },
+    'aset': {
+        # Akan diisi saat AssetCore dikembangkan
+    },
 }
+# Backward-compat: ALL_PERMISSIONS = gabungan semua app + portal perms
+ALL_PERMISSIONS = {
+    'manage_users':  'Kelola pengguna (tambah/edit/hapus)',
+    'manage_roles':  'Kelola role dan permission',
+}
+for _perms in APP_PERMISSIONS.values():
+    ALL_PERMISSIONS.update(_perms)
 
 SYSTEM_ROLE_DEFAULTS = {
     'superadmin': list(ALL_PERMISSIONS.keys()),
@@ -1574,6 +1586,220 @@ def portal_settings():
         access_map[(r['user_id'], r['app_slug'])] = {'role': r['app_role'], 'active': r['is_active']}
 
     return render_template('portal_settings.html', users=users, apps=apps, access_map=access_map)
+
+# ─── Portal: Kelola User ───────────────────────────────────────────────────────
+
+@app.route('/portal/api/employees-search')
+@login_required
+def portal_emp_search():
+    q   = request.args.get('q', '').strip()
+    db  = get_db()
+    if len(q) < 2:
+        return jsonify([])
+    rows = db.execute('''
+        SELECT id, name, jabatan, divisi, email, phone, telegram_id
+        FROM employees WHERE is_active=1 AND user_id IS NULL
+        AND (name LIKE ? OR jabatan LIKE ? OR divisi LIKE ?)
+        ORDER BY name LIMIT 20
+    ''', (f'%{q}%', f'%{q}%', f'%{q}%')).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/portal/users')
+@login_required
+def portal_users():
+    if session.get('user_role') != 'superadmin':
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db    = get_db()
+    users = db.execute('SELECT * FROM users ORDER BY role, username').fetchall()
+    emps  = db.execute(
+        'SELECT user_id, email, phone, telegram_id, name FROM employees WHERE user_id IS NOT NULL AND is_active=1'
+    ).fetchall()
+    linked_emps = {e['user_id']: e for e in emps}
+    apps = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    # Akses per user
+    access_rows = db.execute('SELECT user_id, app_slug, app_role FROM user_app_access WHERE is_active=1').fetchall()
+    user_access = {}
+    for r in access_rows:
+        user_access.setdefault(r['user_id'], {})[r['app_slug']] = r['app_role']
+    return render_template('portal_users.html', users=users, linked_emps=linked_emps,
+                           apps=apps, user_access=user_access)
+
+@app.route('/portal/users/add', methods=['GET', 'POST'])
+@login_required
+def portal_user_add():
+    if session.get('user_role') != 'superadmin':
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db = get_db()
+    apps = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    if request.method == 'POST':
+        username  = request.form.get('username', '').strip()
+        full_name = request.form.get('full_name', '').strip()
+        password  = request.form.get('password', '')
+        role      = request.form.get('role', 'admin')
+        email     = request.form.get('email', '').strip()
+        phone     = request.form.get('phone', '').strip()
+        telegram  = request.form.get('telegram_id', '').strip()
+        emp_id    = request.form.get('emp_id', type=int)
+        if not username or not password:
+            flash('Username dan password wajib diisi', 'danger')
+        else:
+            try:
+                cur = db.execute(
+                    'INSERT INTO users(username,password_hash,full_name,role,email,phone,telegram_id) VALUES(?,?,?,?,?,?,?)',
+                    (username, generate_password_hash(password, method='pbkdf2:sha256'),
+                     full_name, role, email, phone, telegram))
+                new_uid = cur.lastrowid
+                # Link ke karyawan jika dipilih
+                if emp_id:
+                    db.execute('UPDATE employees SET user_id=? WHERE id=? AND user_id IS NULL', (new_uid, emp_id))
+                # Seed akses app default
+                db.execute('INSERT OR IGNORE INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)',
+                           (new_uid, 'evaluasi', role))
+                db.commit()
+                flash(f'User {username} berhasil dibuat', 'success')
+                return redirect(url_for('portal_users'))
+            except sqlite3.IntegrityError:
+                flash('Username sudah digunakan', 'danger')
+    # Karyawan yang belum punya user (untuk employee picker)
+    free_emps = db.execute(
+        'SELECT id,name,jabatan,divisi FROM employees WHERE is_active=1 AND user_id IS NULL ORDER BY name'
+    ).fetchall()
+    return render_template('portal_user_form.html', user=None, apps=apps, free_emps=free_emps)
+
+@app.route('/portal/users/<int:uid>/edit', methods=['GET', 'POST'])
+@login_required
+def portal_user_edit(uid):
+    if session.get('user_role') != 'superadmin':
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db   = get_db()
+    user = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    if not user:
+        flash('User tidak ditemukan', 'danger')
+        return redirect(url_for('portal_users'))
+    apps = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    if request.method == 'POST':
+        full_name = request.form.get('full_name', '').strip()
+        role      = request.form.get('role', user['role'])
+        is_active = 1 if request.form.get('is_active') else 0
+        email     = request.form.get('email', '').strip()
+        phone     = request.form.get('phone', '').strip()
+        telegram  = request.form.get('telegram_id', '').strip()
+        new_pass  = request.form.get('password', '').strip()
+        if new_pass:
+            db.execute('UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=?,password_hash=? WHERE id=?',
+                       (full_name, role, is_active, email, phone, telegram,
+                        generate_password_hash(new_pass, method='pbkdf2:sha256'), uid))
+        else:
+            db.execute('UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=? WHERE id=?',
+                       (full_name, role, is_active, email, phone, telegram, uid))
+        db.commit()
+        if uid == session['user_id']:
+            session['user_name'] = full_name or session['username']
+            session['user_role'] = role
+        flash('User diperbarui', 'success')
+        return redirect(url_for('portal_users'))
+    linked_emp = db.execute(
+        'SELECT id,name,email,phone,telegram_id FROM employees WHERE user_id=? AND is_active=1', (uid,)
+    ).fetchone()
+    return render_template('portal_user_form.html', user=user, apps=apps,
+                           linked_emp=linked_emp, free_emps=[])
+
+@app.route('/portal/users/<int:uid>/delete', methods=['POST'])
+@login_required
+def portal_user_delete(uid):
+    if session.get('user_role') != 'superadmin':
+        return jsonify({'error': 'forbidden'}), 403
+    if uid == session['user_id']:
+        flash('Tidak bisa menghapus akun sendiri', 'danger')
+        return redirect(url_for('portal_users'))
+    db = get_db()
+    db.execute('UPDATE users SET is_active=0 WHERE id=?', (uid,))
+    db.commit()
+    flash('User dinonaktifkan', 'warning')
+    return redirect(url_for('portal_users'))
+
+@app.route('/portal/users/<int:uid>/send-reset', methods=['POST'])
+@login_required
+def portal_user_send_reset(uid):
+    if session.get('user_role') != 'superadmin':
+        return redirect(url_for('portal'))
+    # Delegasi ke fungsi existing
+    from flask import current_app
+    db   = get_db()
+    user = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    if user:
+        _send_reset_notifications(user, db)
+        flash('Link reset password telah dikirim', 'success')
+    return redirect(url_for('portal_users'))
+
+@app.route('/portal/users/<int:uid>/mfa-reset', methods=['POST'])
+@login_required
+def portal_user_mfa_reset(uid):
+    if session.get('user_role') != 'superadmin':
+        return redirect(url_for('portal'))
+    db = get_db()
+    db.execute('UPDATE users SET totp_secret="", mfa_enabled=0 WHERE id=?', (uid,))
+    db.commit()
+    flash('MFA user berhasil direset', 'warning')
+    return redirect(url_for('portal_users'))
+
+# ─── Portal: Role & Permission ─────────────────────────────────────────────────
+
+@app.route('/portal/roles', methods=['GET', 'POST'])
+@login_required
+def portal_roles():
+    if session.get('user_role') != 'superadmin':
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db = get_db()
+    active_app = request.args.get('app', 'evaluasi')
+    if request.method == 'POST':
+        action = request.form.get('action')
+        app_slug = request.form.get('app_slug', 'evaluasi')
+        if action == 'add':
+            name = request.form.get('name', '').strip().lower().replace(' ', '_')
+            desc = request.form.get('description', '').strip()
+            if name:
+                try:
+                    db.execute('INSERT INTO roles(name,description,is_system,app_slug) VALUES(?,?,0,?)',
+                               (name, desc, app_slug))
+                    db.commit()
+                    flash(f'Role "{name}" ditambahkan untuk {app_slug}', 'success')
+                except Exception:
+                    flash('Nama role sudah ada', 'danger')
+        elif action == 'delete':
+            rname = request.form.get('role_name', '')
+            is_sys = db.execute('SELECT is_system FROM roles WHERE name=?', (rname,)).fetchone()
+            if is_sys and is_sys['is_system']:
+                flash('Role sistem tidak bisa dihapus', 'danger')
+            else:
+                db.execute('DELETE FROM roles WHERE name=?', (rname,))
+                db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
+                db.commit()
+                flash(f'Role "{rname}" dihapus', 'warning')
+        elif action == 'save_perms':
+            rname    = request.form.get('role_name', '')
+            selected = set(request.form.getlist('permissions'))
+            app_perms = APP_PERMISSIONS.get(app_slug, {})
+            db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
+            for perm in selected:
+                if perm in app_perms or perm in ('manage_users', 'manage_roles'):
+                    db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)',
+                               (rname, perm))
+            db.commit()
+            flash(f'Permission role "{rname}" diperbarui', 'success')
+        return redirect(url_for('portal_roles', app=active_app))
+
+    apps_list = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    roles     = db.execute('SELECT * FROM roles WHERE app_slug=? ORDER BY is_system DESC, name',
+                           (active_app,)).fetchall()
+    perms_by_role = {r['name']: get_role_permissions(db, r['name']) for r in roles}
+    app_perms = APP_PERMISSIONS.get(active_app, {})
+    return render_template('portal_roles.html', roles=roles, perms_by_role=perms_by_role,
+                           app_perms=app_perms, apps_list=apps_list, active_app=active_app)
 
 @app.route('/')
 @login_required
