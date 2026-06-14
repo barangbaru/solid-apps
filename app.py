@@ -1064,10 +1064,9 @@ def enforce_mfa_setup():
         return
     try:
         db   = get_db()
-        user = db.execute('SELECT mfa_enabled, google_id FROM users WHERE id=?',
+        user = db.execute('SELECT mfa_enabled FROM users WHERE id=?',
                           (session['user_id'],)).fetchone()
-        # User yang login via Google dibebaskan dari MFA TOTP
-        if user and not user['mfa_enabled'] and not (user['google_id'] or '').strip():
+        if user and not user['mfa_enabled']:
             flash('Aktifkan Google Authenticator MFA terlebih dahulu untuk melanjutkan.', 'warning')
             return redirect(url_for('mfa_setup'))
     except Exception:
