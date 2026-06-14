@@ -1507,6 +1507,13 @@ def login_mfa():
         flash('Kode MFA salah atau kadaluarsa. Coba lagi.', 'danger')
     return render_template('mfa_login.html')
 
+def _google_callback_url(settings):
+    """Bangun redirect URI yang konsisten: utamakan app_url dari settings."""
+    base = (settings.get('app_url') or '').rstrip('/')
+    if base:
+        return base + '/login/google/callback'
+    return url_for('login_google_callback', _external=True)
+
 @app.route('/login/google')
 def login_google():
     db = get_db()
@@ -1518,7 +1525,7 @@ def login_google():
         return redirect(url_for('login'))
     state = secrets.token_urlsafe(16)
     session['oauth_state'] = state
-    callback_url = url_for('login_google_callback', _external=True)
+    callback_url = _google_callback_url(settings)
     params = {
         'client_id':     client_id,
         'redirect_uri':  callback_url,
@@ -1553,7 +1560,7 @@ def login_google_callback():
         flash('Tidak mendapat kode otorisasi dari Google.', 'danger')
         return redirect(url_for('login'))
 
-    callback_url = url_for('login_google_callback', _external=True)
+    callback_url = _google_callback_url(settings)
     try:
         token_resp = req_lib.post(GOOGLE_TOKEN_URL, data={
             'code':          code,
