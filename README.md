@@ -1,161 +1,209 @@
-# Evaluasi Kinerja IT
+# super-us — Platform Aplikasi Tim IT
 
-Aplikasi web untuk penilaian kinerja tim IT berbasis Flask + SQLite. Mendukung 5 divisi dengan template skill berbeda, manajemen kontrak karyawan, dan reminder otomatis via email & Telegram.
+Platform superapp berbasis Flask + SQLite yang mengintegrasikan beberapa aplikasi bisnis dalam satu portal terpusat dengan manajemen user, role, dan akses per aplikasi.
+
+**Aplikasi yang tersedia:**
+| App | Deskripsi | Status |
+|-----|-----------|--------|
+| **TalentCore** | Penilaian & manajemen kinerja karyawan | ✅ Aktif |
+| **AssetCore** | Pencatatan & tracking aset perusahaan | 🔜 Segera |
 
 ---
 
-## Struktur Aplikasi
+## Arsitektur
 
 ```
-evaluasi-kinerja/
-├── app.py                      # Core Flask app, routes, auth, scheduler
-├── wsgi.py                     # Entry point Gunicorn (production)
-├── seed_data.py                # Data template skill per divisi
-├── requirements.txt            # Python dependencies
-├── run.bat                     # Jalankan di Windows (development)
+super-us/
+├── app.py                        # Core Flask app — routes, auth, scheduler
+├── wsgi.py                       # Entry point Gunicorn (production)
+├── seed_data.py                  # Data template skill per divisi
+├── requirements.txt
 │
 ├── templates/
-│   ├── base.html               # Layout utama + navbar
-│   ├── login.html              # Halaman login
-│   ├── index.html              # Dashboard daftar karyawan
-│   ├── employee_form.html      # Form tambah/edit karyawan
-│   ├── eval_hardskill.html     # Form penilaian hard skill
-│   ├── eval_competency.html    # Form penilaian kompetensi
-│   ├── eval_ability.html       # Form penilaian kemampuan (18 item)
-│   ├── eval_project.html       # Form penilaian project
-│   ├── eval_summary.html       # Ringkasan hasil evaluasi
-│   ├── contracts.html          # Dashboard kontrak karyawan
-│   ├── users.html              # Kelola user (superadmin)
-│   ├── user_form.html          # Form tambah/edit user
-│   ├── settings.html           # Pengaturan SMTP & Telegram
-│   ├── reminder_log.html       # Log reminder yang terkirim
-│   ├── profile.html            # Profil user login
-│   ├── admin.html              # Admin template skill
-│   └── admin_divisi.html       # Admin skill per divisi
+│   ├── base.html                 # Layout utama (sidebar + topbar adaptif)
+│   │
+│   ├── # ── Portal ──
+│   ├── login.html                # Login dengan aurora animated background
+│   ├── portal.html               # App launcher (aurora background)
+│   ├── portal_settings.html      # Pengaturan akses app per user
+│   ├── portal_users.html         # Kelola user (dengan info akses app)
+│   ├── portal_user_form.html     # Form user + employee picker (autocomplete)
+│   ├── portal_roles.html         # Role & Permission per aplikasi
+│   │
+│   ├── # ── TalentCore ──
+│   ├── index.html                # Dashboard karyawan
+│   ├── karyawan.html             # Daftar & manajemen karyawan
+│   ├── employee_form.html        # Form tambah/edit karyawan
+│   ├── eval_hardskill.html       # Penilaian hard skill
+│   ├── eval_competency.html      # Penilaian kompetensi
+│   ├── eval_ability.html         # Penilaian kemampuan (18 item)
+│   ├── eval_project.html         # Penilaian project
+│   ├── eval_summary.html         # Ringkasan evaluasi
+│   ├── eval_self.html            # Self-assessment karyawan (tokenized)
+│   ├── salary.html               # Tabel gaji + dashboard analitik
+│   ├── contracts.html            # Dashboard kontrak karyawan
+│   ├── reminder_log.html         # Log reminder terkirim
+│   ├── admin.html                # Template evaluasi per divisi
+│   ├── admin_roles.html          # Role & permission (legacy)
+│   ├── settings.html             # Pengaturan notifikasi
+│   └── profile.html              # Profil & keamanan MFA
 │
-├── Dockerfile                  # Multi-stage build (builder + runtime)
-├── docker-compose.yml          # Orchestrasi evaluasi + nginx
-├── gunicorn.conf.py            # Config Gunicorn untuk aaPanel (unix socket)
-├── gunicorn.docker.conf.py     # Config Gunicorn untuk Docker (TCP)
-├── nginx/
-│   └── nginx.conf              # Reverse proxy ke app
-├── build-push.bat              # Build & push image ke Nexus (Windows)
-├── build-push.sh               # Build & push image ke Nexus (Linux/Mac)
-├── .env.example                # Template environment variables
-├── .dockerignore
-└── .gitignore
+├── Dockerfile
+├── docker-compose.yml
+├── gunicorn.conf.py
+└── nginx/nginx.conf
 ```
 
 ---
 
-## Fitur
+## Fitur Portal (super-us)
+
+### App Launcher
+- Halaman portal dengan animated aurora background (macOS Sequoia style)
+- Kartu aplikasi dengan glass-morphism effect
+- Klik app → masuk ke aplikasi, menu sidebar berubah sesuai app
+
+### Kelola User (`/portal/users`)
+- Daftar user dengan kolom akses per aplikasi dan role-nya
+- **Employee Picker** saat tambah user baru:
+  - Cari karyawan via autocomplete (nama/jabatan/divisi)
+  - Auto-fill username, nama, email, WhatsApp, Telegram dari data karyawan
+  - Atau input manual tanpa link ke karyawan
+- Reset password, reset MFA, nonaktifkan user
+
+### Role & Permission (`/portal/roles`)
+- Tab per aplikasi — setiap app kelola role-nya sendiri
+- Editor visual permission dengan toggle per hak akses
+- Role sistem (superadmin, admin, viewer) tidak bisa dihapus
+
+### Akses Aplikasi (`/portal/settings`)
+- Grid user × app — toggle akses on/off per user per app
+- Set role user di dalam setiap aplikasi
+- Superadmin selalu bypass — akses penuh ke semua app
+
+### Keamanan
+- **MFA wajib** — semua user harus setup Google Authenticator sebelum akses portal maupun app
+- Password reset via Email / WhatsApp (WAHA) / Telegram
+- Single-use token (1 jam TTL) untuk reset password
+- XSS protection: confirm dialog pakai `data-confirm` attribute
+- Open redirect protection: validasi `?next=` harus path relatif
+- `SECRET_KEY` wajib diset via environment variable
+
+---
+
+## Fitur TalentCore
 
 ### Penilaian Kinerja
 - **5 divisi** dengan template skill masing-masing: Programmer, Implementor/BPS, Helpdesk Support, Tester, IT Support
-- **Formula scoring** dari Excel:
-  - Hard Skill (PP): `(Σ(skor/4 × bobot) / Σbobot) × 100`
+- **Formula scoring:**
+  - Hard Skill: `(Σ(skor/4 × bobot) / Σbobot) × 100`
   - Kompetensi: `Σ(rating × 20 × bobot)`
   - Final: `PP × 0.3 + Kompetensi × 0.7`
 - **18 item kemampuan** (Ability) dengan deskripsi A/B/C/D per item
 - Penilaian project/target kerja terpisah
+- **Self-assessment** via link token yang dikirim ke karyawan
 
 ### Manajemen Karyawan
 - Data karyawan per divisi dengan level jabatan
 - Tipe kepegawaian: **Tetap** dan **Kontrak**
 - Tracking masa kontrak dengan countdown hari tersisa
-- Badge status kontrak: kritis (≤14 hari), warning (≤30 hari), aman, expired
+- Badge status: kritis (≤14 hari), warning (≤30 hari), aman, expired
+- Import data karyawan dari Excel (template tersedia)
 
-### Role & Autentikasi
-| Role | Akses |
-|------|-------|
-| `superadmin` | Semua fitur + kelola user + pengaturan sistem |
-| `admin` | Penilaian, lihat kontrak, lihat log reminder |
-
-- Session-based login dengan password hashing (Werkzeug)
-- Fitur **promote** karyawan menjadi admin/superadmin
+### Tabel Gaji
+- Input komponen gaji per tahun (gaji pokok, tunjangan, dll.)
+- Persentase kenaikan & tanggal kenaikan gaji
+- Dashboard analitik: total pengeluaran gaji, tren per tahun
+- Import data gaji dari Excel
 
 ### Reminder Kontrak
-- **APScheduler** — reminder otomatis setiap hari pukul 08:00 WIB
-- Kirim via **Email (SMTP)** dan/atau **Telegram Bot**
-- Trigger manual per karyawan atau sekaligus semua
-- Log lengkap setiap pengiriman reminder
+- **APScheduler** — cek otomatis setiap hari pukul 08:00 WIB
+- Laporan harian otomatis pukul 22:00 WIB
+- Kirim via **Email (SMTP)**, **Telegram Bot**, dan/atau **WhatsApp (WAHA)**
+- Trigger manual per karyawan atau semua sekaligus
+- Log lengkap tiap pengiriman
 
-### Administrasi
-- Konfigurasi SMTP (host, port, TLS, user, password)
-- Konfigurasi Telegram Bot (token + chat ID)
-- Test koneksi email & Telegram langsung dari UI
-- Template skill dapat dikustomisasi per divisi
+### Administrasi TalentCore
+- Pengaturan SMTP, Telegram, WhatsApp (WAHA/OpenWA)
+- Test koneksi langsung dari UI
+- Template skill dikustomisasi per divisi
+- Manajemen divisi
+
+---
+
+## Role & Hak Akses
+
+### Portal level (superadmin only)
+| Aksi | Keterangan |
+|------|------------|
+| Kelola User | Tambah/edit/nonaktifkan user |
+| Role & Permission | Buat role, set permission per app |
+| Akses Aplikasi | Toggle akses user ke tiap app |
+
+### TalentCore roles
+| Role | Default Permission |
+|------|-------------------|
+| `superadmin` | Semua permission |
+| `admin` | Kelola karyawan, evaluasi, divisi, template, kirim reminder |
+| `viewer` | Lihat hasil evaluasi saja |
+
+> Role dan permission dapat dikustomisasi di `/portal/roles`.
 
 ---
 
 ## Cara Menjalankan
 
-### 1. Development — Windows (run.bat)
+### Development
 
-**Prasyarat:** Python 3.10+ terinstall dan ada di PATH.
-
-```bat
-# Clone repo
+```bash
 git clone https://github.com/barangbaru/solid-apps.git
 cd solid-apps
 
-# Buat virtual environment
-python -m venv venv
-venv\Scripts\activate
-
-# Install dependencies
+python3 -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Jalankan aplikasi
-run.bat
+export SECRET_KEY="dev-secret-key-ganti-di-production"
+python3 app.py
 ```
 
-Buka browser: **http://127.0.0.1:5000**
+Buka: **http://127.0.0.1:5000**
 
 Login default:
 ```
 Username : superadmin
 Password : Admin@123
 ```
-> **Ganti password segera** setelah login pertama via menu Profil.
+> **Segera ganti password** via Profil setelah login pertama.
 
 ---
 
-### 2. Production — aaPanel
-
-#### Persiapan Server
-1. Install **Python Project** di aaPanel
-2. Upload seluruh file ke `/www/wwwroot/evaluasi/`
-3. Buat virtual environment dan install dependencies:
+### Production — aaPanel / Ubuntu
 
 ```bash
-cd /www/wwwroot/evaluasi
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+# Deploy dengan script
+sudo bash /var/www/evaluasi/deploy-ubuntu.sh
 ```
 
-#### Konfigurasi Gunicorn
-File `gunicorn.conf.py` sudah tersedia dengan konfigurasi unix socket:
+Script deploy otomatis:
+- Pull latest dari git
+- Install/update dependencies
+- Restart gunicorn
+- DB migration & seed data dijalankan otomatis saat startup (termasuk update `superapp_apps`)
 
-```python
-bind = "unix:/tmp/evaluasi.sock"
-workers = 1        # SQLite tidak support multi-writer
-threads = 4
-```
-
-Jalankan via Supervisor (aaPanel → App Store → Supervisor):
+#### Environment Variables
 ```bash
-# Command
-/www/wwwroot/evaluasi/venv/bin/gunicorn --config gunicorn.conf.py wsgi:app
-
-# Working directory
-/www/wwwroot/evaluasi
+export SECRET_KEY="random-string-min-32-karakter"
+export DATABASE_PATH="/var/www/evaluasi/data/evaluasi.db"
+export TZ="Asia/Jakarta"
 ```
 
-#### Konfigurasi Nginx (aaPanel)
-Tambahkan di konfigurasi site Nginx:
+Generate `SECRET_KEY`:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
 
+#### Nginx
 ```nginx
 location / {
     proxy_pass         http://unix:/tmp/evaluasi.sock;
@@ -167,125 +215,31 @@ location / {
 }
 ```
 
-#### Environment Variables (opsional)
-```bash
-export SECRET_KEY="random-string-panjang-min-32-karakter"
-export DATABASE_PATH="/www/wwwroot/evaluasi/data/evaluasi.db"
-export TZ="Asia/Jakarta"
-```
-
 ---
 
-### 3. Production — Docker Compose
-
-#### Prasyarat
-- Docker Engine 24+
-- Docker Compose v2
-
-#### Langkah Deploy
+### Production — Docker Compose
 
 ```bash
-# 1. Clone repo
-git clone https://github.com/barangbaru/solid-apps.git
-cd solid-apps
-
-# 2. Buat file .env dari template
 cp .env.example .env
+# Edit SECRET_KEY di .env
 
-# 3. Edit SECRET_KEY (wajib diganti!)
-nano .env
-```
-
-Isi minimal di `.env`:
-```env
-SECRET_KEY=isi-dengan-random-string-minimal-32-karakter
-TZ=Asia/Jakarta
-```
-
-```bash
-# 4. Login ke Nexus registry (jika pull dari private registry)
-docker login nexus.domain.com -u user -p userpassword
-
-# 5. Build image lokal (atau pull dari registry)
 docker compose build
-
-# 6. Jalankan
 docker compose up -d
-
-# 7. Cek status
-docker compose ps
-docker compose logs -f evaluasi
 ```
-
-Aplikasi berjalan di **http://localhost** (via Nginx port 80).
-
-#### Perintah Berguna
-
-```bash
-# Lihat log realtime
-docker compose logs -f
-
-# Restart service
-docker compose restart evaluasi
-
-# Update ke versi terbaru
-docker compose pull && docker compose up -d
-
-# Stop semua service
-docker compose down
-
-# Hapus semua termasuk volume (DATA HILANG!)
-docker compose down -v
-```
-
-#### Build & Push ke Nexus Registry
-
-```bat
-# Windows
-build-push.bat
-
-# Dengan tag versi spesifik
-build-push.bat v1.2.0
-```
-
-```bash
-# Linux / macOS
-chmod +x build-push.sh
-./build-push.sh
-
-# Dengan tag versi spesifik
-./build-push.sh v1.2.0
-```
-
-Image akan di-push ke:
-```
-nexus.devops.mmi-pt.com/evaluasi-kinerja:latest
-```
-
----
-
-## Arsitektur Docker
 
 ```
 ┌─────────────────────────────────────────────┐
 │  Docker Compose                             │
-│                                             │
 │  ┌──────────────┐    ┌──────────────────┐  │
-│  │    nginx     │───▶│    evaluasi      │  │
+│  │    nginx     │───▶│    super-us      │  │
 │  │  :80         │    │  gunicorn :5000  │  │
 │  └──────────────┘    └────────┬─────────┘  │
-│                               │            │
 │                    ┌──────────▼─────────┐  │
 │                    │  volume: data/     │  │
 │                    │  evaluasi.db       │  │
 │                    └────────────────────┘  │
 └─────────────────────────────────────────────┘
 ```
-
-| Service | Image | Port |
-|---------|-------|------|
-| `evaluasi` | `nexus.devops.mmi-pt.com/evaluasi-kinerja:latest` | 5000 (internal) |
-| `nginx` | `nginx:1.27-alpine` | 80 (public) |
 
 ---
 
@@ -294,15 +248,42 @@ nexus.devops.mmi-pt.com/evaluasi-kinerja:latest
 | Komponen | Versi |
 |----------|-------|
 | Python | 3.11 |
-| Flask | 3.1.3 |
-| Gunicorn | 21.2.0 |
-| APScheduler | 3.11.2 |
+| Flask | 3.1.x |
+| Gunicorn | 21.2.x |
+| APScheduler | 3.11.x |
 | SQLite | bawaan Python |
+| Bootstrap | 5.3.3 |
 | Nginx | 1.27-alpine |
-| Docker base | python:3.11-slim |
 
 ---
 
-## Lisensi
+## Menambah Aplikasi Baru ke super-us
 
-Internal use — MMI DevOps Team
+1. Edit list `_apps` di `init_db()` dalam `app.py`:
+
+```python
+_apps = [
+    ('evaluasi', 'TalentCore', '...', 'clipboard2-check', '#4da8da', '#e8f4fd', '/', 1, 0, 0, ''),
+    ('aset',     'AssetCore',  '...', 'box-seam',         '#6f42c1', '#f0ecff', '/aset/', 1, 0, 1, ''),
+    # Tambah app baru di sini:
+    ('finance',  'FinanceCore','...', 'cash-stack',       '#198754', '#e8f5e9', '/finance/', 1, 0, 2, ''),
+]
+```
+
+2. Tambah permissions app di `APP_PERMISSIONS`:
+
+```python
+APP_PERMISSIONS = {
+    'evaluasi': { ... },
+    'finance':  {
+        'view_reports':  'Lihat laporan keuangan',
+        'manage_budget': 'Kelola anggaran',
+    },
+}
+```
+
+3. Deploy — DB diupdate otomatis saat restart.
+
+---
+
+*Internal use — Tim IT MMI*
