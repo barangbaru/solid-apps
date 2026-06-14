@@ -10,7 +10,12 @@ from seed_data import ALL_DIVISIONS, ABILITY_ITEMS
 import pyotp, qrcode
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'evalkey-2024-superadmin-secure!')
+_default_secret = os.environ.get('SECRET_KEY', '')
+if not _default_secret:
+    import warnings
+    warnings.warn("SECRET_KEY env var tidak diset! Gunakan nilai acak yang kuat di production.")
+    _default_secret = 'evalkey-2024-superadmin-secure!'
+app.secret_key = _default_secret
 
 # Agar request.host_url benar di balik nginx (ProxyFix)
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -247,6 +252,20 @@ CREATE TABLE IF NOT EXISTS employee_salary (
     UNIQUE(employee_id, year),
     FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS superapp_apps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    icon TEXT DEFAULT 'grid',
+    color TEXT DEFAULT '#4da8da',
+    bg_color TEXT DEFAULT '#e8f4fd',
+    url TEXT DEFAULT '/',
+    is_active INTEGER DEFAULT 1,
+    is_coming_soon INTEGER DEFAULT 0,
+    sort_order INTEGER DEFAULT 0,
+    required_permission TEXT DEFAULT ''
+);
 """
 
 MIGRATIONS = [
@@ -358,6 +377,30 @@ def init_db():
     if db.execute('SELECT COUNT(*) FROM divisions').fetchone()[0] == 0:
         for i, name in enumerate(ALL_DIVISIONS.keys()):
             db.execute('INSERT OR IGNORE INTO divisions(name, sort_order) VALUES(?,?)', (name, i))
+    # Seed superapp apps registry
+    _apps = [
+        ('evaluasi', 'Evaluasi Kinerja', 'Penilaian & review kinerja karyawan tim IT',
+         'clipboard2-check', '#4da8da', '#e8f4fd', '/', 1, 0, 0, ''),
+        ('aset', 'Manajemen Aset', 'Pencatatan & tracking aset perusahaan',
+         'box-seam', '#6f42c1', '#f0ecff', '/aset/', 1, 1, 1, ''),
+    ]
+    for slug, name, desc, icon, color, bg, url, active, soon, sort, perm in _apps:
+        db.execute('''INSERT INTO superapp_apps
+            (slug,name,description,icon,color,bg_color,url,is_active,is_coming_soon,sort_order,required_permission)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(slug) DO UPDATE SET
+                name=excluded.name,
+                description=excluded.description,
+                icon=excluded.icon,
+                color=excluded.color,
+                bg_color=excluded.bg_color,
+                url=excluded.url,
+                is_active=excluded.is_active,
+                is_coming_soon=excluded.is_coming_soon,
+                sort_order=excluded.sort_order,
+                required_permission=excluded.required_permission''',
+            (slug, name, desc, icon, color, bg, url, active, soon, sort, perm))
+    db.commit()
     # Seed system roles
     for rname, rdesc, rsys in [('superadmin','Super Administrator',1),('admin','Administrator',1),('viewer','Viewer Read-Only',1)]:
         db.execute('INSERT OR IGNORE INTO roles(name,description,is_system) VALUES(?,?,?)', (rname, rdesc, rsys))
@@ -628,6 +671,7 @@ def inject_globals():
     pending    = 0
     divisi_list = DIVISI_LIST
     user_perms  = set()
+    portal_apps = []
     if 'user_id' in session:
         try:
             db = get_db()
@@ -636,6 +680,9 @@ def inject_globals():
             user_perms  = get_role_permissions(db, session.get('user_role', ''))
             if session.get('user_role') == 'superadmin':
                 user_perms = set(ALL_PERMISSIONS.keys())
+            portal_apps = db.execute(
+                'SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order, name'
+            ).fetchall()
         except Exception:
             pass
     return {
@@ -652,6 +699,8 @@ def inject_globals():
         'level_choices':   LEVEL_CHOICES,
         'user_perms':      user_perms,
         'ALL_PERMISSIONS': ALL_PERMISSIONS,
+        'portal_apps':     portal_apps,
+        'current_app_slug': 'evaluasi',
     }
 
 # ─── Force MFA setup for all logged-in users ───────────────────────────────────
@@ -660,7 +709,7 @@ def inject_globals():
 def enforce_mfa_setup():
     if 'user_id' not in session:
         return
-    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'static'}
+    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'portal', 'static'}
     if request.endpoint in exempt or (request.endpoint or '').startswith('static'):
         return
     try:
@@ -1034,7 +1083,10 @@ def login():
         if user and check_password_hash(user['password_hash'], password):
             if user['mfa_enabled'] and user['totp_secret']:
                 session['pending_mfa_user_id']   = user['id']
-                session['pending_mfa_next']       = request.args.get('next') or url_for('index')
+                _next_mfa = request.args.get('next') or ''
+                if _next_mfa and (not _next_mfa.startswith('/') or _next_mfa.startswith('//')):
+                    _next_mfa = ''
+                session['pending_mfa_next'] = _next_mfa or url_for('portal')
                 return redirect(url_for('login_mfa'))
             session['user_id']   = user['id']
             session['username']  = user['username']
@@ -1044,7 +1096,10 @@ def login():
                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             db.commit()
             flash(f'Selamat datang, {session["user_name"]}!', 'success')
-            return redirect(request.args.get('next') or url_for('index'))
+            _next = request.args.get('next') or ''
+            if _next and (not _next.startswith('/') or _next.startswith('//')):
+                _next = ''
+            return redirect(_next or url_for('portal'))
         flash('Username atau password salah', 'danger')
     return render_template('login.html')
 
@@ -1059,7 +1114,7 @@ def login_mfa():
         user = db.execute('SELECT * FROM users WHERE id=?', (pending_id,)).fetchone()
         if user and verify_totp(user['totp_secret'], code):
             session.pop('pending_mfa_user_id', None)
-            next_url = session.pop('pending_mfa_next', url_for('index'))
+            next_url = session.pop('pending_mfa_next', url_for('portal'))
             session['user_id']   = user['id']
             session['username']  = user['username']
             session['user_name'] = user['full_name'] or user['username']
@@ -1199,17 +1254,9 @@ def _send_reset_notifications(user, reset_link, settings, db=None):
 
     # Email
     if contacts.get('email'):
-        try:
-            ok, _ = send_email(
-                settings.get('smtp_host',''), int(settings.get('smtp_port', 587) or 587),
-                settings.get('smtp_user',''), settings.get('smtp_password',''),
-                settings.get('smtp_from', settings.get('smtp_user','')),
-                contacts['email'], subject, body_html
-            )
-            if ok:
-                sent.append('email')
-        except Exception:
-            pass
+        ok, _ = send_email(settings, contacts['email'], subject, body_html)
+        if ok:
+            sent.append('email')
 
     # Telegram
     bot_token = settings.get('telegram_bot_token','').strip()
@@ -1439,6 +1486,13 @@ def profile():
     return render_template('profile.html', user=user)
 
 # ─── Dashboard ─────────────────────────────────────────────────────────────────
+
+@app.route('/portal')
+@login_required
+def portal():
+    db   = get_db()
+    apps = db.execute('SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order, name').fetchall()
+    return render_template('portal.html', apps=apps)
 
 @app.route('/')
 @login_required

@@ -81,7 +81,8 @@
             </a>
             {% if u.email or u.phone or u.telegram_id %}
             <form action="/admin/users/{{ u.id }}/send-reset" method="post" class="d-inline"
-                  onsubmit="return confirm('Kirim link reset password ke {{ u.username }}?')">
+                  data-confirm="Kirim link reset password ke {{ u.username | e }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
               <button class="btn btn-sm btn-outline-info" title="Kirim link reset password">
                 <i class="bi bi-key"></i>
               </button>
@@ -89,7 +90,8 @@
             {% endif %}
             {% if u.mfa_enabled and u.id != current_user.id %}
             <form action="/admin/users/{{ u.id }}/mfa-reset" method="post" class="d-inline"
-                  onsubmit="return confirm('Reset MFA {{ u.username }}? User harus setup ulang saat login berikutnya.')">
+                  data-confirm="Reset MFA {{ u.username | e }}? User harus setup ulang saat login berikutnya."
+                  onsubmit="return confirm(this.dataset.confirm)">
               <button class="btn btn-sm btn-outline-warning" title="Reset MFA">
                 <i class="bi bi-shield-x"></i>
               </button>
@@ -97,7 +99,8 @@
             {% endif %}
             {% if u.id != current_user.id %}
             <form action="/users/{{ u.id }}/delete" method="post" class="d-inline"
-                  onsubmit="return confirm('Hapus user {{ u.username }}?')">
+                  data-confirm="Hapus user {{ u.username | e }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
               <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
             </form>
             {% endif %}

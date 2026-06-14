@@ -218,7 +218,7 @@
                   </form>
                   {% if current_user and current_user.role == 'superadmin' %}
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
-                        onsubmit="return confirm('Nonaktifkan {{ emp.name }}?')">
+                        data-confirm="Nonaktifkan {{ emp.name | e }}?" onsubmit="return confirm(this.dataset.confirm)">
                     <button type="submit" class="btn btn-xs btn-outline-danger"
                             style="padding:.2rem .5rem;font-size:.75rem" title="Nonaktifkan">
                       <i class="bi bi-person-x"></i>
@@ -344,7 +344,7 @@
                   {% endif %}
                   {% if current_user and current_user.role == 'superadmin' %}
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
-                        onsubmit="return confirm('Nonaktifkan {{ emp.name }}?')">
+                        data-confirm="Nonaktifkan {{ emp.name | e }}?" onsubmit="return confirm(this.dataset.confirm)">
                     <button type="submit" class="btn btn-xs btn-outline-danger"
                             style="padding:.2rem .5rem;font-size:.75rem" title="Nonaktifkan">
                       <i class="bi bi-person-x"></i>
