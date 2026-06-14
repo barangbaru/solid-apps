@@ -1833,6 +1833,83 @@ def portal_roles():
                            app_perms=app_perms, apps_list=apps_list, active_app=active_app,
                            critical_permissions=CRITICAL_PERMISSIONS, is_superadmin=superadmin)
 
+PORTAL_SYSTEM_KEYS = [
+    'app_url',
+    'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_ssl',
+    'telegram_bot_token', 'telegram_default_chat_id',
+    'openwa_url', 'openwa_api_key', 'openwa_session_id', 'openwa_enabled',
+]
+
+@app.route('/portal/system-settings', methods=['GET', 'POST'])
+@login_required
+def portal_system_settings():
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db = get_db()
+    if request.method == 'POST':
+        for k in PORTAL_SYSTEM_KEYS:
+            if k == 'smtp_ssl':
+                v = '1' if request.form.get('smtp_ssl') else '0'
+            elif k == 'openwa_enabled':
+                v = '1' if request.form.get('openwa_enabled') else '0'
+            else:
+                v = request.form.get(k, '').strip()
+            save_setting(db, k, v)
+        db.commit()
+        flash('Pengaturan sistem disimpan', 'success')
+        return redirect(url_for('portal_system_settings'))
+    cfg = get_settings(db)
+    return render_template('portal_system_settings.html', cfg=cfg)
+
+@app.route('/portal/system-settings/test-email', methods=['POST'])
+@login_required
+def portal_test_email():
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    db = get_db()
+    cfg = get_settings(db)
+    to_email = request.form.get('test_email', '').strip()
+    if not to_email:
+        return jsonify({'ok': False, 'msg': 'Masukkan alamat email tujuan test'})
+    ok, err = send_email(cfg, to_email, 'Test Email — super-us',
+                         '<h3>Test berhasil!</h3><p>Konfigurasi email sudah benar.</p>')
+    return jsonify({'ok': ok, 'msg': 'Email berhasil dikirim' if ok else str(err)})
+
+@app.route('/portal/system-settings/test-telegram', methods=['POST'])
+@login_required
+def portal_test_telegram():
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    db = get_db()
+    cfg = get_settings(db)
+    bot_token = cfg.get('telegram_bot_token', '').strip()
+    chat_id   = request.form.get('test_chat_id', '').strip() or cfg.get('telegram_default_chat_id', '').strip()
+    if not bot_token or not chat_id:
+        return jsonify({'ok': False, 'msg': 'Bot token dan chat ID harus diisi'})
+    ok, err = send_telegram(bot_token, chat_id,
+                            '✅ <b>Test berhasil!</b>\n\nKonfigurasi Telegram sudah benar.')
+    return jsonify({'ok': ok, 'msg': 'Pesan Telegram berhasil dikirim' if ok else str(err)})
+
+@app.route('/portal/system-settings/test-whatsapp', methods=['POST'])
+@login_required
+def portal_test_whatsapp():
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    db  = get_db()
+    cfg = get_settings(db)
+    wa_url     = cfg.get('openwa_url', '').strip()
+    wa_key     = cfg.get('openwa_api_key', '').strip()
+    wa_session = cfg.get('openwa_session_id', 'default').strip()
+    phone      = request.form.get('test_wa_phone', '').strip()
+    if not wa_url or not phone:
+        return jsonify({'ok': False, 'msg': 'URL OpenWA dan nomor HP harus diisi'})
+    ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone,
+                            '✅ *Test berhasil!*\n\nKonfigurasi OpenWA WhatsApp sudah terhubung dengan super-us.')
+    chat_id = normalize_phone_wa(phone)
+    return jsonify({'ok': ok, 'chat_id': chat_id,
+                    'msg': f'Pesan terkirim ke {chat_id}' if ok else str(err)})
+
 @app.route('/')
 @login_required
 def index():
@@ -2418,28 +2495,26 @@ def reminder_log():
 
 # ─── Settings ─────────────────────────────────────────────────────────────────
 
+TALENTCORE_SETTINGS_KEYS = [
+    'app_name', 'reminder_days', 'reminder_enabled',
+    'notification_emails', 'notification_telegram_ids', 'openwa_extra_phones',
+]
+
 @app.route('/settings', methods=['GET', 'POST'])
-@superadmin_required
+@login_required
 def settings():
     db = get_db()
+    if not has_permission(session.get('user_role', ''), 'manage_settings', db):
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('index'))
     if request.method == 'POST':
-        keys = ['smtp_host','smtp_port','smtp_user','smtp_password','smtp_from','smtp_ssl',
-                'telegram_bot_token','telegram_default_chat_id',
-                'reminder_days','reminder_enabled','app_name',
-                'notification_emails','notification_telegram_ids',
-                'openwa_url','openwa_api_key','openwa_session_id','openwa_enabled',
-                'openwa_extra_phones']
-        for k in keys:
+        for k in TALENTCORE_SETTINGS_KEYS:
             v = request.form.get(k, '').strip()
-            if k == 'smtp_ssl':
-                v = '1' if request.form.get('smtp_ssl') else '0'
             if k == 'reminder_enabled':
                 v = '1' if request.form.get('reminder_enabled') else '0'
-            if k == 'openwa_enabled':
-                v = '1' if request.form.get('openwa_enabled') else '0'
             save_setting(db, k, v)
         db.commit()
-        flash('Pengaturan disimpan', 'success')
+        flash('Pengaturan TalentCore disimpan', 'success')
         return redirect(url_for('settings'))
     cfg = get_settings(db)
     return render_template('settings.html', cfg=cfg)
@@ -2488,8 +2563,11 @@ def test_whatsapp():
                     'msg': f'Pesan terkirim ke {chat_id}' if ok else str(err)})
 
 @app.route('/settings/run-reminders', methods=['POST'])
-@superadmin_required
+@login_required
 def run_reminders_now():
+    db = get_db()
+    if not has_permission(session.get('user_role', ''), 'manage_settings', db):
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
     sent, failed = run_contract_reminders(triggered_by=session.get('username','manual'))
     return jsonify({'sent': sent, 'failed': failed,
                     'msg': f'{sent} reminder dikirim, {failed} gagal'})

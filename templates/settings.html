@@ -1,248 +1,28 @@
 {% extends 'base.html' %}
-{% block title %}Pengaturan Notifikasi{% endblock %}
+{% block title %}Pengaturan TalentCore{% endblock %}
 {% block content %}
 <div class="d-flex align-items-center gap-2 mb-3">
-  <h5 class="fw-bold mb-0"><i class="bi bi-gear-fill text-primary"></i> Pengaturan Sistem & Notifikasi</h5>
+  <h5 class="fw-bold mb-0"><i class="bi bi-gear-fill text-primary me-1"></i>Pengaturan TalentCore</h5>
+  <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 ms-1" style="font-size:.72rem">
+    Notifikasi & Jadwal
+  </span>
+</div>
+
+<div class="alert alert-info py-2 small mb-3 d-flex align-items-center gap-2">
+  <i class="bi bi-info-circle-fill fs-5"></i>
+  <div>Konfigurasi Email, Telegram, WhatsApp, dan URL Publik dikelola di
+    <a href="/portal/system-settings" class="fw-semibold alert-link">Pengaturan Sistem Portal</a>.
+  </div>
 </div>
 
 <form method="post" id="settingsForm">
 <div class="row g-3">
-  <!-- Left: Email + Telegram -->
   <div class="col-lg-8">
 
-    <!-- URL Publik Aplikasi -->
-    <div class="card mb-3 border-warning">
-      <div class="card-header py-2 fw-bold bg-warning bg-opacity-10">
-        <i class="bi bi-globe me-1 text-warning"></i> URL Publik Aplikasi
-      </div>
-      <div class="card-body">
-        <div class="mb-2">
-          <label class="form-label fw-semibold small">URL Aplikasi <span class="text-muted fw-normal">(digunakan untuk link reset password, evaluasi, dll.)</span></label>
-          <input type="url" name="app_url" class="form-control form-control-sm"
-                 value="{{ cfg.app_url or '' }}"
-                 placeholder="https://evaluasi.perusahaan.com">
-          <div class="form-text">
-            <i class="bi bi-exclamation-triangle text-warning me-1"></i>
-            Wajib diisi jika aplikasi diakses melalui domain/proxy (nginx). Kosongkan hanya jika akses langsung ke IP.
-            Saat ini terdeteksi: <code>{{ request.host_url }}</code>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Email SMTP -->
+    <!-- Penerima Notifikasi Statis -->
     <div class="card mb-3">
       <div class="card-header py-2 fw-bold">
-        <i class="bi bi-envelope-fill text-primary me-1"></i> Konfigurasi Email (SMTP)
-      </div>
-      <div class="card-body">
-        <div class="row g-3">
-          <div class="col-md-8">
-            <label class="form-label fw-semibold small">SMTP Host</label>
-            <input type="text" name="smtp_host" class="form-control form-control-sm"
-                   value="{{ cfg.smtp_host }}" placeholder="smtp.gmail.com / smtp.office365.com">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-semibold small">Port</label>
-            <input type="number" name="smtp_port" class="form-control form-control-sm"
-                   value="{{ cfg.smtp_port or '587' }}" placeholder="587">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label fw-semibold small">Username / Email</label>
-            <input type="text" name="smtp_user" class="form-control form-control-sm"
-                   value="{{ cfg.smtp_user }}" placeholder="noreply@perusahaan.com"
-                   autocomplete="off">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label fw-semibold small">Password / App Password</label>
-            <div class="input-group input-group-sm">
-              <input type="password" name="smtp_password" class="form-control"
-                     id="smtpPwd" value="{{ cfg.smtp_password }}" autocomplete="new-password">
-              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('smtpPwd')">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
-          </div>
-          <div class="col-md-8">
-            <label class="form-label fw-semibold small">From Email (opsional)</label>
-            <input type="text" name="smtp_from" class="form-control form-control-sm"
-                   value="{{ cfg.smtp_from }}" placeholder="TalentCore &lt;noreply@...&gt;">
-          </div>
-          <div class="col-md-4 d-flex align-items-end pb-1">
-            <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" name="smtp_ssl" id="smtpSsl"
-                     {{ 'checked' if cfg.smtp_ssl == '1' else '' }}>
-              <label class="form-check-label small" for="smtpSsl">Gunakan SSL/TLS</label>
-            </div>
-          </div>
-        </div>
-        <!-- Test Email -->
-        <hr class="my-3">
-        <div class="d-flex gap-2 align-items-end">
-          <div class="flex-grow-1">
-            <label class="form-label fw-semibold small">Test — Kirim ke email</label>
-            <input type="email" id="testEmailAddr" class="form-control form-control-sm"
-                   placeholder="test@example.com">
-          </div>
-          <button type="button" class="btn btn-outline-primary btn-sm" onclick="testEmail()">
-            <i class="bi bi-send"></i> Test Email
-          </button>
-        </div>
-        <div id="emailResult" class="mt-2 small"></div>
-      </div>
-    </div>
-
-    <!-- Telegram Bot -->
-    <div class="card mb-3">
-      <div class="card-header py-2 fw-bold">
-        <i class="bi bi-telegram me-1" style="color:#0088cc"></i> Konfigurasi Telegram Bot
-      </div>
-      <div class="card-body">
-        <div class="row g-3">
-          <div class="col-12">
-            <label class="form-label fw-semibold small">Bot Token</label>
-            <div class="input-group input-group-sm">
-              <input type="password" name="telegram_bot_token" id="tgToken" class="form-control"
-                     value="{{ cfg.telegram_bot_token }}" placeholder="123456:ABCdef..."
-                     autocomplete="off">
-              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('tgToken')">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
-            <div class="form-text">Dapatkan dari <strong>@BotFather</strong> di Telegram.</div>
-          </div>
-          <div class="col-12">
-            <label class="form-label fw-semibold small">Default Chat ID</label>
-            <input type="text" name="telegram_default_chat_id" class="form-control form-control-sm"
-                   value="{{ cfg.telegram_default_chat_id }}"
-                   placeholder="-100123456789 (group) atau 123456789 (personal)">
-            <div class="form-text">
-              Digunakan jika karyawan tidak memiliki Telegram ID individual.
-              Gunakan <strong>@userinfobot</strong> untuk mendapatkan chat ID Anda.
-            </div>
-          </div>
-        </div>
-        <!-- Test Telegram -->
-        <hr class="my-3">
-        <div class="d-flex gap-2 align-items-end">
-          <div class="flex-grow-1">
-            <label class="form-label fw-semibold small">Test — Chat ID (kosongkan untuk pakai default)</label>
-            <input type="text" id="testChatId" class="form-control form-control-sm"
-                   placeholder="{{ cfg.telegram_default_chat_id or 'Chat ID tujuan test' }}">
-          </div>
-          <button type="button" class="btn btn-sm" style="background:#0088cc;color:#fff" onclick="testTelegram()">
-            <i class="bi bi-telegram"></i> Test Telegram
-          </button>
-        </div>
-        <div id="telegramResult" class="mt-2 small"></div>
-
-        <div class="alert alert-info py-2 small mt-3 mb-0">
-          <strong>Cara setup Telegram Bot:</strong><br>
-          1. Chat <code>@BotFather</code> → <code>/newbot</code> → ikuti instruksi → salin token<br>
-          2. Tambahkan bot ke grup, atau chat bot langsung<br>
-          3. Gunakan <code>@userinfobot</code> untuk mendapatkan chat ID<br>
-          4. Per karyawan: isi <em>Telegram ID</em> di halaman edit karyawan
-        </div>
-      </div>
-    </div>
-
-    <!-- OpenWA WhatsApp -->
-    <div class="card mb-3">
-      <div class="card-header py-2 fw-bold d-flex align-items-center gap-2">
-        <span style="background:#25D366;color:#fff;border-radius:6px;padding:2px 7px;font-size:.85rem">
-          <i class="bi bi-whatsapp"></i>
-        </span>
-        Konfigurasi WhatsApp via OpenWA
-      </div>
-      <div class="card-body">
-        <div class="row g-3">
-          <div class="col-12">
-            <div class="form-check form-switch mb-1">
-              <input class="form-check-input" type="checkbox" name="openwa_enabled" id="waEnabled"
-                     {{ 'checked' if cfg.openwa_enabled == '1' else '' }}>
-              <label class="form-check-label fw-semibold small" for="waEnabled">
-                Aktifkan Notifikasi WhatsApp
-              </label>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label fw-semibold small">URL OpenWA REST API</label>
-            <input type="text" name="openwa_url" class="form-control form-control-sm"
-                   value="{{ cfg.openwa_url }}"
-                   placeholder="http://10.x.x.x:2785">
-            <div class="form-text">URL server OpenWA (tanpa trailing slash).</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-semibold small">Session ID</label>
-            <input type="text" name="openwa_session_id" class="form-control form-control-sm"
-                   value="{{ cfg.openwa_session_id or 'default' }}"
-                   placeholder="default">
-            <div class="form-text">Nama sesi di OpenWA dashboard.</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-semibold small">API Key</label>
-            <div class="input-group input-group-sm">
-              <input type="password" name="openwa_api_key" id="waKey" class="form-control"
-                     value="{{ cfg.openwa_api_key }}" placeholder="X-API-Key"
-                     autocomplete="off">
-              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('waKey')">
-                <i class="bi bi-eye"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Test WhatsApp -->
-        <hr class="my-3">
-        <div class="row g-2 align-items-end">
-          <div class="col-md-5">
-            <label class="form-label fw-semibold small">Test — Nomor HP tujuan</label>
-            <input type="text" id="testWaPhone" class="form-control form-control-sm"
-                   placeholder="08xxxxxxxxxx">
-          </div>
-          <div class="col-auto">
-            <button type="button" class="btn btn-sm fw-semibold"
-                    style="background:#25D366;color:#fff" onclick="testWhatsapp()">
-              <i class="bi bi-whatsapp"></i> Test WA
-            </button>
-          </div>
-          <div class="col-12">
-            <div id="waResult" class="small"></div>
-          </div>
-        </div>
-
-        <!-- Panduan Koneksi -->
-        <div class="alert alert-success py-2 small mt-3 mb-0" style="border-left:4px solid #25D366">
-          <strong><i class="bi bi-whatsapp me-1"></i>Cara menghubungkan OpenWA ke aplikasi ini:</strong>
-          <ol class="mt-2 mb-0 ps-3">
-            <li class="mb-1">Pastikan OpenWA sudah berjalan di server dan QR code sudah di-scan</li>
-            <li class="mb-1">Cek endpoint REST tersedia:
-              <code>curl http://&lt;IP-openwa&gt;:3000/getConnectionState</code>
-            </li>
-            <li class="mb-1">Isi <strong>URL OpenWA</strong> di atas, contoh:
-              <code>http://192.168.1.x:3000</code> atau <code>http://localhost:3000</code>
-              (jika satu server)
-            </li>
-            <li class="mb-1">Jika OpenWA dikonfigurasi dengan API key, isi kolom <strong>API Key</strong></li>
-            <li class="mb-1">Klik <strong>Test WA</strong> untuk verifikasi koneksi</li>
-            <li>Di data karyawan, pastikan kolom <strong>Nomor HP / WA</strong> diisi dengan format
-              <code>08xxxxxxxxxx</code> — akan otomatis dikonversi ke <code>628xxx@c.us</code></li>
-          </ol>
-          <div class="mt-2 pt-2 border-top">
-            <strong>Setup OpenWA di server Ubuntu (jika belum):</strong><br>
-            <code>npm install -g @open-wa/wa-automate</code><br>
-            <code>wa-automate --key "api-key-anda" --port 3000 --cors</code><br>
-            Atau via Docker:
-            <code>docker run -p 3000:3000 openwa/wa-automate</code>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Notifikasi Statis -->
-    <div class="card mb-3">
-      <div class="card-header py-2 fw-bold">
-        <i class="bi bi-broadcast text-danger me-1"></i> Penerima Notifikasi Statis
+        <i class="bi bi-broadcast text-danger me-1"></i>Penerima Notifikasi Statis
       </div>
       <div class="card-body">
         <p class="text-muted small mb-3">
@@ -251,7 +31,7 @@
         </p>
         <div class="mb-3">
           <label class="form-label fw-semibold small">
-            <i class="bi bi-envelope me-1"></i> Email Statis
+            <i class="bi bi-envelope me-1"></i>Email Statis
           </label>
           <input type="text" name="notification_emails" class="form-control form-control-sm"
                  value="{{ cfg.notification_emails }}"
@@ -260,17 +40,16 @@
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold small">
-            <i class="bi bi-telegram me-1" style="color:#0088cc"></i> Telegram Chat ID Statis
+            <i class="bi bi-telegram me-1" style="color:#0088cc"></i>Telegram Chat ID Statis
           </label>
           <input type="text" name="notification_telegram_ids" class="form-control form-control-sm"
                  value="{{ cfg.notification_telegram_ids }}"
                  placeholder="-100123456789, @gruphr, namakanal">
           <div class="form-text">
-            Format yang diterima (pisah koma):
-            <code>123456789</code> numeric ID personal •
-            <code>-100123456789</code> numeric ID grup •
-            <code>@namakanal</code> atau <code>namakanal</code> username grup/channel publik.
-            Username tanpa <code>@</code> akan otomatis ditambah.
+            Format (pisah koma):
+            <code>123456789</code> personal •
+            <code>-100123456789</code> grup •
+            <code>@namakanal</code> channel publik.
           </div>
         </div>
         <div class="mb-0">
@@ -278,23 +57,23 @@
             <span style="background:#25D366;color:#fff;border-radius:4px;padding:1px 5px;font-size:.8rem">
               <i class="bi bi-whatsapp"></i>
             </span>
-            Nomor WA Extra (di luar atasan/karyawan terkait)
+            Nomor WA Extra
           </label>
           <input type="text" name="openwa_extra_phones" class="form-control form-control-sm"
                  value="{{ cfg.openwa_extra_phones }}"
                  placeholder="08111000001, 08222000002">
           <div class="form-text">
-            Nomor-nomor ini menerima <b>semua</b> notifikasi kontrak via WhatsApp, terlepas dari struktur
-            Co-Leader/Leader/Manager. Pisahkan dengan koma. Format <code>08xxxxxxxxxx</code>.
+            Nomor-nomor ini menerima <b>semua</b> notifikasi kontrak via WhatsApp terlepas dari
+            struktur Co-Leader/Leader/Manager. Format <code>08xxxxxxxxxx</code>.
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Reminder Schedule -->
+    <!-- Jadwal Reminder Otomatis -->
     <div class="card mb-3">
       <div class="card-header py-2 fw-bold">
-        <i class="bi bi-clock-history text-warning me-1"></i> Jadwal Reminder Otomatis
+        <i class="bi bi-clock-history text-warning me-1"></i>Jadwal Reminder Otomatis
       </div>
       <div class="card-body">
         <div class="row g-3">
@@ -319,9 +98,9 @@
           </div>
         </div>
         <div class="alert alert-secondary py-2 small mt-3 mb-0">
-          <i class="bi bi-info-circle"></i>
-          Reminder otomatis berjalan setiap hari pukul <strong>08:00</strong> saat aplikasi aktif.
-          Gunakan tombol <em>"Kirim Semua Reminder"</em> di halaman Kontrak untuk trigger manual.
+          <i class="bi bi-info-circle me-1"></i>
+          Reminder otomatis berjalan setiap hari pukul <strong>08:00</strong>.
+          Gunakan tombol <em>"Jalankan Reminder Sekarang"</em> di panel kanan untuk trigger manual.
         </div>
       </div>
     </div>
@@ -331,7 +110,9 @@
   <!-- Right: App Settings + Actions -->
   <div class="col-lg-4">
     <div class="card mb-3 sticky-score">
-      <div class="card-header py-2 fw-bold"><i class="bi bi-app text-primary me-1"></i> Pengaturan Aplikasi</div>
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-app text-primary me-1"></i>Pengaturan Aplikasi
+      </div>
       <div class="card-body">
         <div class="mb-3">
           <label class="form-label fw-semibold small">Nama Aplikasi</label>
@@ -339,19 +120,21 @@
                  value="{{ cfg.app_name or 'TalentCore' }}">
         </div>
         <button type="submit" class="btn btn-primary w-100">
-          <i class="bi bi-save"></i> Simpan Semua Pengaturan
+          <i class="bi bi-save me-1"></i>Simpan Pengaturan
         </button>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header py-2 fw-bold"><i class="bi bi-lightning text-warning me-1"></i> Aksi Manual</div>
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-lightning text-warning me-1"></i>Aksi Manual
+      </div>
       <div class="card-body d-grid gap-2">
         <button type="button" class="btn btn-outline-warning btn-sm" onclick="runReminders()">
-          <i class="bi bi-bell"></i> Jalankan Reminder Sekarang
+          <i class="bi bi-bell me-1"></i>Jalankan Reminder Sekarang
         </button>
         <a href="/reminders" class="btn btn-outline-secondary btn-sm">
-          <i class="bi bi-clock-history"></i> Lihat Log Reminder
+          <i class="bi bi-clock-history me-1"></i>Lihat Log Reminder
         </a>
         <div id="runResult" class="small text-muted"></div>
       </div>
@@ -362,51 +145,6 @@
 {% endblock %}
 {% block scripts %}
 <script>
-function toggleField(id) {
-  const el = document.getElementById(id);
-  el.type = el.type === 'password' ? 'text' : 'password';
-}
-
-function showResult(elId, ok, msg) {
-  const el = document.getElementById(elId);
-  el.innerHTML = `<div class="alert alert-${ok?'success':'danger'} py-1 px-2 mb-0">${ok?'✓':'✗'} ${msg}</div>`;
-}
-
-function testEmail() {
-  const addr = document.getElementById('testEmailAddr').value.trim();
-  if (!addr) { alert('Masukkan alamat email tujuan test'); return; }
-  // Save settings first
-  const fd = new FormData(document.getElementById('settingsForm'));
-  fetch('/settings', {method:'POST', body:fd}).then(() => {
-    const fd2 = new FormData();
-    fd2.append('test_email', addr);
-    return fetch('/settings/test-email', {method:'POST', body:fd2});
-  }).then(r=>r.json()).then(d=>showResult('emailResult',d.ok,d.msg));
-}
-
-function testTelegram() {
-  const chat = document.getElementById('testChatId').value.trim();
-  const fd = new FormData(document.getElementById('settingsForm'));
-  fetch('/settings', {method:'POST', body:fd}).then(() => {
-    const fd2 = new FormData();
-    fd2.append('test_chat_id', chat);
-    return fetch('/settings/test-telegram', {method:'POST', body:fd2});
-  }).then(r=>r.json()).then(d=>showResult('telegramResult',d.ok,d.msg));
-}
-
-function testWhatsapp() {
-  const phone = document.getElementById('testWaPhone').value.trim();
-  if (!phone) { alert('Masukkan nomor HP tujuan test'); return; }
-  const fd = new FormData(document.getElementById('settingsForm'));
-  fetch('/settings', {method:'POST', body:fd}).then(() => {
-    const fd2 = new FormData();
-    fd2.append('test_wa_phone', phone);
-    return fetch('/settings/test-whatsapp', {method:'POST', body:fd2});
-  }).then(r=>r.json()).then(d=>{
-    showResult('waResult', d.ok, d.ok ? d.msg + (d.chat_id ? ` (${d.chat_id})` : '') : d.msg);
-  });
-}
-
 function runReminders() {
   document.getElementById('runResult').innerHTML = '<i class="bi bi-hourglass-split"></i> Memproses...';
   fetch('/settings/run-reminders', {method:'POST'})

@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+{% block title %}Pengaturan Sistem — super-us{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Pengaturan Sistem</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h5 class="fw-bold mb-0"><i class="bi bi-gear-fill text-primary me-1"></i>Pengaturan Sistem</h5>
+  <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 ms-1" style="font-size:.72rem">
+    Shared — berlaku untuk semua aplikasi
+  </span>
+</div>
+
+<form method="post" id="sysSettingsForm">
+<div class="row g-3">
+  <div class="col-lg-8">
+
+    <!-- URL Publik -->
+    <div class="card mb-3 border-warning">
+      <div class="card-header py-2 fw-bold bg-warning bg-opacity-10">
+        <i class="bi bi-globe me-1 text-warning"></i>URL Publik Aplikasi
+      </div>
+      <div class="card-body">
+        <label class="form-label fw-semibold small">URL Aplikasi
+          <span class="text-muted fw-normal">(untuk link reset password, evaluasi self-assessment, dll.)</span>
+        </label>
+        <input type="url" name="app_url" class="form-control form-control-sm"
+               value="{{ cfg.app_url or '' }}"
+               placeholder="https://apps.perusahaan.com">
+        <div class="form-text">
+          <i class="bi bi-exclamation-triangle text-warning me-1"></i>
+          Wajib diisi jika akses melalui domain/proxy. Saat ini terdeteksi: <code>{{ request.host_url }}</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Email SMTP -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-envelope-fill text-primary me-1"></i>Konfigurasi Email (SMTP)
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">SMTP Host</label>
+            <input type="text" name="smtp_host" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_host }}" placeholder="smtp.gmail.com / smtp.office365.com">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Port</label>
+            <input type="number" name="smtp_port" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_port or '587' }}" placeholder="587">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Username / Email</label>
+            <input type="text" name="smtp_user" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_user }}" placeholder="noreply@perusahaan.com" autocomplete="off">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Password / App Password</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="smtp_password" id="smtpPwd" class="form-control"
+                     value="{{ cfg.smtp_password }}" autocomplete="new-password">
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('smtpPwd')">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">From Email (opsional)</label>
+            <input type="text" name="smtp_from" class="form-control form-control-sm"
+                   value="{{ cfg.smtp_from }}" placeholder="super-us &lt;noreply@perusahaan.com&gt;">
+          </div>
+          <div class="col-md-4 d-flex align-items-end pb-1">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="smtp_ssl" id="smtpSsl"
+                     {{ 'checked' if cfg.smtp_ssl == '1' else '' }}>
+              <label class="form-check-label small" for="smtpSsl">Gunakan SSL/TLS</label>
+            </div>
+          </div>
+        </div>
+        <hr class="my-3">
+        <div class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label fw-semibold small">Test — Kirim ke email</label>
+            <input type="email" id="testEmailAddr" class="form-control form-control-sm"
+                   placeholder="test@example.com">
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" onclick="testEmail()">
+            <i class="bi bi-send"></i> Test Email
+          </button>
+        </div>
+        <div id="emailResult" class="mt-2 small"></div>
+      </div>
+    </div>
+
+    <!-- Telegram Bot -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-telegram me-1" style="color:#0088cc"></i>Konfigurasi Telegram Bot
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Bot Token</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="telegram_bot_token" id="tgToken" class="form-control"
+                     value="{{ cfg.telegram_bot_token }}" placeholder="123456:ABCdef..."
+                     autocomplete="off">
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('tgToken')">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="form-text">Dapatkan dari <strong>@BotFather</strong> di Telegram.</div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Default Chat ID</label>
+            <input type="text" name="telegram_default_chat_id" class="form-control form-control-sm"
+                   value="{{ cfg.telegram_default_chat_id }}"
+                   placeholder="-100123456789 (group) atau 123456789 (personal)">
+            <div class="form-text">
+              Digunakan jika karyawan tidak memiliki Telegram ID individual.
+              Gunakan <strong>@userinfobot</strong> untuk mendapatkan chat ID Anda.
+            </div>
+          </div>
+        </div>
+        <hr class="my-3">
+        <div class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label fw-semibold small">Test — Chat ID (kosongkan untuk pakai default)</label>
+            <input type="text" id="testChatId" class="form-control form-control-sm"
+                   placeholder="{{ cfg.telegram_default_chat_id or 'Chat ID tujuan test' }}">
+          </div>
+          <button type="button" class="btn btn-sm" style="background:#0088cc;color:#fff" onclick="testTelegram()">
+            <i class="bi bi-telegram"></i> Test Telegram
+          </button>
+        </div>
+        <div id="telegramResult" class="mt-2 small"></div>
+        <div class="alert alert-info py-2 small mt-3 mb-0">
+          <strong>Cara setup:</strong>
+          Chat <code>@BotFather</code> → <code>/newbot</code> → salin token •
+          Gunakan <code>@userinfobot</code> untuk chat ID •
+          Per karyawan: isi <em>Telegram ID</em> di halaman edit karyawan
+        </div>
+      </div>
+    </div>
+
+    <!-- OpenWA WhatsApp -->
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold d-flex align-items-center gap-2">
+        <span style="background:#25D366;color:#fff;border-radius:6px;padding:2px 7px;font-size:.85rem">
+          <i class="bi bi-whatsapp"></i>
+        </span>
+        Konfigurasi WhatsApp via OpenWA
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" name="openwa_enabled" id="waEnabled"
+                     {{ 'checked' if cfg.openwa_enabled == '1' else '' }}>
+              <label class="form-check-label fw-semibold small" for="waEnabled">
+                Aktifkan Notifikasi WhatsApp
+              </label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">URL OpenWA REST API</label>
+            <input type="text" name="openwa_url" class="form-control form-control-sm"
+                   value="{{ cfg.openwa_url }}" placeholder="http://10.x.x.x:3000">
+            <div class="form-text">URL server OpenWA (tanpa trailing slash).</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">Session ID</label>
+            <input type="text" name="openwa_session_id" class="form-control form-control-sm"
+                   value="{{ cfg.openwa_session_id or 'default' }}" placeholder="default">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">API Key</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="openwa_api_key" id="waKey" class="form-control"
+                     value="{{ cfg.openwa_api_key }}" placeholder="X-API-Key" autocomplete="off">
+              <button type="button" class="btn btn-outline-secondary" onclick="toggleField('waKey')">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        <hr class="my-3">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-5">
+            <label class="form-label fw-semibold small">Test — Nomor HP tujuan</label>
+            <input type="text" id="testWaPhone" class="form-control form-control-sm"
+                   placeholder="08xxxxxxxxxx">
+          </div>
+          <div class="col-auto">
+            <button type="button" class="btn btn-sm fw-semibold"
+                    style="background:#25D366;color:#fff" onclick="testWhatsapp()">
+              <i class="bi bi-whatsapp"></i> Test WA
+            </button>
+          </div>
+          <div class="col-12"><div id="waResult" class="small"></div></div>
+        </div>
+        <div class="alert alert-success py-2 small mt-3 mb-0" style="border-left:4px solid #25D366">
+          <strong>Cara setup OpenWA:</strong>
+          Pastikan OpenWA berjalan & QR code di-scan •
+          Isi URL OpenWA, contoh: <code>http://192.168.1.x:3000</code> •
+          Klik Test WA untuk verifikasi •
+          Di data karyawan pastikan kolom <strong>No. HP/WA</strong> diisi format <code>08xxxxxxxxxx</code>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: Actions -->
+  <div class="col-lg-4">
+    <div class="card sticky-score">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-floppy text-primary me-1"></i>Simpan Pengaturan
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3">
+          Pengaturan ini berlaku untuk seluruh aplikasi dalam super-us
+          (TalentCore, AssetCore, dll).
+        </p>
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-save me-1"></i>Simpan Pengaturan Sistem
+        </button>
+        <hr class="my-3">
+        <a href="/portal" class="btn btn-outline-secondary btn-sm w-100">
+          <i class="bi bi-arrow-left me-1"></i>Kembali ke Portal
+        </a>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-info-circle text-info me-1"></i>Konfigurasi per Aplikasi
+      </div>
+      <div class="card-body small text-muted">
+        <p class="mb-2">Pengaturan notifikasi spesifik per aplikasi (penerima statis, jadwal reminder) tersedia di halaman <strong>Pengaturan</strong> masing-masing aplikasi.</p>
+        <a href="/settings" class="btn btn-outline-secondary btn-sm w-100">
+          <i class="bi bi-clipboard2-check me-1"></i>TalentCore Settings
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleField(id) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function showResult(elId, ok, msg) {
+  document.getElementById(elId).innerHTML =
+    `<div class="alert alert-${ok?'success':'danger'} py-1 px-2 mb-0">${ok?'✓':'✗'} ${msg}</div>`;
+}
+
+function testEmail() {
+  const addr = document.getElementById('testEmailAddr').value.trim();
+  if (!addr) { alert('Masukkan alamat email tujuan test'); return; }
+  const fd = new FormData(document.getElementById('sysSettingsForm'));
+  fetch('/portal/system-settings', {method:'POST', body:fd}).then(() => {
+    const fd2 = new FormData();
+    fd2.append('test_email', addr);
+    return fetch('/portal/system-settings/test-email', {method:'POST', body:fd2});
+  }).then(r=>r.json()).then(d=>showResult('emailResult', d.ok, d.msg));
+}
+
+function testTelegram() {
+  const chat = document.getElementById('testChatId').value.trim();
+  const fd = new FormData(document.getElementById('sysSettingsForm'));
+  fetch('/portal/system-settings', {method:'POST', body:fd}).then(() => {
+    const fd2 = new FormData();
+    fd2.append('test_chat_id', chat);
+    return fetch('/portal/system-settings/test-telegram', {method:'POST', body:fd2});
+  }).then(r=>r.json()).then(d=>showResult('telegramResult', d.ok, d.msg));
+}
+
+function testWhatsapp() {
+  const phone = document.getElementById('testWaPhone').value.trim();
+  if (!phone) { alert('Masukkan nomor HP tujuan test'); return; }
+  const fd = new FormData(document.getElementById('sysSettingsForm'));
+  fetch('/portal/system-settings', {method:'POST', body:fd}).then(() => {
+    const fd2 = new FormData();
+    fd2.append('test_wa_phone', phone);
+    return fetch('/portal/system-settings/test-whatsapp', {method:'POST', body:fd2});
+  }).then(r=>r.json()).then(d=>{
+    showResult('waResult', d.ok, d.ok ? d.msg + (d.chat_id ? ` (${d.chat_id})` : '') : d.msg);
+  });
+}
+</script>
+{% endblock %}
