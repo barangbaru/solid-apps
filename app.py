@@ -2147,14 +2147,26 @@ def portal_users():
     user_access = {}
     for r in access_rows:
         user_access.setdefault(r['user_id'], {})[r['app_slug']] = r['app_role']
-    # Deteksi semua duplikat email (semua tipe user)
+    # Deteksi semua duplikat email — termasuk email dari tabel employees
     from collections import defaultdict
+    # effective email: users.email jika ada, fallback ke linked employee email
+    def eff_email(u):
+        e = (u['email'] or '').strip().lower()
+        if not e:
+            emp = linked_emps.get(u['id'])
+            if emp:
+                e = (emp['email'] or '').strip().lower()
+        return e
+
     email_groups = defaultdict(list)
     for u in users:
-        if u['email'] and u['is_active']:
-            email_groups[u['email'].lower()].append(u)
+        if not u['is_active']:
+            continue
+        em = eff_email(u)
+        if em:
+            email_groups[em].append(u)
     duplicate_emails = {email: grp for email, grp in email_groups.items() if len(grp) > 1}
-    # merge_candidates: google_uid -> manual_uid (untuk tombol per-baris)
+    # merge_candidates: google_uid -> manual_uid
     merge_candidates = {}
     for grp in duplicate_emails.values():
         google_u = next((u for u in grp if u['google_id']), None)
@@ -2174,11 +2186,15 @@ def portal_user_merge_all():
         return redirect(url_for('portal_users'))
     db = get_db()
     users = db.execute('SELECT * FROM users WHERE is_active=1').fetchall()
+    # Bangun map user_id -> employee email untuk fallback
+    emp_emails = {r['user_id']: (r['email'] or '').strip().lower()
+                  for r in db.execute('SELECT user_id, email FROM employees WHERE user_id IS NOT NULL AND is_active=1').fetchall()}
     from collections import defaultdict
     email_groups = defaultdict(list)
     for u in users:
-        if u['email']:
-            email_groups[u['email'].lower()].append(dict(u))
+        em = (u['email'] or '').strip().lower() or emp_emails.get(u['id'], '')
+        if em:
+            email_groups[em].append(dict(u))
     merged = 0
     for email, grp in email_groups.items():
         if len(grp) < 2:
@@ -2194,6 +2210,10 @@ def portal_user_merge_all():
         else:
             keep  = manual_users[0] if manual_users else sorted(google_users, key=lambda u: u['id'])[0]
             donor = google_users[0]
+            # Pastikan email tersimpan di users.email untuk keep
+            keep_email = (keep.get('email') or '').strip() or emp_emails.get(keep['id'], '')
+            if keep_email and not keep.get('email'):
+                db.execute("UPDATE users SET email=? WHERE id=?", (keep_email, keep['id']))
             # Pindahkan google_id ke keep
             db.execute("UPDATE users SET google_id=? WHERE id=?", (donor['google_id'], keep['id']))
             # Pindahkan akses app
