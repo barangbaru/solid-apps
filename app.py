@@ -2147,16 +2147,70 @@ def portal_users():
     user_access = {}
     for r in access_rows:
         user_access.setdefault(r['user_id'], {})[r['app_slug']] = r['app_role']
-    # Deteksi kandidat merge: Google user yang emailnya sama dengan user manual lain
+    # Deteksi semua duplikat email (semua tipe user)
+    from collections import defaultdict
+    email_groups = defaultdict(list)
+    for u in users:
+        if u['email'] and u['is_active']:
+            email_groups[u['email'].lower()].append(u)
+    duplicate_emails = {email: grp for email, grp in email_groups.items() if len(grp) > 1}
+    # merge_candidates: google_uid -> manual_uid (untuk tombol per-baris)
     merge_candidates = {}
-    google_users = [u for u in users if u['google_id'] and u['email']]
-    all_emails = {u['email'].lower(): u['id'] for u in users if u['email'] and not u['google_id']}
-    for gu in google_users:
-        manual_id = all_emails.get(gu['email'].lower())
-        if manual_id:
-            merge_candidates[gu['id']] = manual_id  # google_user_id -> manual_user_id
+    for grp in duplicate_emails.values():
+        google_u = next((u for u in grp if u['google_id']), None)
+        manual_u = next((u for u in grp if not u['google_id']), None)
+        if google_u and manual_u:
+            merge_candidates[google_u['id']] = manual_u['id']
     return render_template('portal_users.html', users=users, linked_emps=linked_emps,
-                           apps=apps, user_access=user_access, merge_candidates=merge_candidates)
+                           apps=apps, user_access=user_access,
+                           merge_candidates=merge_candidates,
+                           duplicate_count=len(duplicate_emails))
+
+@app.route('/portal/users/merge-all-duplicates', methods=['POST'])
+@login_required
+def portal_user_merge_all():
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal_users'))
+    db = get_db()
+    users = db.execute('SELECT * FROM users WHERE is_active=1').fetchall()
+    from collections import defaultdict
+    email_groups = defaultdict(list)
+    for u in users:
+        if u['email']:
+            email_groups[u['email'].lower()].append(dict(u))
+    merged = 0
+    for email, grp in email_groups.items():
+        if len(grp) < 2:
+            continue
+        # Prioritas: user dengan google_id jadi "donor", user tanpa google_id jadi "penerima"
+        # Jika keduanya manual/google, pilih yang lebih lama (id lebih kecil) sebagai penerima
+        google_users = [u for u in grp if u['google_id']]
+        manual_users = [u for u in grp if not u['google_id']]
+        if not google_users:
+            # Dua user manual: nonaktifkan yang lebih baru
+            grp_sorted = sorted(grp, key=lambda u: u['id'])
+            keep, drop = grp_sorted[0], grp_sorted[1]
+        else:
+            keep  = manual_users[0] if manual_users else sorted(google_users, key=lambda u: u['id'])[0]
+            donor = google_users[0]
+            # Pindahkan google_id ke keep
+            db.execute("UPDATE users SET google_id=? WHERE id=?", (donor['google_id'], keep['id']))
+            # Pindahkan akses app
+            for a in db.execute('SELECT * FROM user_app_access WHERE user_id=?', (donor['id'],)).fetchall():
+                db.execute('INSERT OR IGNORE INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,?)',
+                           (keep['id'], a['app_slug'], a['app_role'], a['is_active']))
+            # Update link karyawan
+            db.execute("UPDATE employees SET user_id=? WHERE user_id=?", (keep['id'], donor['id']))
+            drop = donor
+        db.execute("UPDATE users SET is_active=0, email='' WHERE id=?", (drop['id'],))
+        audit_log('merge_user_bulk', 'users', keep['id'],
+                  f'Duplikat email {email}: akun {drop["username"]} digabung ke {keep["username"]}',
+                  app_slug='portal')
+        merged += 1
+    db.commit()
+    flash(f'{merged} duplikat email berhasil digabungkan.', 'success')
+    return redirect(url_for('portal_users'))
 
 @app.route('/portal/users/<int:google_uid>/merge/<int:manual_uid>', methods=['POST'])
 @login_required
@@ -2207,6 +2261,8 @@ def portal_user_add():
         emp_id    = request.form.get('emp_id', type=int)
         if not username or not password:
             flash('Username dan password wajib diisi', 'danger')
+        elif email and db.execute("SELECT id FROM users WHERE LOWER(email)=? AND is_active=1", (email.lower(),)).fetchone():
+            flash(f'Email {email} sudah digunakan oleh user lain.', 'danger')
         else:
             try:
                 cur = db.execute(
@@ -2251,6 +2307,16 @@ def portal_user_edit(uid):
         phone     = request.form.get('phone', '').strip()
         telegram  = request.form.get('telegram_id', '').strip()
         new_pass  = request.form.get('password', '').strip()
+        # Validasi email unik
+        if email:
+            dup = db.execute("SELECT id FROM users WHERE LOWER(email)=? AND is_active=1 AND id!=?",
+                             (email.lower(), uid)).fetchone()
+            if dup:
+                flash(f'Email {email} sudah digunakan oleh user lain.', 'danger')
+                linked_emp = db.execute('SELECT id,name,email,phone,telegram_id FROM employees WHERE user_id=? AND is_active=1', (uid,)).fetchone()
+                return render_template('portal_user_form.html', user=user, apps=apps,
+                                       linked_emp=linked_emp,
+                                       free_emps=db.execute('SELECT id,name,jabatan,divisi FROM employees WHERE is_active=1 AND (user_id IS NULL OR user_id=?) ORDER BY name',(uid,)).fetchall())
         if new_pass:
             db.execute('UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=?,password_hash=? WHERE id=?',
                        (full_name, role, is_active, email, phone, telegram,

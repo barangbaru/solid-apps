@@ -13,6 +13,22 @@
   </a>
 </div>
 
+{% if duplicate_count %}
+<div class="alert alert-warning d-flex align-items-center justify-content-between py-2 mb-3">
+  <div class="small">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    Ditemukan <strong>{{ duplicate_count }} email duplikat</strong> — ada user dengan email yang sama.
+    Gabungkan agar setiap email hanya dimiliki satu akun.
+  </div>
+  <form action="/portal/users/merge-all-duplicates" method="post" class="ms-3 flex-shrink-0"
+        onsubmit="return confirm('Gabungkan semua akun duplikat secara otomatis?\n\nAkun Google akan digabung ke akun manual, akun duplikat dinonaktifkan.')">
+    <button class="btn btn-warning btn-sm fw-semibold">
+      <i class="bi bi-arrow-left-right me-1"></i>Gabung Semua Duplikat
+    </button>
+  </form>
+</div>
+{% endif %}
+
 <div class="card border-0 shadow-sm">
   <div class="card-body p-0">
     <table class="table table-hover table-sm mb-0 align-middle">
