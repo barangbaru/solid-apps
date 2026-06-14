@@ -331,7 +331,7 @@
         <i class="bi bi-grid-3x3-gap nav-icon"></i> Semua Aplikasi
       </a>
     </li>
-    {% if current_user.role == 'superadmin' %}
+    {% if current_user.role in ('superadmin', 'admin') %}
     <li>
       <a href="/portal/users" class="{{ 'active' if '/portal/users' in request.path }}">
         <i class="bi bi-people nav-icon"></i> Kelola User

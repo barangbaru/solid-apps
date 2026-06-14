@@ -53,7 +53,8 @@
         {% endfor %}
       </div>
 
-      {# Form tambah role baru #}
+      {# Form tambah role baru — hanya superadmin #}
+      {% if is_superadmin %}
       <div class="card-body border-top pt-3 pb-3">
         <div class="small fw-bold text-muted text-uppercase mb-2">Tambah Role Baru</div>
         <form method="post">
@@ -72,6 +73,11 @@
           </button>
         </form>
       </div>
+      {% else %}
+      <div class="card-body border-top pt-3 pb-3 text-muted small">
+        <i class="bi bi-lock me-1"></i>Tambah/hapus role hanya untuk Superadmin.
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -98,7 +104,7 @@
           {% endif %}
           <span class="text-muted small ms-2">{{ role.description or '' }}</span>
         </div>
-        {% if not role.is_system %}
+        {% if not role.is_system and is_superadmin %}
         <form method="post" class="d-inline"
               data-confirm="Hapus role {{ role.name | e }}?"
               onsubmit="return confirm(this.dataset.confirm)">
@@ -125,20 +131,37 @@
           {% set cur_perms = perms_by_role.get(role.name, set()) %}
           <div class="row g-2">
             {% for perm_key, perm_desc in app_perms.items() %}
+            {% set is_critical = perm_key in critical_permissions %}
+            {% set locked = is_critical and not is_superadmin %}
             <div class="col-md-6">
               <div class="form-check p-0">
-                <label class="d-flex align-items-start gap-2 p-2 rounded cursor-pointer perm-item
-                              {{ 'bg-primary bg-opacity-10 border border-primary border-opacity-25' if perm_key in cur_perms else 'border' }}"
-                       style="cursor:pointer;border-radius:8px !important">
+                <label class="d-flex align-items-start gap-2 p-2 rounded perm-item
+                              {{ 'bg-danger bg-opacity-10 border border-danger border-opacity-25' if locked else
+                                 ('bg-primary bg-opacity-10 border border-primary border-opacity-25' if perm_key in cur_perms else 'border') }}"
+                       style="{{ 'cursor:not-allowed;opacity:.7' if locked else 'cursor:pointer' }};border-radius:8px !important">
                   <input class="form-check-input mt-1 flex-shrink-0" type="checkbox"
                          name="permissions" value="{{ perm_key }}"
                          {{ 'checked' if perm_key in cur_perms else '' }}
+                         {{ 'disabled' if locked else '' }}
+                         {% if not locked %}
                          onchange="this.closest('.perm-item').classList.toggle('bg-primary',this.checked);
                                    this.closest('.perm-item').classList.toggle('bg-opacity-10',this.checked);
                                    this.closest('.perm-item').classList.toggle('border-primary',this.checked);
-                                   this.closest('.perm-item').classList.toggle('border-opacity-25',this.checked)">
-                  <div>
-                    <div class="fw-semibold" style="font-size:.82rem">{{ perm_key }}</div>
+                                   this.closest('.perm-item').classList.toggle('border-opacity-25',this.checked)"
+                         {% endif %}>
+                  <div class="flex-grow-1">
+                    <div class="fw-semibold d-flex align-items-center gap-1" style="font-size:.82rem">
+                      {{ perm_key }}
+                      {% if locked %}
+                      <span class="badge bg-danger ms-1" style="font-size:.58rem" title="Hanya Superadmin">
+                        <i class="bi bi-lock-fill"></i> Superadmin Only
+                      </span>
+                      {% elif is_critical %}
+                      <span class="badge bg-warning text-dark ms-1" style="font-size:.58rem">
+                        <i class="bi bi-shield-exclamation"></i> Critical
+                      </span>
+                      {% endif %}
+                    </div>
                     <div class="text-muted" style="font-size:.74rem">{{ perm_desc }}</div>
                   </div>
                 </label>
@@ -150,10 +173,12 @@
             <button type="submit" class="btn btn-sm btn-primary">
               <i class="bi bi-save me-1"></i>Simpan Permission
             </button>
+            {% if is_superadmin %}
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     onclick="toggleAll(this.form, true)">Pilih Semua</button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
                     onclick="toggleAll(this.form, false)">Hapus Semua</button>
+            {% endif %}
           </div>
         </form>
         {% endif %}

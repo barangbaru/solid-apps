@@ -358,6 +358,9 @@ ALL_PERMISSIONS = {
 for _perms in APP_PERMISSIONS.values():
     ALL_PERMISSIONS.update(_perms)
 
+# Permission yang hanya bisa diset oleh superadmin (admin tidak boleh assign ke role)
+CRITICAL_PERMISSIONS = {'view_salary', 'manage_salary', 'manage_users', 'manage_roles'}
+
 SYSTEM_ROLE_DEFAULTS = {
     'superadmin': list(ALL_PERMISSIONS.keys()),
     'admin': ['manage_employees','manage_divisions','manage_evaluations',
@@ -1555,7 +1558,7 @@ def portal_open(slug):
 @app.route('/portal/settings', methods=['GET', 'POST'])
 @login_required
 def portal_settings():
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     db    = get_db()
@@ -1587,6 +1590,13 @@ def portal_settings():
 
     return render_template('portal_settings.html', users=users, apps=apps, access_map=access_map)
 
+def is_portal_admin():
+    """True jika user adalah superadmin atau admin (dapat akses portal management)."""
+    return session.get('user_role') in ('superadmin', 'admin')
+
+def is_superadmin():
+    return session.get('user_role') == 'superadmin'
+
 # ─── Portal: Kelola User ───────────────────────────────────────────────────────
 
 @app.route('/portal/api/employees-search')
@@ -1607,7 +1617,7 @@ def portal_emp_search():
 @app.route('/portal/users')
 @login_required
 def portal_users():
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     db    = get_db()
@@ -1628,7 +1638,7 @@ def portal_users():
 @app.route('/portal/users/add', methods=['GET', 'POST'])
 @login_required
 def portal_user_add():
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     db = get_db()
@@ -1671,7 +1681,7 @@ def portal_user_add():
 @app.route('/portal/users/<int:uid>/edit', methods=['GET', 'POST'])
 @login_required
 def portal_user_edit(uid):
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     db   = get_db()
@@ -1710,7 +1720,7 @@ def portal_user_edit(uid):
 @app.route('/portal/users/<int:uid>/delete', methods=['POST'])
 @login_required
 def portal_user_delete(uid):
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         return jsonify({'error': 'forbidden'}), 403
     if uid == session['user_id']:
         flash('Tidak bisa menghapus akun sendiri', 'danger')
@@ -1724,21 +1734,31 @@ def portal_user_delete(uid):
 @app.route('/portal/users/<int:uid>/send-reset', methods=['POST'])
 @login_required
 def portal_user_send_reset(uid):
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         return redirect(url_for('portal'))
     # Delegasi ke fungsi existing
     from flask import current_app
     db   = get_db()
     user = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
     if user:
-        _send_reset_notifications(user, db)
-        flash('Link reset password telah dikirim', 'success')
+        settings = get_settings(db)
+        token    = secrets.token_urlsafe(48)
+        expires  = (datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        db.execute('INSERT INTO password_reset_tokens(user_id, token, expires_at) VALUES(?,?,?)',
+                   (user['id'], token, expires))
+        db.commit()
+        reset_link = f"{get_base_url(settings)}/reset-password/{token}"
+        sent = _send_reset_notifications(dict(user), reset_link, settings, db)
+        if sent:
+            flash(f'Link reset dikirim via: {", ".join(sent)}.', 'success')
+        else:
+            flash(f'Tidak ada kontak — salin link manual: {reset_link}', 'warning')
     return redirect(url_for('portal_users'))
 
 @app.route('/portal/users/<int:uid>/mfa-reset', methods=['POST'])
 @login_required
 def portal_user_mfa_reset(uid):
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         return redirect(url_for('portal'))
     db = get_db()
     db.execute('UPDATE users SET totp_secret="", mfa_enabled=0 WHERE id=?', (uid,))
@@ -1751,39 +1771,50 @@ def portal_user_mfa_reset(uid):
 @app.route('/portal/roles', methods=['GET', 'POST'])
 @login_required
 def portal_roles():
-    if session.get('user_role') != 'superadmin':
+    if not is_portal_admin():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
-    db = get_db()
+    db         = get_db()
     active_app = request.args.get('app', 'evaluasi')
+    superadmin = is_superadmin()
+
     if request.method == 'POST':
-        action = request.form.get('action')
+        action   = request.form.get('action')
         app_slug = request.form.get('app_slug', 'evaluasi')
         if action == 'add':
-            name = request.form.get('name', '').strip().lower().replace(' ', '_')
-            desc = request.form.get('description', '').strip()
-            if name:
-                try:
-                    db.execute('INSERT INTO roles(name,description,is_system,app_slug) VALUES(?,?,0,?)',
-                               (name, desc, app_slug))
-                    db.commit()
-                    flash(f'Role "{name}" ditambahkan untuk {app_slug}', 'success')
-                except Exception:
-                    flash('Nama role sudah ada', 'danger')
-        elif action == 'delete':
-            rname = request.form.get('role_name', '')
-            is_sys = db.execute('SELECT is_system FROM roles WHERE name=?', (rname,)).fetchone()
-            if is_sys and is_sys['is_system']:
-                flash('Role sistem tidak bisa dihapus', 'danger')
+            if not superadmin:
+                flash('Hanya superadmin yang dapat menambah role.', 'danger')
             else:
-                db.execute('DELETE FROM roles WHERE name=?', (rname,))
-                db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
-                db.commit()
-                flash(f'Role "{rname}" dihapus', 'warning')
+                name = request.form.get('name', '').strip().lower().replace(' ', '_')
+                desc = request.form.get('description', '').strip()
+                if name:
+                    try:
+                        db.execute('INSERT INTO roles(name,description,is_system,app_slug) VALUES(?,?,0,?)',
+                                   (name, desc, app_slug))
+                        db.commit()
+                        flash(f'Role "{name}" ditambahkan', 'success')
+                    except Exception:
+                        flash('Nama role sudah ada', 'danger')
+        elif action == 'delete':
+            if not superadmin:
+                flash('Hanya superadmin yang dapat menghapus role.', 'danger')
+            else:
+                rname  = request.form.get('role_name', '')
+                is_sys = db.execute('SELECT is_system FROM roles WHERE name=?', (rname,)).fetchone()
+                if is_sys and is_sys['is_system']:
+                    flash('Role sistem tidak bisa dihapus', 'danger')
+                else:
+                    db.execute('DELETE FROM roles WHERE name=?', (rname,))
+                    db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
+                    db.commit()
+                    flash(f'Role "{rname}" dihapus', 'warning')
         elif action == 'save_perms':
-            rname    = request.form.get('role_name', '')
-            selected = set(request.form.getlist('permissions'))
+            rname     = request.form.get('role_name', '')
+            selected  = set(request.form.getlist('permissions'))
             app_perms = APP_PERMISSIONS.get(app_slug, {})
+            # Admin tidak boleh assign critical permissions
+            if not superadmin:
+                selected -= CRITICAL_PERMISSIONS
             db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
             for perm in selected:
                 if perm in app_perms or perm in ('manage_users', 'manage_roles'):
@@ -1793,13 +1824,14 @@ def portal_roles():
             flash(f'Permission role "{rname}" diperbarui', 'success')
         return redirect(url_for('portal_roles', app=active_app))
 
-    apps_list = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
-    roles     = db.execute('SELECT * FROM roles WHERE app_slug=? ORDER BY is_system DESC, name',
-                           (active_app,)).fetchall()
+    apps_list     = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    roles         = db.execute('SELECT * FROM roles WHERE app_slug=? ORDER BY is_system DESC, name',
+                               (active_app,)).fetchall()
     perms_by_role = {r['name']: get_role_permissions(db, r['name']) for r in roles}
-    app_perms = APP_PERMISSIONS.get(active_app, {})
+    app_perms     = APP_PERMISSIONS.get(active_app, {})
     return render_template('portal_roles.html', roles=roles, perms_by_role=perms_by_role,
-                           app_perms=app_perms, apps_list=apps_list, active_app=active_app)
+                           app_perms=app_perms, apps_list=apps_list, active_app=active_app,
+                           critical_permissions=CRITICAL_PERMISSIONS, is_superadmin=superadmin)
 
 @app.route('/')
 @login_required
