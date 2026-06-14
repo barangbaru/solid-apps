@@ -151,6 +151,20 @@
           {% endif %}
         </div>
 
+        {# Telegram Group #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-telegram text-info me-1"></i>ID Group Telegram Internal
+          </label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text">-</span>
+            <input type="text" name="telegram_group_id" class="form-control"
+                   value="{{ row.telegram_group_id if row else '' }}"
+                   placeholder="-1001234567890">
+          </div>
+          <div class="form-text">ID grup Telegram (biasanya diawali <code>-100</code>). Digunakan untuk notifikasi kontrak &amp; tiket.</div>
+        </div>
+
         {# PIC Co-Leader #}
         <div class="mb-0">
           <label class="form-label fw-semibold small">

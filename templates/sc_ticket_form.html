@@ -16,8 +16,10 @@
 <form method="post">
 <div class="row g-3">
 
-  {# ── Kolom kiri: isian tiket ── #}
+  {# ── Kolom kiri ── #}
   <div class="col-lg-8">
+
+    {# Informasi Tiket #}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header py-2 fw-bold small text-uppercase text-muted">
         <i class="bi bi-ticket me-1"></i>Informasi Tiket
@@ -55,7 +57,6 @@
             <select name="support_type_id" class="form-select form-select-sm" required>
               <option value="">— Pilih Tipe —</option>
               {% for st in support_types %}
-              {% set colors = {'CORRECTIVE':'danger','PREVENTIVE':'success','ONSITE':'primary'} %}
               <option value="{{ st.id }}" {{ 'selected' if row and row.support_type_id == st.id }}>
                 {{ st.name }}
               </option>
@@ -75,6 +76,29 @@
             </select>
           </div>
 
+          {# Module picker #}
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">Modul</label>
+            <select name="module_id" id="moduleSelect" class="form-select form-select-sm"
+                    onchange="onModuleChange(this)">
+              <option value="">— Pilih Modul —</option>
+              {% for m in modules %}
+              <option value="{{ m.id }}"
+                      data-app="{{ m.app_name }}"
+                      {{ 'selected' if row and row.module_id == m.id }}>
+                {{ m.name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Aplikasi</label>
+            <input type="text" id="appDisplay" class="form-control form-control-sm" readonly
+                   style="background:#f8f9fa"
+                   value="{% if row and row.module_id %}{% for m in modules %}{% if m.id == row.module_id %}{{ m.app_name }}{% endif %}{% endfor %}{% endif %}"
+                   placeholder="Auto dari modul">
+          </div>
+
           <div class="col-12">
             <label class="form-label fw-semibold small">Subjek <span class="text-danger">*</span></label>
             <input type="text" name="subject" class="form-control form-control-sm" required
@@ -83,7 +107,7 @@
 
           <div class="col-12">
             <label class="form-label fw-semibold small">Deskripsi Detail</label>
-            <textarea name="description" class="form-control form-control-sm" rows="4"
+            <textarea name="description" class="form-control form-control-sm" rows="3"
                       placeholder="Detail masalah, langkah reproduksi, dll...">{{ row.description if row else '' }}</textarea>
           </div>
 
@@ -93,15 +117,25 @@
                    value="{{ row.reported_by if row else '' }}" placeholder="Nama pelapor dari customer">
           </div>
 
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label fw-semibold small">Waktu Lapor</label>
             <input type="datetime-local" name="reported_at" class="form-control form-control-sm"
                    value="{{ row.reported_at[:16].replace(' ','T') if row and row.reported_at else '' }}">
             <div class="form-text">Kosongkan untuk waktu sekarang.</div>
           </div>
 
+          <div class="col-md-2">
+            <label class="form-label fw-semibold small">Media Lapor</label>
+            <select name="media_lapor" class="form-select form-select-sm">
+              <option value="">—</option>
+              {% for val, label in sc_media_lapor %}
+              <option value="{{ val }}" {{ 'selected' if row and row.media_lapor == val }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
           <div class="col-12">
-            <label class="form-label fw-semibold small">Catatan</label>
+            <label class="form-label fw-semibold small">Catatan Internal</label>
             <textarea name="notes" class="form-control form-control-sm" rows="2"
                       placeholder="Catatan internal...">{{ row.notes if row else '' }}</textarea>
           </div>
@@ -109,10 +143,119 @@
         </div>
       </div>
     </div>
+
+    {# Status & Progress #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-activity me-1"></i>Status & Progress
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Status</label>
+            <select name="status" class="form-select form-select-sm">
+              {% for val, label, color in sc_ticket_statuses %}
+              <option value="{{ val }}" {{ 'selected' if row and row.status == val or (not row and val == 'new') }}>
+                {{ label }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Mandays</label>
+            <input type="number" name="mandays" class="form-control form-control-sm" step="0.5" min="0"
+                   value="{{ row.mandays if row and row.mandays else '' }}" placeholder="0.5">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">% Done</label>
+            <div class="input-group input-group-sm">
+              <input type="number" name="pct_done" class="form-control" min="0" max="100"
+                     id="pctInput"
+                     value="{{ row.pct_done if row else 0 }}" onchange="updatePctBar(this.value)">
+              <span class="input-group-text">%</span>
+            </div>
+            <div class="progress mt-1" style="height:4px">
+              <div class="progress-bar bg-success" id="pctBar"
+                   style="width:{{ (row.pct_done or 0)|string }}%"></div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Keterangan Status</label>
+            <textarea name="status_note" class="form-control form-control-sm" rows="2"
+                      placeholder="Keterangan tambahan terkait status (opsional)...">{{ row.status_note if row else '' }}</textarea>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    {# Penyelesaian #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-check2-circle me-1"></i>Penyelesaian
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Due Date</label>
+            <input type="date" name="due_date" class="form-control form-control-sm"
+                   value="{{ row.due_date if row and row.due_date else '' }}">
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Tanggal Mulai Pengerjaan</label>
+            <input type="date" name="work_start_date" class="form-control form-control-sm"
+                   value="{{ row.work_start_date if row and row.work_start_date else '' }}">
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Tipe Solusi</label>
+            <select name="solution_type" class="form-select form-select-sm">
+              <option value="">— Pilih Tipe Solusi —</option>
+              {% for val, label in sc_solution_types %}
+              <option value="{{ val }}" {{ 'selected' if row and row.solution_type == val }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Catatan Solusi / Suggestion</label>
+            <textarea name="solution_note" class="form-control form-control-sm" rows="3"
+                      placeholder="Detail solusi, langkah penyelesaian, atau suggestion...">{{ row.solution_note if row else '' }}</textarea>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
   </div>
 
-  {# ── Kolom kanan: PIC info ── #}
+  {# ── Kolom kanan ── #}
   <div class="col-lg-4">
+
+    {# Assignee #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-person-check me-1"></i>Assignee
+      </div>
+      <div class="card-body">
+        <label class="form-label fw-semibold small">Ditugaskan Kepada</label>
+        <select name="assignee_id" class="form-select form-select-sm">
+          <option value="">— Belum ditugaskan —</option>
+          {% for e in employees %}
+          <option value="{{ e.id }}" {{ 'selected' if row and row.assignee_id == e.id }}>
+            {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Assignee akan mendapat notifikasi Telegram saat ditugaskan.</div>
+      </div>
+    </div>
 
     {# PIC Customer #}
     <div class="card border-0 shadow-sm mb-3">
@@ -186,14 +329,12 @@ function loadCustomerPic(cid) {
     .catch(() => { panel.innerHTML = '<div class="text-danger small p-3">Gagal memuat data PIC.</div>'; });
 }
 
-// Filter kontrak saat customer berubah
 function filterContracts(cid) {
   const sel = document.getElementById('contractSelect');
   Array.from(sel.options).forEach(opt => {
-    if (!opt.value) return; // "Tanpa Kontrak" selalu tampil
+    if (!opt.value) return;
     opt.style.display = (!cid || opt.dataset.customer == cid) ? '' : 'none';
   });
-  // Reset jika kontrak yang dipilih bukan milik customer ini
   const cur = sel.options[sel.selectedIndex];
   if (cur && cur.value && cur.dataset.customer != cid) sel.value = '';
 }
@@ -203,12 +344,23 @@ function onCustomerChange(cid) {
   filterContracts(cid);
 }
 
+function onModuleChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  document.getElementById('appDisplay').value = opt && opt.value ? (opt.dataset.app || '') : '';
+}
+
+function updatePctBar(val) {
+  document.getElementById('pctBar').style.width = Math.min(100, Math.max(0, val)) + '%';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   const sel = document.getElementById('customerSelect');
   if (sel && sel.value) {
     loadCustomerPic(sel.value);
     filterContracts(sel.value);
   }
+  const modSel = document.getElementById('moduleSelect');
+  if (modSel && modSel.value) onModuleChange(modSel);
 });
 </script>
 {% endblock %}

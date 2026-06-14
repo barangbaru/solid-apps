@@ -278,6 +278,23 @@ CREATE TABLE IF NOT EXISTS user_app_access (
 );
 
 -- ─── SupportCore ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sc_apps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS sc_modules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(app_id) REFERENCES sc_apps(id) ON DELETE CASCADE,
+    UNIQUE(app_id, name)
+);
 CREATE TABLE IF NOT EXISTS sc_customers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL UNIQUE,
@@ -408,6 +425,44 @@ MIGRATIONS = [
     ('sc_customers',       'pic_helpdesk_backup_id',  'INTEGER DEFAULT NULL'),
     ('sc_customers',       'pic_implementor_id',      'INTEGER DEFAULT NULL'),
     ('sc_customers',       'pic_coleader_id',         'INTEGER DEFAULT NULL'),
+    ('sc_customers',       'telegram_group_id',       "TEXT DEFAULT ''"),
+    ('sc_tickets',         'module_id',               'INTEGER DEFAULT NULL'),
+    ('sc_tickets',         'assignee_id',             'INTEGER DEFAULT NULL'),
+    ('sc_tickets',         'status_note',             "TEXT DEFAULT ''"),
+    ('sc_tickets',         'mandays',                 'REAL DEFAULT NULL'),
+    ('sc_tickets',         'pct_done',                'INTEGER DEFAULT 0'),
+    ('sc_tickets',         'solution_type',           "TEXT DEFAULT ''"),
+    ('sc_tickets',         'solution_note',           "TEXT DEFAULT ''"),
+    ('sc_tickets',         'due_date',                "TEXT DEFAULT NULL"),
+    ('sc_tickets',         'work_start_date',         "TEXT DEFAULT NULL"),
+    ('sc_tickets',         'media_lapor',             "TEXT DEFAULT ''"),
+]
+
+SC_TICKET_STATUSES = [
+    ('new',         'Baru',        'secondary'),
+    ('in_progress', 'In Progress', 'primary'),
+    ('hold',        'Hold',        'warning'),
+    ('resolved',    'Resolved',    'success'),
+    ('feedback',    'Feedback',    'info'),
+    ('closed',      'Closed',      'dark'),
+    ('rejected',    'Rejected',    'danger'),
+]
+
+SC_SOLUTION_TYPES = [
+    ('workaround_restart',    'Workaround — Restart Aplikasi'),
+    ('workaround_db',         'Workaround — DB'),
+    ('workaround_coding',     'Workaround — Coding'),
+    ('workaround_suggestion', 'Workaround — Suggestion'),
+    ('final_db',              'Final — DB'),
+    ('final_coding',          'Final — Coding'),
+    ('final_suggestion',      'Final — Suggestion'),
+]
+
+SC_MEDIA_LAPOR = [
+    ('wa_helpdesk', 'WA ke Nomor Helpdesk'),
+    ('email',       'Email'),
+    ('telegram',    'Telegram'),
+    ('wa_pic',      'WA Pribadi PIC Helpdesk'),
 ]
 
 DEFAULT_SETTINGS = {
@@ -456,6 +511,7 @@ APP_PERMISSIONS = {
         'sc_manage_services':  'Kelola master layanan/jasa',
         'sc_manage_types':     'Kelola master tipe support',
         'sc_manage_sla':       'Kelola master kategori SLA',
+        'sc_manage_apps':      'Kelola master aplikasi & modul',
         'sc_manage_contracts': 'Kelola kontrak support tahunan',
         'sc_manage_tickets':   'Buat/update tiket support',
         'sc_view_reports':     'Lihat laporan & monitoring SLA',
@@ -2685,8 +2741,8 @@ def sc_customer_add():
                 db.execute(
                     '''INSERT INTO sc_customers
                        (code,name,address,contact_person,phone,email,notes,
-                        pic_helpdesk_id,pic_helpdesk_backup_id,pic_implementor_id,pic_coleader_id)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                        pic_helpdesk_id,pic_helpdesk_backup_id,pic_implementor_id,pic_coleader_id,telegram_group_id)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
                     (code, name,
                      request.form.get('address','').strip(),
                      request.form.get('contact_person','').strip(),
@@ -2696,7 +2752,8 @@ def sc_customer_add():
                      request.form.get('pic_helpdesk_id') or None,
                      request.form.get('pic_helpdesk_backup_id') or None,
                      request.form.get('pic_implementor_id') or None,
-                     request.form.get('pic_coleader_id') or None))
+                     request.form.get('pic_coleader_id') or None,
+                     request.form.get('telegram_group_id','').strip()))
                 db.commit()
                 flash(f'Customer "{name}" ditambahkan', 'success')
                 return redirect(url_for('sc_customers'))
@@ -2720,7 +2777,8 @@ def sc_customer_edit(cid):
         is_active = 1 if request.form.get('is_active') else 0
         db.execute('''UPDATE sc_customers
                       SET name=?,address=?,contact_person=?,phone=?,email=?,notes=?,is_active=?,
-                          pic_helpdesk_id=?,pic_helpdesk_backup_id=?,pic_implementor_id=?,pic_coleader_id=?
+                          pic_helpdesk_id=?,pic_helpdesk_backup_id=?,pic_implementor_id=?,pic_coleader_id=?,
+                          telegram_group_id=?
                       WHERE id=?''',
                    (name,
                     request.form.get('address','').strip(),
@@ -2733,6 +2791,7 @@ def sc_customer_edit(cid):
                     request.form.get('pic_helpdesk_backup_id') or None,
                     request.form.get('pic_implementor_id') or None,
                     request.form.get('pic_coleader_id') or None,
+                    request.form.get('telegram_group_id','').strip(),
                     cid))
         db.commit()
         flash('Customer diperbarui', 'success')
@@ -2749,6 +2808,112 @@ def sc_customer_delete(cid):
     db.commit()
     flash('Customer dinonaktifkan', 'warning')
     return redirect(url_for('sc_customers'))
+
+# ── Notification helper ────────────────────────────────────────────────────────
+def _sc_notify_ticket(db, ticket_id, event='created'):
+    """Send Telegram notification to customer group when ticket event occurs."""
+    try:
+        bot_token = db.execute("SELECT value FROM settings WHERE key='telegram_bot_token'").fetchone()
+        if not bot_token or not bot_token['value']:
+            return
+        t = db.execute('''SELECT t.*, cu.name as customer_name, cu.telegram_group_id,
+                          st.name as type_name, e.name as assignee_name
+                          FROM sc_tickets t
+                          JOIN sc_customers cu ON cu.id=t.customer_id
+                          JOIN sc_support_types st ON st.id=t.support_type_id
+                          LEFT JOIN employees e ON e.id=t.assignee_id
+                          WHERE t.id=?''', (ticket_id,)).fetchone()
+        if not t or not t['telegram_group_id']:
+            return
+        labels = {'created': '🎫 Tiket Baru', 'assigned': '👤 Tiket Ditugaskan', 'status': '🔄 Status Tiket Diperbarui'}
+        header = labels.get(event, '📋 Update Tiket')
+        msg = f"{header}\n\n*{t['ticket_no']}* — {t['subject']}\nCustomer: {t['customer_name']}\nTipe: {t['type_name']}\nStatus: {t['status']}"
+        if t['assignee_name']:
+            msg += f"\nAssignee: {t['assignee_name']}"
+        send_telegram(bot_token['value'], t['telegram_group_id'], msg)
+    except Exception:
+        pass
+
+# ── Master Apps / Modules ──────────────────────────────────────────────────────
+@app.route('/support/apps')
+@login_required
+def sc_apps():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db   = get_db()
+    apps = db.execute('SELECT * FROM sc_apps ORDER BY name').fetchall()
+    mods = db.execute('''SELECT m.*, a.name as app_name FROM sc_modules m
+                         JOIN sc_apps a ON a.id=m.app_id ORDER BY a.name, m.name''').fetchall()
+    return render_template('sc_apps.html', apps=apps, mods=mods)
+
+@app.route('/support/apps/add', methods=['GET','POST'])
+@login_required
+def sc_app_add():
+    if not sc_require('sc_manage_apps'): return redirect(url_for('sc_apps'))
+    db = get_db()
+    if request.method == 'POST':
+        name = request.form.get('name','').strip()
+        if not name:
+            flash('Nama aplikasi wajib diisi', 'danger')
+        else:
+            try:
+                db.execute('INSERT INTO sc_apps(name,description) VALUES(?,?)',
+                           (name, request.form.get('description','').strip()))
+                db.commit()
+                flash(f'Aplikasi "{name}" ditambahkan', 'success')
+                return redirect(url_for('sc_apps'))
+            except Exception:
+                flash('Nama aplikasi sudah ada', 'danger')
+    return render_template('sc_apps.html', apps=db.execute('SELECT * FROM sc_apps ORDER BY name').fetchall(),
+                           mods=db.execute('SELECT m.*, a.name as app_name FROM sc_modules m JOIN sc_apps a ON a.id=m.app_id ORDER BY a.name, m.name').fetchall(),
+                           add_app=True)
+
+@app.route('/support/apps/<int:aid>/delete', methods=['POST'])
+@login_required
+def sc_app_delete(aid):
+    if not sc_require('sc_manage_apps'): return redirect(url_for('sc_apps'))
+    db = get_db()
+    db.execute('DELETE FROM sc_apps WHERE id=?', (aid,))
+    db.commit()
+    flash('Aplikasi dihapus', 'warning')
+    return redirect(url_for('sc_apps'))
+
+@app.route('/support/modules/add', methods=['POST'])
+@login_required
+def sc_module_add():
+    if not sc_require('sc_manage_apps'): return redirect(url_for('sc_apps'))
+    db = get_db()
+    app_id = request.form.get('app_id')
+    name   = request.form.get('name','').strip()
+    if not app_id or not name:
+        flash('Aplikasi dan nama modul wajib diisi', 'danger')
+    else:
+        try:
+            db.execute('INSERT INTO sc_modules(app_id,name,description) VALUES(?,?,?)',
+                       (app_id, name, request.form.get('description','').strip()))
+            db.commit()
+            flash(f'Modul "{name}" ditambahkan', 'success')
+        except Exception:
+            flash('Modul sudah ada di aplikasi tersebut', 'danger')
+    return redirect(url_for('sc_apps'))
+
+@app.route('/support/modules/<int:mid>/delete', methods=['POST'])
+@login_required
+def sc_module_delete(mid):
+    if not sc_require('sc_manage_apps'): return redirect(url_for('sc_apps'))
+    db = get_db()
+    db.execute('DELETE FROM sc_modules WHERE id=?', (mid,))
+    db.commit()
+    flash('Modul dihapus', 'warning')
+    return redirect(url_for('sc_apps'))
+
+@app.route('/support/api/modules')
+@login_required
+def sc_api_modules():
+    db = get_db()
+    mods = db.execute('''SELECT m.id, m.name, a.id as app_id, a.name as app_name
+                         FROM sc_modules m JOIN sc_apps a ON a.id=m.app_id
+                         WHERE m.is_active=1 ORDER BY a.name, m.name''').fetchall()
+    return jsonify([dict(r) for r in mods])
 
 # ── Master Services ────────────────────────────────────────────────────────────
 @app.route('/support/services')
@@ -3209,15 +3374,23 @@ def sc_tickets():
                            filter_customer=cust_f, filter_type=type_f,
                            filter_date_from=date_from, filter_date_to=date_to)
 
+def _sc_ticket_lookups(db):
+    customers     = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    support_types = db.execute('SELECT id, name FROM sc_support_types WHERE is_active=1 ORDER BY name').fetchall()
+    sla_cats      = db.execute('SELECT id, name FROM sc_sla_categories WHERE is_active=1 ORDER BY name').fetchall()
+    contracts     = db.execute('SELECT id, code, title, customer_id FROM sc_contracts ORDER BY start_date DESC').fetchall()
+    modules       = db.execute('''SELECT m.id, m.name, a.id as app_id, a.name as app_name
+                                  FROM sc_modules m JOIN sc_apps a ON a.id=m.app_id
+                                  WHERE m.is_active=1 ORDER BY a.name, m.name''').fetchall()
+    employees     = db.execute("SELECT id, name, jabatan FROM employees WHERE status='active' ORDER BY name").fetchall()
+    return customers, support_types, sla_cats, contracts, modules, employees
+
 @app.route('/support/tickets/add', methods=['GET','POST'])
 @login_required
 def sc_ticket_add():
     if not sc_require('sc_manage_tickets'): return redirect(url_for('sc_tickets'))
     db = get_db()
-    customers     = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
-    support_types = db.execute('SELECT id, name FROM sc_support_types WHERE is_active=1 ORDER BY name').fetchall()
-    sla_cats      = db.execute('SELECT id, name FROM sc_sla_categories WHERE is_active=1 ORDER BY name').fetchall()
-    contracts     = db.execute('SELECT id, code, title FROM sc_contracts ORDER BY start_date DESC').fetchall()
+    customers, support_types, sla_cats, contracts, modules, employees = _sc_ticket_lookups(db)
     if request.method == 'POST':
         ticket_no     = generate_ticket_no(db)
         contract_id   = request.form.get('contract_id') or None
@@ -3229,22 +3402,44 @@ def sc_ticket_add():
         reported_by   = request.form.get('reported_by','').strip()
         reported_at   = request.form.get('reported_at','').strip() or None
         notes         = request.form.get('notes','').strip()
+        module_id     = request.form.get('module_id') or None
+        assignee_id   = request.form.get('assignee_id') or None
+        status_note   = request.form.get('status_note','').strip()
+        mandays       = request.form.get('mandays','').strip() or None
+        pct_done      = request.form.get('pct_done',0)
+        solution_type = request.form.get('solution_type','').strip()
+        solution_note = request.form.get('solution_note','').strip()
+        due_date      = request.form.get('due_date','').strip() or None
+        work_start_date = request.form.get('work_start_date','').strip() or None
+        media_lapor   = request.form.get('media_lapor','').strip()
         from datetime import datetime as _dt
         if not reported_at:
             reported_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
         try:
-            db.execute('''INSERT INTO sc_tickets(ticket_no,contract_id,customer_id,support_type_id,
-                          sla_category_id,subject,description,reported_by,reported_at,notes,created_by)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+            cur = db.execute('''INSERT INTO sc_tickets(ticket_no,contract_id,customer_id,support_type_id,
+                          sla_category_id,subject,description,reported_by,reported_at,notes,created_by,
+                          module_id,assignee_id,status_note,mandays,pct_done,solution_type,solution_note,
+                          due_date,work_start_date,media_lapor)
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                        (ticket_no, contract_id, customer_id, support_type_id, sla_cat_id,
-                        subject, description, reported_by, reported_at, notes, session.get('user_id')))
+                        subject, description, reported_by, reported_at, notes, session.get('user_id'),
+                        module_id, assignee_id, status_note, mandays, pct_done,
+                        solution_type, solution_note, due_date, work_start_date, media_lapor))
+            new_id = cur.lastrowid
             db.commit()
+            _sc_notify_ticket(db, new_id, 'created')
+            if assignee_id:
+                _sc_notify_ticket(db, new_id, 'assigned')
             flash(f'Tiket {ticket_no} berhasil dibuat', 'success')
             return redirect(url_for('sc_tickets'))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
     return render_template('sc_ticket_form.html', row=None, customers=customers,
-                           support_types=support_types, sla_cats=sla_cats, contracts=contracts)
+                           support_types=support_types, sla_cats=sla_cats, contracts=contracts,
+                           modules=modules, employees=employees,
+                           sc_ticket_statuses=SC_TICKET_STATUSES,
+                           sc_solution_types=SC_SOLUTION_TYPES,
+                           sc_media_lapor=SC_MEDIA_LAPOR)
 
 @app.route('/support/tickets/<int:tid>/edit', methods=['GET','POST'])
 @login_required
@@ -3253,11 +3448,9 @@ def sc_ticket_edit(tid):
     db = get_db()
     row = db.execute('SELECT * FROM sc_tickets WHERE id=?', (tid,)).fetchone()
     if not row: abort(404)
-    customers     = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
-    support_types = db.execute('SELECT id, name FROM sc_support_types WHERE is_active=1 ORDER BY name').fetchall()
-    sla_cats      = db.execute('SELECT id, name FROM sc_sla_categories WHERE is_active=1 ORDER BY name').fetchall()
-    contracts     = db.execute('SELECT id, code, title FROM sc_contracts ORDER BY start_date DESC').fetchall()
+    customers, support_types, sla_cats, contracts, modules, employees = _sc_ticket_lookups(db)
     if request.method == 'POST':
+        prev_assignee   = row['assignee_id']
         contract_id     = request.form.get('contract_id') or None
         customer_id     = request.form['customer_id']
         support_type_id = request.form['support_type_id']
@@ -3267,19 +3460,39 @@ def sc_ticket_edit(tid):
         reported_by     = request.form.get('reported_by','').strip()
         reported_at     = request.form.get('reported_at','').strip() or None
         notes           = request.form.get('notes','').strip()
+        module_id       = request.form.get('module_id') or None
+        assignee_id     = request.form.get('assignee_id') or None
+        status_note     = request.form.get('status_note','').strip()
+        mandays         = request.form.get('mandays','').strip() or None
+        pct_done        = request.form.get('pct_done',0)
+        solution_type   = request.form.get('solution_type','').strip()
+        solution_note   = request.form.get('solution_note','').strip()
+        due_date        = request.form.get('due_date','').strip() or None
+        work_start_date = request.form.get('work_start_date','').strip() or None
+        media_lapor     = request.form.get('media_lapor','').strip()
         try:
             db.execute('''UPDATE sc_tickets SET contract_id=?,customer_id=?,support_type_id=?,
-                          sla_category_id=?,subject=?,description=?,reported_by=?,reported_at=?,notes=?
+                          sla_category_id=?,subject=?,description=?,reported_by=?,reported_at=?,notes=?,
+                          module_id=?,assignee_id=?,status_note=?,mandays=?,pct_done=?,
+                          solution_type=?,solution_note=?,due_date=?,work_start_date=?,media_lapor=?
                           WHERE id=?''',
                        (contract_id, customer_id, support_type_id, sla_cat_id,
-                        subject, description, reported_by, reported_at, notes, tid))
+                        subject, description, reported_by, reported_at, notes,
+                        module_id, assignee_id, status_note, mandays, pct_done,
+                        solution_type, solution_note, due_date, work_start_date, media_lapor, tid))
             db.commit()
+            if assignee_id and str(assignee_id) != str(prev_assignee or ''):
+                _sc_notify_ticket(db, tid, 'assigned')
             flash('Tiket diperbarui', 'success')
             return redirect(url_for('sc_ticket_detail', tid=tid))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
     return render_template('sc_ticket_form.html', row=row, customers=customers,
-                           support_types=support_types, sla_cats=sla_cats, contracts=contracts)
+                           support_types=support_types, sla_cats=sla_cats, contracts=contracts,
+                           modules=modules, employees=employees,
+                           sc_ticket_statuses=SC_TICKET_STATUSES,
+                           sc_solution_types=SC_SOLUTION_TYPES,
+                           sc_media_lapor=SC_MEDIA_LAPOR)
 
 @app.route('/support/tickets/<int:tid>')
 @login_required
@@ -3304,23 +3517,39 @@ def sc_ticket_detail(tid):
 @app.route('/support/tickets/<int:tid>/status', methods=['POST'])
 @login_required
 def sc_ticket_status(tid):
-    if not sc_require('sc_manage_tickets'): return redirect(url_for('sc_tickets'))
-    db = get_db()
-    new_status = request.form.get('new_status','')
-    from datetime import datetime as _dt
-    now = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+    db  = get_db()
     row = db.execute('SELECT * FROM sc_tickets WHERE id=?', (tid,)).fetchone()
     if not row: abort(404)
-    updates = {'status': new_status}
+    # Allow assignee OR users with sc_manage_tickets permission
+    user_id    = session.get('user_id')
+    emp        = db.execute('SELECT id FROM employees WHERE user_id=?', (user_id,)).fetchone()
+    is_assignee = emp and row['assignee_id'] == emp['id']
+    if not is_assignee and not sc_require('sc_manage_tickets'):
+        return redirect(url_for('sc_ticket_detail', tid=tid))
+    new_status  = request.form.get('new_status','')
+    status_note = request.form.get('status_note','').strip()
+    mandays     = request.form.get('mandays','').strip() or None
+    pct_done    = request.form.get('pct_done', row['pct_done'])
+    solution_type = request.form.get('solution_type', row['solution_type'] or '')
+    solution_note = request.form.get('solution_note', row['solution_note'] or '')
+    due_date    = request.form.get('due_date','').strip() or row['due_date']
+    work_start  = request.form.get('work_start_date','').strip() or row['work_start_date']
+    from datetime import datetime as _dt
+    now = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+    updates = {'status': new_status, 'status_note': status_note,
+               'mandays': mandays, 'pct_done': pct_done,
+               'solution_type': solution_type, 'solution_note': solution_note,
+               'due_date': due_date, 'work_start_date': work_start}
     if new_status == 'in_progress' and not row['responded_at']:
         updates['responded_at'] = now
-    if new_status == 'resolved':
+    if new_status in ('resolved','feedback') and not row['resolved_at']:
         updates['resolved_at'] = now
     if new_status == 'closed':
         updates['closed_at'] = now
     sets = ', '.join(f'{k}=?' for k in updates)
     db.execute(f'UPDATE sc_tickets SET {sets} WHERE id=?', list(updates.values()) + [tid])
     db.commit()
+    _sc_notify_ticket(db, tid, 'status')
     flash(f'Status tiket diubah ke {new_status}', 'success')
     return redirect(url_for('sc_ticket_detail', tid=tid))
 
