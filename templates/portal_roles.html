@@ -46,7 +46,7 @@
             <span class="badge bg-warning text-dark" style="font-size:.62rem">SISTEM</span>
             {% endif %}
             <span class="badge bg-light text-primary border" style="font-size:.65rem">
-              {{ perms_by_role.get(role.name, set()) | length }} perm
+              {{ perms_by_role.get(role.name, []) | length }} perm
             </span>
           </div>
         </a>
@@ -128,7 +128,7 @@
           <input type="hidden" name="action" value="save_perms">
           <input type="hidden" name="app_slug" value="{{ active_app }}">
           <input type="hidden" name="role_name" value="{{ role.name }}">
-          {% set cur_perms = perms_by_role.get(role.name, set()) %}
+          {% set cur_perms = perms_by_role.get(role.name, []) %}
           <div class="row g-2">
             {% for perm_key, perm_desc in app_perms.items() %}
             {% set is_critical = perm_key in critical_permissions %}
