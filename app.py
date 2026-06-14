@@ -2362,12 +2362,45 @@ def portal_user_delete(uid):
     if not is_portal_admin():
         return jsonify({'error': 'forbidden'}), 403
     if uid == session['user_id']:
-        flash('Tidak bisa menghapus akun sendiri', 'danger')
+        flash('Tidak bisa menonaktifkan akun sendiri', 'danger')
         return redirect(url_for('portal_users'))
     db = get_db()
+    u = db.execute('SELECT username FROM users WHERE id=?', (uid,)).fetchone()
     db.execute('UPDATE users SET is_active=0 WHERE id=?', (uid,))
     db.commit()
-    flash('User dinonaktifkan', 'warning')
+    flash(f'User {u["username"] if u else uid} dinonaktifkan', 'warning')
+    return redirect(url_for('portal_users'))
+
+@app.route('/portal/users/<int:uid>/remove', methods=['POST'])
+@login_required
+def portal_user_remove(uid):
+    """Hapus permanen — hanya superadmin."""
+    if session.get('user_role') != 'superadmin':
+        flash('Hanya Superadmin yang bisa menghapus user secara permanen.', 'danger')
+        return redirect(url_for('portal_users'))
+    if uid == session['user_id']:
+        flash('Tidak bisa menghapus akun sendiri.', 'danger')
+        return redirect(url_for('portal_users'))
+    db = get_db()
+    u = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    if not u:
+        flash('User tidak ditemukan.', 'danger')
+        return redirect(url_for('portal_users'))
+    if u['role'] == 'superadmin':
+        # Pastikan masih ada superadmin lain
+        cnt = db.execute("SELECT COUNT(*) FROM users WHERE role='superadmin' AND is_active=1 AND id!=?",
+                         (uid,)).fetchone()[0]
+        if cnt == 0:
+            flash('Tidak bisa menghapus satu-satunya Superadmin.', 'danger')
+            return redirect(url_for('portal_users'))
+    # Cleanup data terkait
+    db.execute('DELETE FROM user_app_access WHERE user_id=?', (uid,))
+    db.execute('UPDATE employees SET user_id=NULL WHERE user_id=?', (uid,))
+    db.execute('DELETE FROM users WHERE id=?', (uid,))
+    db.commit()
+    audit_log('remove_user', 'users', uid,
+              f'User {u["username"]} ({u["email"] or "-"}) dihapus permanen', app_slug='portal')
+    flash(f'User {u["username"]} berhasil dihapus secara permanen.', 'success')
     return redirect(url_for('portal_users'))
 
 @app.route('/portal/users/<int:uid>/send-reset', methods=['POST'])
