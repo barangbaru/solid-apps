@@ -17,6 +17,13 @@ if not _default_secret:
     _default_secret = 'evalkey-2024-superadmin-secure!'
 app.secret_key = _default_secret
 
+# Google OAuth config (set via env vars or portal settings)
+GOOGLE_CLIENT_ID     = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_AUTH_URL      = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN_URL     = 'https://oauth2.googleapis.com/token'
+GOOGLE_USERINFO_URL  = 'https://www.googleapis.com/oauth2/v3/userinfo'
+
 # Agar request.host_url benar di balik nginx (ProxyFix)
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -57,6 +64,8 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT DEFAULT 'admin',
     is_active INTEGER DEFAULT 1,
     last_login TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    google_id TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS employees (
@@ -496,6 +505,8 @@ CREATE TABLE IF NOT EXISTS sc_tickets (
 """
 
 MIGRATIONS = [
+    ('users', 'email',     "TEXT DEFAULT ''"),
+    ('users', 'google_id', "TEXT DEFAULT ''"),
     ('employees', 'level',           "TEXT DEFAULT 'Staff'"),
     ('employees', 'employment_type', "TEXT DEFAULT 'tetap'"),
     ('employees', 'contract_start',  "TEXT DEFAULT ''"),
@@ -1464,7 +1475,10 @@ def login():
                 _next = ''
             return redirect(_next or url_for('portal'))
         flash('Username atau password salah', 'danger')
-    return render_template('login.html')
+    db = get_db()
+    cfg = get_settings(db)
+    google_on = (cfg.get('google_oauth_enabled') == '1' and bool(cfg.get('google_client_id') or GOOGLE_CLIENT_ID))
+    return render_template('login.html', google_oauth_enabled=google_on)
 
 @app.route('/login/mfa', methods=['GET', 'POST'])
 def login_mfa():
@@ -1490,6 +1504,120 @@ def login_mfa():
             return redirect(next_url)
         flash('Kode MFA salah atau kadaluarsa. Coba lagi.', 'danger')
     return render_template('mfa_login.html')
+
+@app.route('/login/google')
+def login_google():
+    db = get_db()
+    settings = get_settings(db)
+    client_id = settings.get('google_client_id') or GOOGLE_CLIENT_ID
+    oauth_on  = settings.get('google_oauth_enabled', '0') == '1' or GOOGLE_CLIENT_ID
+    if not client_id or not oauth_on:
+        flash('Login Google belum dikonfigurasi. Hubungi administrator.', 'warning')
+        return redirect(url_for('login'))
+    state = secrets.token_urlsafe(16)
+    session['oauth_state'] = state
+    callback_url = url_for('login_google_callback', _external=True)
+    params = {
+        'client_id':     client_id,
+        'redirect_uri':  callback_url,
+        'response_type': 'code',
+        'scope':         'openid email profile',
+        'state':         state,
+        'prompt':        'select_account',
+        'access_type':   'online',
+    }
+    from urllib.parse import urlencode
+    return redirect(f"{GOOGLE_AUTH_URL}?{urlencode(params)}")
+
+@app.route('/login/google/callback')
+def login_google_callback():
+    db = get_db()
+    settings = get_settings(db)
+    client_id     = settings.get('google_client_id')     or GOOGLE_CLIENT_ID
+    client_secret = settings.get('google_client_secret') or GOOGLE_CLIENT_SECRET
+
+    error = request.args.get('error')
+    if error:
+        flash(f'Login Google dibatalkan: {error}', 'warning')
+        return redirect(url_for('login'))
+
+    state = request.args.get('state', '')
+    if state != session.pop('oauth_state', None):
+        flash('State tidak valid. Coba lagi.', 'danger')
+        return redirect(url_for('login'))
+
+    code = request.args.get('code')
+    if not code:
+        flash('Tidak mendapat kode otorisasi dari Google.', 'danger')
+        return redirect(url_for('login'))
+
+    callback_url = url_for('login_google_callback', _external=True)
+    try:
+        token_resp = req_lib.post(GOOGLE_TOKEN_URL, data={
+            'code':          code,
+            'client_id':     client_id,
+            'client_secret': client_secret,
+            'redirect_uri':  callback_url,
+            'grant_type':    'authorization_code',
+        }, timeout=10)
+        token_data = token_resp.json()
+        access_token = token_data.get('access_token')
+        if not access_token:
+            raise ValueError(token_data.get('error_description', 'Tidak ada access token'))
+
+        user_resp = req_lib.get(GOOGLE_USERINFO_URL,
+                                headers={'Authorization': f'Bearer {access_token}'}, timeout=10)
+        ginfo = user_resp.json()
+    except Exception as e:
+        flash(f'Gagal menghubungi Google: {e}', 'danger')
+        return redirect(url_for('login'))
+
+    google_email = ginfo.get('email', '').lower().strip()
+    google_id    = ginfo.get('sub', '')
+    google_name  = ginfo.get('name', '')
+    verified     = ginfo.get('email_verified', False)
+
+    if not google_email or not verified:
+        flash('Email Google tidak terverifikasi.', 'danger')
+        return redirect(url_for('login'))
+
+    # Allowed domain check (optional — jika ada setting google_workspace_domain)
+    allowed_domain = (settings.get('google_workspace_domain') or '').strip().lower()
+    if allowed_domain:
+        domain = google_email.split('@')[-1]
+        if domain != allowed_domain:
+            flash(f'Hanya email @{allowed_domain} yang diizinkan masuk.', 'danger')
+            audit_log('login_google_rejected', 'users', 0,
+                      f'Email ditolak (domain): {google_email}', app_slug='portal')
+            return redirect(url_for('login'))
+
+    # Cari user berdasarkan google_id dulu, lalu email
+    user = db.execute("SELECT * FROM users WHERE google_id=? AND is_active=1",
+                      (google_id,)).fetchone()
+    if not user:
+        user = db.execute("SELECT * FROM users WHERE LOWER(email)=? AND is_active=1",
+                          (google_email,)).fetchone()
+
+    if not user:
+        flash(f'Akun dengan email {google_email} tidak terdaftar di sistem. '
+              'Hubungi administrator untuk mendapatkan akses.', 'danger')
+        audit_log('login_google_rejected', 'users', 0,
+                  f'Email tidak ditemukan: {google_email}', app_slug='portal')
+        return redirect(url_for('login'))
+
+    # Update google_id dan last_login
+    db.execute("UPDATE users SET google_id=?, last_login=? WHERE id=?",
+               (google_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
+    db.commit()
+
+    session['user_id']   = user['id']
+    session['username']  = user['username']
+    session['user_name'] = user['full_name'] or google_name or user['username']
+    session['user_role'] = user['role']
+    audit_log('login_google', 'users', user['id'],
+              f'Login via Google ({google_email})', app_slug='portal')
+    flash(f'Selamat datang, {session["user_name"]}!', 'success')
+    return redirect(url_for('portal'))
 
 @app.route('/mfa/challenge', methods=['GET', 'POST'])
 @login_required
@@ -2181,6 +2309,7 @@ PORTAL_SYSTEM_KEYS = [
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_ssl',
     'telegram_bot_token', 'telegram_default_chat_id',
     'openwa_url', 'openwa_api_key', 'openwa_session_id', 'openwa_enabled',
+    'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
 ]
 
 @app.route('/portal/system-settings', methods=['GET', 'POST'])
@@ -2192,10 +2321,8 @@ def portal_system_settings():
     db = get_db()
     if request.method == 'POST':
         for k in PORTAL_SYSTEM_KEYS:
-            if k == 'smtp_ssl':
-                v = '1' if request.form.get('smtp_ssl') else '0'
-            elif k == 'openwa_enabled':
-                v = '1' if request.form.get('openwa_enabled') else '0'
+            if k in ('smtp_ssl', 'openwa_enabled', 'google_oauth_enabled'):
+                v = '1' if request.form.get(k) else '0'
             else:
                 v = request.form.get(k, '').strip()
             save_setting(db, k, v)

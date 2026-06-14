@@ -210,6 +210,72 @@
       </div>
     </div>
 
+    <!-- Google OAuth -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-google text-danger me-1"></i>Google Workspace OAuth</span>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" role="switch"
+                 name="google_oauth_enabled" id="googleOauthEnabled"
+                 {{ 'checked' if cfg.get('google_oauth_enabled') == '1' }}>
+          <label class="form-check-label small" for="googleOauthEnabled">Aktifkan</label>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Google Client ID</label>
+            <input type="text" name="google_client_id" class="form-control form-control-sm"
+                   value="{{ cfg.get('google_client_id','') }}"
+                   placeholder="xxxxxx.apps.googleusercontent.com" autocomplete="off">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Google Client Secret</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="google_client_secret" id="gSecret"
+                     class="form-control form-control-sm"
+                     value="{{ cfg.get('google_client_secret','') }}"
+                     placeholder="GOCSPX-..." autocomplete="off">
+              <button type="button" class="btn btn-outline-secondary"
+                      onclick="toggleVis('gSecret',this)">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Domain Workspace <span class="text-muted fw-normal">(opsional)</span></label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">@</span>
+              <input type="text" name="google_workspace_domain" class="form-control form-control-sm"
+                     value="{{ cfg.get('google_workspace_domain','') }}"
+                     placeholder="namaperusahaan.com">
+            </div>
+            <div class="form-text">Kosongkan = semua domain Google bisa login (asalkan email terdaftar di sistem).</div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Authorized Redirect URI</label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control form-control-sm bg-light"
+                     value="{{ cfg.get('app_url','').rstrip('/') }}/login/google/callback"
+                     readonly>
+              <button type="button" class="btn btn-outline-secondary"
+                      onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            <div class="form-text">Copy dan daftarkan URI ini di Google Cloud Console → Credentials → OAuth 2.0 Client.</div>
+          </div>
+        </div>
+        <div class="alert alert-info py-2 small mt-3 mb-0">
+          <strong>Cara setup:</strong>
+          Buka <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
+          → Credentials → Create OAuth 2.0 Client ID (Web application) →
+          Tambahkan Redirect URI di atas → Copy Client ID & Secret ke sini.
+          User harus memiliki email yang sudah diisi di profil user agar bisa login via Google.
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Right: Actions -->
@@ -254,6 +320,12 @@
 function toggleField(id) {
   const el = document.getElementById(id);
   el.type = el.type === 'password' ? 'text' : 'password';
+}
+function toggleVis(id, btn) {
+  const el = document.getElementById(id);
+  const show = el.type === 'password';
+  el.type = show ? 'text' : 'password';
+  btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
 }
 
 function showResult(elId, ok, msg) {
