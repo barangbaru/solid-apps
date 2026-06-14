@@ -175,6 +175,15 @@ CREATE TABLE IF NOT EXISTS reminder_logs (
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    expires_at TEXT NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS eval_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     eval_id INTEGER NOT NULL UNIQUE,
@@ -259,6 +268,9 @@ MIGRATIONS = [
     ('evaluations', 'review_notes',      "TEXT DEFAULT ''"),
     ('users',       'totp_secret',       "TEXT DEFAULT ''"),
     ('users',       'mfa_enabled',       "INTEGER DEFAULT 0"),
+    ('users',       'email',             "TEXT DEFAULT ''"),
+    ('users',       'phone',             "TEXT DEFAULT ''"),
+    ('users',       'telegram_id',       "TEXT DEFAULT ''"),
     ('employees',   'salary',            "TEXT DEFAULT ''"),
     ('employee_salary', 'increase_date', "TEXT DEFAULT ''"),
 ]
@@ -1089,6 +1101,33 @@ def mfa_setup():
     mfa_on = bool(user['mfa_enabled'] and user['totp_secret'])
     return render_template('mfa_setup.html', user=user, step='intro', mfa_on=mfa_on)
 
+@app.route('/admin/users/<int:uid>/send-reset', methods=['POST'])
+@superadmin_required
+def admin_send_reset(uid):
+    """Superadmin kirim link reset password ke user tertentu."""
+    db   = get_db()
+    user = db.execute('SELECT * FROM users WHERE id=? AND is_active=1', (uid,)).fetchone()
+    if not user:
+        flash('User tidak ditemukan atau tidak aktif.', 'danger')
+        return redirect(url_for('users_list'))
+    # Hapus token lama
+    db.execute('DELETE FROM password_reset_tokens WHERE user_id=?', (uid,))
+    token   = secrets.token_urlsafe(48)
+    expires = (datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+    db.execute('INSERT INTO password_reset_tokens(user_id, token, expires_at) VALUES(?,?,?)',
+               (uid, token, expires))
+    db.commit()
+    settings   = get_settings(db)
+    base_url   = request.host_url.rstrip('/')
+    reset_link = f"{base_url}/reset-password/{token}"
+    sent = _send_reset_notifications(dict(user), reset_link, settings)
+    if sent:
+        flash(f'Link reset password dikirim ke {user["username"]} via: {", ".join(sent)}.', 'success')
+    else:
+        flash(f'Token dibuat tapi tidak ada kontak (email/WA/Telegram) yang terdaftar untuk {user["username"]}. '
+              f'Link: {reset_link}', 'warning')
+    return redirect(url_for('users_list'))
+
 @app.route('/admin/users/<int:uid>/mfa-reset', methods=['POST'])
 @superadmin_required
 def admin_mfa_reset(uid):
@@ -1097,6 +1136,138 @@ def admin_mfa_reset(uid):
     db.commit()
     flash('MFA user berhasil direset. User harus setup ulang saat login berikutnya.', 'warning')
     return redirect(url_for('users_list'))
+
+# ─── Forgot / Reset Password ───────────────────────────────────────────────────
+
+RESET_TOKEN_TTL = 3600  # 1 jam
+
+def _send_reset_notifications(user, reset_link, settings):
+    """Kirim link reset password via email, Telegram, dan WhatsApp."""
+    sent = []
+    subject = 'Reset Password — Aplikasi Evaluasi Kinerja'
+    body_html = f'''
+<p>Halo <b>{user['full_name'] or user['username']}</b>,</p>
+<p>Anda (atau seseorang) meminta reset password untuk akun <b>{user['username']}</b>.</p>
+<p><a href="{reset_link}" style="background:#1a7a3a;color:#fff;padding:10px 20px;border-radius:6px;
+   text-decoration:none;font-weight:bold">Klik di sini untuk reset password</a></p>
+<p>Link ini hanya berlaku <b>1 jam</b> dan <b>langsung kadaluarsa setelah dibuka satu kali</b>.</p>
+<p>Jika bukan Anda yang meminta, abaikan email ini.</p>
+<hr><p style="color:#888;font-size:12px">Aplikasi Evaluasi Kinerja Tim IT</p>
+'''
+    body_text = f'Reset password akun {user["username"]}:\n{reset_link}\n\nLink berlaku 1 jam, sekali pakai.'
+
+    # Email
+    if user.get('email'):
+        try:
+            ok, err = send_email(
+                settings.get('smtp_host',''), int(settings.get('smtp_port',587) or 587),
+                settings.get('smtp_user',''), settings.get('smtp_password',''),
+                settings.get('smtp_from', settings.get('smtp_user','')),
+                user['email'], subject, body_html
+            )
+            if ok:
+                sent.append('email')
+        except Exception:
+            pass
+
+    # Telegram
+    bot_token = settings.get('telegram_bot_token','').strip()
+    if bot_token and user.get('telegram_id'):
+        tg_msg = (f'🔐 *Reset Password*\n\nHalo {user["full_name"] or user["username"]},\n'
+                  f'Klik link berikut untuk reset password akun `{user["username"]}`:\n\n'
+                  f'{reset_link}\n\n_Link berlaku 1 jam dan sekali pakai._')
+        ok, _ = send_telegram(bot_token, user['telegram_id'], tg_msg)
+        if ok:
+            sent.append('telegram')
+
+    # WhatsApp
+    wa_url     = settings.get('openwa_url','').strip()
+    wa_key     = settings.get('openwa_api_key','').strip()
+    wa_session = settings.get('openwa_session','').strip()
+    if wa_url and user.get('phone'):
+        wa_msg = (f'🔐 Reset Password\n\nHalo {user["full_name"] or user["username"]},\n'
+                  f'Link reset password akun *{user["username"]}*:\n\n{reset_link}\n\n'
+                  f'Link berlaku 1 jam dan langsung kadaluarsa setelah dibuka.')
+        send_whatsapp(wa_url, wa_key, wa_session, user['phone'], wa_msg)
+        sent.append('whatsapp')
+
+    return sent
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        identifier = request.form.get('identifier', '').strip()
+        db = get_db()
+        user = db.execute(
+            "SELECT * FROM users WHERE (username=? OR email=?) AND is_active=1",
+            (identifier, identifier)
+        ).fetchone()
+        if user:
+            # Invalidate old tokens
+            db.execute("DELETE FROM password_reset_tokens WHERE user_id=?", (user['id'],))
+            token    = secrets.token_urlsafe(48)
+            expires  = (datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+            db.execute(
+                "INSERT INTO password_reset_tokens(user_id, token, expires_at) VALUES(?,?,?)",
+                (user['id'], token, expires)
+            )
+            db.commit()
+            settings = get_settings(db)
+            base_url = request.host_url.rstrip('/')
+            reset_link = f"{base_url}/reset-password/{token}"
+            sent = _send_reset_notifications(dict(user), reset_link, settings)
+            flash(f'Link reset password telah dikirim via: {", ".join(sent) if sent else "—"}. '
+                  f'Cek email/Telegram/WhatsApp Anda.', 'success')
+        else:
+            # Pesan generik agar tidak bisa enumerate user
+            flash('Jika username/email terdaftar, link reset akan dikirim ke kontak yang tersimpan.', 'info')
+        return redirect(url_for('forgot_password'))
+    return render_template('forgot_password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    db  = get_db()
+    row = db.execute(
+        "SELECT * FROM password_reset_tokens WHERE token=?", (token,)
+    ).fetchone()
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if not row or row['used'] or row['expires_at'] < now:
+        flash('Link reset tidak valid atau sudah kadaluarsa. Silakan minta link baru.', 'danger')
+        return redirect(url_for('forgot_password'))
+
+    user = db.execute("SELECT * FROM users WHERE id=?", (row['user_id'],)).fetchone()
+    if not user:
+        flash('Akun tidak ditemukan.', 'danger')
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        new_pass  = request.form.get('password', '').strip()
+        new_pass2 = request.form.get('password2', '').strip()
+        if len(new_pass) < 6:
+            flash('Password minimal 6 karakter.', 'danger')
+        elif new_pass != new_pass2:
+            flash('Konfirmasi password tidak cocok.', 'danger')
+        else:
+            db.execute("UPDATE users SET password_hash=? WHERE id=?",
+                       (generate_password_hash(new_pass, method='pbkdf2:sha256'), user['id']))
+            # Mark token as used — link langsung kadaluarsa setelah dipakai
+            db.execute("UPDATE password_reset_tokens SET used=1 WHERE token=?", (token,))
+            db.commit()
+            flash('Password berhasil diubah. Silakan login.', 'success')
+            return redirect(url_for('login'))
+        return render_template('reset_password.html', token=token, user=user)
+
+    # GET: mark token as used agar link tidak bisa dibuka ulang
+    # Tapi jangan invalidate dulu — baru invalidate setelah POST sukses
+    # (agar form bisa disubmit dari halaman yang sama)
+    return render_template('reset_password.html', token=token, user=user)
 
 @app.route('/logout')
 def logout():
@@ -1121,13 +1292,18 @@ def user_add():
         full_name = request.form.get('full_name','').strip()
         password  = request.form.get('password','')
         role      = request.form.get('role','admin')
+        email     = request.form.get('email','').strip()
+        phone     = request.form.get('phone','').strip()
+        telegram  = request.form.get('telegram_id','').strip()
         if not username or not password:
             flash('Username dan password wajib diisi', 'danger')
         else:
             db = get_db()
             try:
-                db.execute('INSERT INTO users(username,password_hash,full_name,role) VALUES(?,?,?,?)',
-                           (username, generate_password_hash(password), full_name, role))
+                db.execute(
+                    'INSERT INTO users(username,password_hash,full_name,role,email,phone,telegram_id) VALUES(?,?,?,?,?,?,?)',
+                    (username, generate_password_hash(password, method='pbkdf2:sha256'),
+                     full_name, role, email, phone, telegram))
                 db.commit()
                 flash(f'User {username} berhasil dibuat', 'success')
                 return redirect(url_for('users_list'))
@@ -1147,13 +1323,19 @@ def user_edit(uid):
         full_name  = request.form.get('full_name','').strip()
         role       = request.form.get('role', user['role'])
         is_active  = 1 if request.form.get('is_active') else 0
+        email      = request.form.get('email','').strip()
+        phone      = request.form.get('phone','').strip()
+        telegram   = request.form.get('telegram_id','').strip()
         new_pass   = request.form.get('password','').strip()
         if new_pass:
-            db.execute('UPDATE users SET full_name=?,role=?,is_active=?,password_hash=? WHERE id=?',
-                       (full_name, role, is_active, generate_password_hash(new_pass), uid))
+            db.execute(
+                'UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=?,password_hash=? WHERE id=?',
+                (full_name, role, is_active, email, phone, telegram,
+                 generate_password_hash(new_pass, method='pbkdf2:sha256'), uid))
         else:
-            db.execute('UPDATE users SET full_name=?,role=?,is_active=? WHERE id=?',
-                       (full_name, role, is_active, uid))
+            db.execute(
+                'UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=? WHERE id=?',
+                (full_name, role, is_active, email, phone, telegram, uid))
         db.commit()
         flash('User diperbarui', 'success')
         if uid == session['user_id']:

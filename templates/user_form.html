@@ -2,59 +2,116 @@
 {% block title %}{{ 'Edit' if user else 'Tambah' }} User{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-6">
-    <div class="card">
+  <div class="col-md-7 col-lg-6">
+    <div class="card border-0 shadow-sm">
       <div class="card-header py-2 fw-bold">
         <i class="bi bi-person-{{ 'gear' if user else 'plus' }} text-primary me-1"></i>
         {{ 'Edit User' if user else 'Tambah User Baru' }}
       </div>
-      <div class="card-body">
-        <form method="post">
+      <div class="card-body p-4">
+        <form method="post" autocomplete="off">
+
+          {# ── Akun ── #}
+          <div class="small fw-bold text-muted text-uppercase mb-2 mt-1">
+            <i class="bi bi-person-badge me-1"></i>Informasi Akun
+          </div>
+
           {% if not user %}
           <div class="mb-3">
-            <label class="form-label fw-semibold">Username *</label>
+            <label class="form-label fw-semibold small">Username <span class="text-danger">*</span></label>
             <input type="text" name="username" class="form-control" required
                    placeholder="Contoh: budi.santoso" autocomplete="off">
           </div>
           {% else %}
           <div class="mb-3">
-            <label class="form-label fw-semibold">Username</label>
+            <label class="form-label fw-semibold small">Username</label>
             <input type="text" class="form-control bg-light" value="{{ user.username }}" disabled>
           </div>
           {% endif %}
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Nama Lengkap</label>
-            <input type="text" name="full_name" class="form-control"
-                   value="{{ user.full_name if user else '' }}" placeholder="Nama lengkap">
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold small">Nama Lengkap</label>
+              <input type="text" name="full_name" class="form-control"
+                     value="{{ user.full_name if user else '' }}" placeholder="Nama lengkap">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold small">Role <span class="text-danger">*</span></label>
+              <select name="role" class="form-select">
+                <option value="admin" {{ 'selected' if user and user.role=='admin' else '' }}>Admin</option>
+                <option value="superadmin" {{ 'selected' if user and user.role=='superadmin' else '' }}>Superadmin</option>
+              </select>
+            </div>
           </div>
+
           <div class="mb-3">
-            <label class="form-label fw-semibold">Role *</label>
-            <select name="role" class="form-select">
-              <option value="admin" {{ 'selected' if user and user.role=='admin' else '' }}>Admin</option>
-              <option value="superadmin" {{ 'selected' if user and user.role=='superadmin' else '' }}>Superadmin</option>
-            </select>
-            <div class="form-text">Superadmin dapat mengakses pengaturan sistem dan kelola user.</div>
+            <label class="form-label fw-semibold small">{{ 'Password Baru' if user else 'Password' }} <span class="text-danger">{{ '' if user else '*' }}</span></label>
+            <div class="input-group">
+              <input type="password" name="password" id="passInput" class="form-control"
+                     {{ '' if user else 'required' }}
+                     placeholder="{{ 'Kosongkan jika tidak diubah' if user else 'Minimal 6 karakter' }}"
+                     autocomplete="new-password">
+              <button class="btn btn-outline-secondary" type="button"
+                      onclick="togglePass()">
+                <i class="bi bi-eye" id="passIcon"></i>
+              </button>
+            </div>
           </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">{{ 'Password Baru' if user else 'Password *' }}</label>
-            <input type="password" name="password" class="form-control"
-                   {{ '' if user else 'required' }}
-                   placeholder="{{ 'Kosongkan jika tidak diubah' if user else 'Minimal 6 karakter' }}"
-                   autocomplete="new-password">
-          </div>
+
           {% if user %}
           <div class="mb-4">
             <div class="form-check form-switch">
               <input class="form-check-input" type="checkbox" name="is_active"
                      id="isActive" {{ 'checked' if user.is_active else '' }}>
-              <label class="form-check-label fw-semibold" for="isActive">User Aktif</label>
+              <label class="form-check-label fw-semibold small" for="isActive">User Aktif</label>
             </div>
           </div>
           {% endif %}
+
+          <hr class="my-3">
+
+          {# ── Kontak — digunakan untuk notifikasi lupa password ── #}
+          <div class="small fw-bold text-muted text-uppercase mb-2">
+            <i class="bi bi-bell me-1"></i>Kontak Notifikasi
+            <span class="text-normal fw-normal text-muted ms-1" style="font-size:.75rem">(untuk link lupa password &amp; notifikasi)</span>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Email</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+              <input type="email" name="email" class="form-control"
+                     value="{{ user.email if user else '' }}"
+                     placeholder="nama@perusahaan.com">
+            </div>
+          </div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold small">No. HP / WhatsApp</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-whatsapp text-success"></i></span>
+                <input type="text" name="phone" class="form-control"
+                       value="{{ user.phone if user else '' }}"
+                       placeholder="628123456789">
+              </div>
+              <div class="form-text">Format internasional tanpa + (mis. 628xxx)</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold small">Telegram ID / Username</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-telegram text-primary"></i></span>
+                <input type="text" name="telegram_id" class="form-control"
+                       value="{{ user.telegram_id if user else '' }}"
+                       placeholder="@username atau chat_id">
+              </div>
+            </div>
+          </div>
+
           <div class="d-flex gap-2">
             <a href="/users" class="btn btn-secondary">Batal</a>
             <button type="submit" class="btn btn-primary">
-              <i class="bi bi-save"></i> {{ 'Update' if user else 'Buat User' }}
+              <i class="bi bi-save me-1"></i>{{ 'Update User' if user else 'Buat User' }}
             </button>
           </div>
         </form>
@@ -62,4 +119,14 @@
     </div>
   </div>
 </div>
+
+<script>
+function togglePass() {
+  const inp  = document.getElementById('passInput');
+  const icon = document.getElementById('passIcon');
+  const show = inp.type === 'password';
+  inp.type   = show ? 'text' : 'password';
+  icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+}
+</script>
 {% endblock %}
