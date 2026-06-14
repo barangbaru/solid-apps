@@ -2834,6 +2834,57 @@ def _sc_notify_ticket(db, ticket_id, event='created'):
     except Exception:
         pass
 
+# ── Auto-log tiket ke Project Performance evaluasi karyawan ───────────────────
+def _sc_log_ticket_to_eval(db, ticket_id, event='assigned'):
+    """Catat aktivitas tiket ke project_entries evaluasi karyawan (assignee)."""
+    try:
+        from datetime import date as _date
+        t = db.execute('''SELECT t.*, cu.name as customer_name, st.name as type_name
+                          FROM sc_tickets t
+                          JOIN sc_customers cu ON cu.id=t.customer_id
+                          JOIN sc_support_types st ON st.id=t.support_type_id
+                          WHERE t.id=?''', (ticket_id,)).fetchone()
+        if not t or not t['assignee_id']:
+            return
+        periode = str(_date.today().year)
+        # Cari atau buat evaluasi periode ini untuk assignee
+        ev = db.execute('SELECT id FROM evaluations WHERE employee_id=? AND periode=?',
+                        (t['assignee_id'], periode)).fetchone()
+        if not ev:
+            cur = db.execute('INSERT INTO evaluations(employee_id, periode, status) VALUES(?,?,?)',
+                             (t['assignee_id'], periode, 'draft'))
+            eval_id = cur.lastrowid
+        else:
+            eval_id = ev['id']
+        # Cek apakah tiket ini sudah ada di project_entries
+        existing = db.execute(
+            "SELECT id FROM project_entries WHERE eval_id=? AND project_name=?",
+            (eval_id, t['ticket_no'])).fetchone()
+        status_map = {
+            'assigned':    'ON PROGRESS',
+            'in_progress': 'ON PROGRESS',
+            'resolved':    'DONE',
+            'closed':      'DONE',
+            'hold':        'HOLD',
+            'feedback':    'ON PROGRESS',
+            'rejected':    'CANCELLED',
+        }
+        entry_status = status_map.get(event, status_map.get(t['status'], 'ON PROGRESS'))
+        detail = f"[{t['type_name']}] {t['subject']} — {t['customer_name']}"
+        if existing:
+            db.execute('UPDATE project_entries SET status=?, detail_task=? WHERE id=?',
+                       (entry_status, detail, existing['id']))
+        else:
+            max_order = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM project_entries WHERE eval_id=? AND entry_type=?',
+                                   (eval_id, 'history')).fetchone()[0]
+            db.execute('''INSERT INTO project_entries(eval_id,entry_type,project_name,detail_task,status,notes,sort_order)
+                          VALUES(?,?,?,?,?,?,?)''',
+                       (eval_id, 'history', t['ticket_no'], detail, entry_status,
+                        f"Auto dari SupportCore #{t['ticket_no']}", max_order + 1))
+        db.commit()
+    except Exception:
+        pass
+
 # ── Master Apps / Modules ──────────────────────────────────────────────────────
 @app.route('/support/apps')
 @login_required
@@ -3382,7 +3433,7 @@ def _sc_ticket_lookups(db):
     modules       = db.execute('''SELECT m.id, m.name, a.id as app_id, a.name as app_name
                                   FROM sc_modules m JOIN sc_apps a ON a.id=m.app_id
                                   WHERE m.is_active=1 ORDER BY a.name, m.name''').fetchall()
-    employees     = db.execute("SELECT id, name, jabatan FROM employees WHERE status='active' ORDER BY name").fetchall()
+    employees     = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
     return customers, support_types, sla_cats, contracts, modules, employees
 
 @app.route('/support/tickets/add', methods=['GET','POST'])
@@ -3430,6 +3481,7 @@ def sc_ticket_add():
             _sc_notify_ticket(db, new_id, 'created')
             if assignee_id:
                 _sc_notify_ticket(db, new_id, 'assigned')
+                _sc_log_ticket_to_eval(db, new_id, 'assigned')
             flash(f'Tiket {ticket_no} berhasil dibuat', 'success')
             return redirect(url_for('sc_tickets'))
         except Exception as e:
@@ -3483,6 +3535,9 @@ def sc_ticket_edit(tid):
             db.commit()
             if assignee_id and str(assignee_id) != str(prev_assignee or ''):
                 _sc_notify_ticket(db, tid, 'assigned')
+                _sc_log_ticket_to_eval(db, tid, 'assigned')
+            elif assignee_id:
+                _sc_log_ticket_to_eval(db, tid, 'assigned')
             flash('Tiket diperbarui', 'success')
             return redirect(url_for('sc_ticket_detail', tid=tid))
         except Exception as e:
@@ -3550,6 +3605,7 @@ def sc_ticket_status(tid):
     db.execute(f'UPDATE sc_tickets SET {sets} WHERE id=?', list(updates.values()) + [tid])
     db.commit()
     _sc_notify_ticket(db, tid, 'status')
+    _sc_log_ticket_to_eval(db, tid, new_status)
     flash(f'Status tiket diubah ke {new_status}', 'success')
     return redirect(url_for('sc_ticket_detail', tid=tid))
 
