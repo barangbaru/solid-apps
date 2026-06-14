@@ -90,6 +90,15 @@
           </td>
           <td class="text-muted small">{{ u.last_login or '—' }}</td>
           <td class="text-end pe-3">
+            {% set merge_to = merge_candidates.get(u.id) %}
+            {% if merge_to %}
+            <form action="/portal/users/{{ u.id }}/merge/{{ merge_to }}" method="post" class="d-inline"
+                  onsubmit="return confirm('Gabungkan akun Google ini ke akun manual yang sudah ada?\nAkun Google akan dinonaktifkan setelah digabung.')">
+              <button class="btn btn-sm btn-warning" title="Gabungkan ke akun manual">
+                <i class="bi bi-arrow-left-right me-1"></i>Gabung
+              </button>
+            </form>
+            {% endif %}
             <a href="/portal/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-pencil"></i>
             </a>

@@ -1041,6 +1041,9 @@ def auto_set_active_app():
     path = request.path
     skip = ('/login', '/logout', '/static', '/mfa', '/portal/open')
     if any(path.startswith(p) for p in skip):
+        # Halaman MFA & login tetap pakai konteks portal agar sidebar tidak salah
+        if path.startswith('/mfa'):
+            session['active_app'] = 'portal'
         return
     if path.startswith('/support'):
         session['active_app'] = 'support'
@@ -1049,20 +1052,22 @@ def auto_set_active_app():
     else:
         session['active_app'] = 'evaluasi'
 
-# ─── Force MFA setup for all logged-in users ───────────────────────────────────
+# ─── Force MFA setup untuk user non-Google ─────────────────────────────────────
 
 @app.before_request
 def enforce_mfa_setup():
     if 'user_id' not in session:
         return
-    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'static'}
+    exempt = {'login', 'login_mfa', 'login_google', 'login_google_callback',
+              'logout', 'mfa_setup', 'mfa_challenge', 'static'}
     if request.endpoint in exempt or (request.endpoint or '').startswith('static'):
         return
     try:
         db   = get_db()
-        user = db.execute('SELECT mfa_enabled FROM users WHERE id=?',
+        user = db.execute('SELECT mfa_enabled, google_id FROM users WHERE id=?',
                           (session['user_id'],)).fetchone()
-        if user and not user['mfa_enabled']:
+        # User yang login via Google dibebaskan dari MFA TOTP
+        if user and not user['mfa_enabled'] and not (user['google_id'] or '').strip():
             flash('Aktifkan Google Authenticator MFA terlebih dahulu untuk melanjutkan.', 'warning')
             return redirect(url_for('mfa_setup'))
     except Exception:
@@ -1608,6 +1613,22 @@ def login_google_callback():
                           (google_email,)).fetchone()
 
     if not user:
+        # Cek apakah ada karyawan dengan email yang sama dan sudah punya user manual
+        emp = db.execute("SELECT * FROM employees WHERE LOWER(email)=? AND is_active=1",
+                         (google_email,)).fetchone()
+        if emp and emp['user_id']:
+            # Merge: hubungkan google_id ke user manual yang sudah ada
+            existing = db.execute('SELECT * FROM users WHERE id=? AND is_active=1',
+                                  (emp['user_id'],)).fetchone()
+            if existing:
+                db.execute("UPDATE users SET google_id=?, email=? WHERE id=?",
+                           (google_id, google_email, existing['id']))
+                db.commit()
+                user = db.execute('SELECT * FROM users WHERE id=?', (existing['id'],)).fetchone()
+                audit_log('merge_google', 'users', user['id'],
+                          f'Akun manual digabung dengan Google ({google_email})', app_slug='portal')
+
+    if not user:
         # Auto-create user baru tanpa akses app — admin harus grant via Akses Aplikasi
         username_base = google_email.split('@')[0].lower().replace('.', '_')
         username = username_base
@@ -1620,7 +1641,12 @@ def login_google_callback():
             (username, generate_password_hash(secrets.token_hex(32), method='pbkdf2:sha256'),
              google_name, 'user', google_email, google_id))
         db.commit()
-        user = db.execute('SELECT * FROM users WHERE id=?', (cur.lastrowid,)).fetchone()
+        new_uid = cur.lastrowid
+        # Auto-link ke karyawan jika email cocok dan belum punya user
+        if emp and not emp['user_id']:
+            db.execute('UPDATE employees SET user_id=? WHERE id=?', (new_uid, emp['id']))
+            db.commit()
+        user = db.execute('SELECT * FROM users WHERE id=?', (new_uid,)).fetchone()
         audit_log('register_google', 'users', user['id'],
                   f'Akun baru via Google ({google_email})', app_slug='portal')
 
@@ -2122,8 +2148,46 @@ def portal_users():
     user_access = {}
     for r in access_rows:
         user_access.setdefault(r['user_id'], {})[r['app_slug']] = r['app_role']
+    # Deteksi kandidat merge: Google user yang emailnya sama dengan user manual lain
+    merge_candidates = {}
+    google_users = [u for u in users if u['google_id'] and u['email']]
+    all_emails = {u['email'].lower(): u['id'] for u in users if u['email'] and not u['google_id']}
+    for gu in google_users:
+        manual_id = all_emails.get(gu['email'].lower())
+        if manual_id:
+            merge_candidates[gu['id']] = manual_id  # google_user_id -> manual_user_id
     return render_template('portal_users.html', users=users, linked_emps=linked_emps,
-                           apps=apps, user_access=user_access)
+                           apps=apps, user_access=user_access, merge_candidates=merge_candidates)
+
+@app.route('/portal/users/<int:google_uid>/merge/<int:manual_uid>', methods=['POST'])
+@login_required
+def portal_user_merge(google_uid, manual_uid):
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal_users'))
+    db = get_db()
+    g_user = db.execute('SELECT * FROM users WHERE id=?', (google_uid,)).fetchone()
+    m_user = db.execute('SELECT * FROM users WHERE id=?', (manual_uid,)).fetchone()
+    if not g_user or not m_user:
+        flash('User tidak ditemukan.', 'danger')
+        return redirect(url_for('portal_users'))
+    # Pindahkan google_id ke user manual
+    db.execute("UPDATE users SET google_id=?, email=COALESCE(NULLIF(email,''),?) WHERE id=?",
+               (g_user['google_id'], g_user['email'], manual_uid))
+    # Pindahkan akses app dari Google user ke user manual (INSERT OR IGNORE)
+    access = db.execute('SELECT * FROM user_app_access WHERE user_id=?', (google_uid,)).fetchall()
+    for a in access:
+        db.execute('''INSERT OR IGNORE INTO user_app_access(user_id,app_slug,app_role,is_active)
+                      VALUES(?,?,?,?)''', (manual_uid, a['app_slug'], a['app_role'], a['is_active']))
+    # Nonaktifkan akun Google duplikat
+    db.execute("UPDATE users SET is_active=0 WHERE id=?", (google_uid,))
+    # Update link karyawan jika ada
+    db.execute("UPDATE employees SET user_id=? WHERE user_id=?", (manual_uid, google_uid))
+    db.commit()
+    audit_log('merge_user', 'users', manual_uid,
+              f'Akun Google {g_user["username"]} digabung ke {m_user["username"]}', app_slug='portal')
+    flash(f'Akun Google {g_user["username"]} berhasil digabung ke {m_user["username"]}.', 'success')
+    return redirect(url_for('portal_users'))
 
 @app.route('/portal/users/add', methods=['GET', 'POST'])
 @login_required
