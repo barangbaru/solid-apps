@@ -1019,6 +1019,21 @@ def inject_globals():
         'current_app_slug': session.get('active_app') or 'portal',
     }
 
+# ─── Auto-set active_app dari URL path ────────────────────────────────────────
+
+@app.before_request
+def auto_set_active_app():
+    path = request.path
+    skip = ('/login', '/logout', '/static', '/mfa', '/portal/open')
+    if any(path.startswith(p) for p in skip):
+        return
+    if path.startswith('/support'):
+        session['active_app'] = 'support'
+    elif path.startswith('/portal'):
+        session['active_app'] = 'portal'
+    else:
+        session['active_app'] = 'evaluasi'
+
 # ─── Force MFA setup for all logged-in users ───────────────────────────────────
 
 @app.before_request
