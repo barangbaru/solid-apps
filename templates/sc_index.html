@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+{% block title %}SupportCore — Dashboard{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Dashboard</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <div style="width:38px;height:38px;border-radius:10px;background:#0d9488;display:flex;align-items:center;justify-content:center">
+    <i class="bi bi-headset text-white fs-5"></i>
+  </div>
+  <div>
+    <h5 class="fw-bold mb-0">SupportCore</h5>
+    <div class="text-muted small">Annual Technical Support Monitoring</div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <a href="/support/customers" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #0d9488 !important">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:#e6faf8;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="bi bi-building fs-5" style="color:#0d9488"></i>
+          </div>
+          <div>
+            <div class="fw-bold fs-4 lh-1" style="color:#0d9488">{{ counts.customers }}</div>
+            <div class="text-muted small">Customer Aktif</div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <a href="/support/services" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #0ea5e9 !important">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:#e0f2fe;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="bi bi-wrench-adjustable fs-5" style="color:#0ea5e9"></i>
+          </div>
+          <div>
+            <div class="fw-bold fs-4 lh-1" style="color:#0ea5e9">{{ counts.services }}</div>
+            <div class="text-muted small">Layanan/Jasa</div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <a href="/support/support-types" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #f59e0b !important">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:#fef3c7;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="bi bi-tools fs-5" style="color:#f59e0b"></i>
+          </div>
+          <div>
+            <div class="fw-bold fs-4 lh-1" style="color:#f59e0b">{{ counts.support_types }}</div>
+            <div class="text-muted small">Tipe Support</div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <a href="/support/sla-categories" class="text-decoration-none">
+      <div class="card border-0 shadow-sm h-100" style="border-left:4px solid #ef4444 !important">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div style="width:44px;height:44px;border-radius:12px;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="bi bi-speedometer2 fs-5" style="color:#ef4444"></i>
+          </div>
+          <div>
+            <div class="fw-bold fs-4 lh-1" style="color:#ef4444">{{ counts.sla_categories }}</div>
+            <div class="text-muted small">Kategori SLA</div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-grid-1x2 me-1 text-primary"></i>Menu Master Data</div>
+      <div class="list-group list-group-flush">
+        <a href="/support/customers" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#e6faf8;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-building" style="color:#0d9488"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Master Customer</div>
+            <div class="text-muted" style="font-size:.75rem">Daftar customer pemegang kontrak support</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="/support/services" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#e0f2fe;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-wrench-adjustable" style="color:#0ea5e9"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Master Layanan/Jasa</div>
+            <div class="text-muted" style="font-size:.75rem">Jenis layanan teknis yang disediakan</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="/support/support-types" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#fef3c7;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-tools" style="color:#f59e0b"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Master Tipe Support</div>
+            <div class="text-muted" style="font-size:.75rem">Corrective, Preventive, Onsite Support</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="/support/sla-categories" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#fee2e2;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-speedometer2" style="color:#ef4444"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Master Kategori SLA</div>
+            <div class="text-muted" style="font-size:.75rem">Prioritas & target waktu response/resolusi</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-rocket-takeoff me-1 text-warning"></i>Roadmap SupportCore</div>
+      <div class="card-body">
+        <div class="d-flex flex-column gap-2">
+          {% for status, label, desc in [
+            ('done',   'Master Data',          'Customer, Layanan, Tipe Support, Kategori SLA'),
+            ('soon',   'Manajemen Kontrak',    'Kontrak support tahunan per customer'),
+            ('soon',   'Tiket Support',        'Pencatatan & tracking tiket Corrective/Preventive/Onsite'),
+            ('soon',   'Monitoring SLA',       'Dashboard kepatuhan SLA per customer/kontrak'),
+            ('soon',   'Laporan & Analitik',   'Summary kunjungan, response time, resolusi'),
+          ] %}
+          <div class="d-flex align-items-start gap-2">
+            <span class="badge mt-1 {{ 'bg-success' if status == 'done' else 'bg-light text-muted border' }}"
+                  style="font-size:.65rem;min-width:44px">
+              {{ '✓ Done' if status == 'done' else 'Soon' }}
+            </span>
+            <div>
+              <div class="fw-semibold small">{{ label }}</div>
+              <div class="text-muted" style="font-size:.74rem">{{ desc }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

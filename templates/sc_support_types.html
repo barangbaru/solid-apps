@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}Master Tipe Support — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Master Tipe Support</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-tools text-primary me-2"></i>Master Tipe Support</h5>
+    <div class="text-muted small mt-1">Corrective, Preventive, Onsite Support dan tipe lainnya</div>
+  </div>
+  <a href="/support/support-types/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i>Tambah Tipe
+  </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:140px">Kode</th>
+          <th>Nama Tipe</th>
+          <th>Deskripsi</th>
+          <th class="text-center">Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set colors = {
+          'CORRECTIVE': ('bg-danger','bi-bandaid'),
+          'PREVENTIVE': ('bg-success','bi-shield-check'),
+          'ONSITE':     ('bg-primary','bi-geo-alt'),
+        } %}
+        {% set badge_cls, icon_cls = colors.get(r.code, ('bg-secondary','bi-tools')) %}
+        <tr class="{{ '' if r.is_active else 'table-secondary text-muted' }}">
+          <td class="ps-3">
+            <span class="badge {{ badge_cls }} bg-opacity-90" style="font-size:.75rem">
+              <i class="bi {{ icon_cls }} me-1"></i>{{ r.code }}
+            </span>
+          </td>
+          <td class="fw-semibold">{{ r.name }}</td>
+          <td class="small text-muted">{{ r.description or '—' }}</td>
+          <td class="text-center">
+            <span class="badge {{ 'bg-success' if r.is_active else 'bg-secondary' }}">
+              {{ 'Aktif' if r.is_active else 'Nonaktif' }}
+            </span>
+          </td>
+          <td class="text-end pe-3">
+            <a href="/support/support-types/{{ r.id }}/edit" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form action="/support/support-types/{{ r.id }}/delete" method="post" class="d-inline"
+                  data-confirm="Nonaktifkan tipe {{ r.name | e }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">
+          <i class="bi bi-tools" style="font-size:2rem;opacity:.3"></i>
+          <div class="mt-2">Belum ada tipe support. <a href="/support/support-types/add">Tambah sekarang</a>.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

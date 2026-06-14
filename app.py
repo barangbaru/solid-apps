@@ -276,6 +276,47 @@ CREATE TABLE IF NOT EXISTS user_app_access (
     UNIQUE(user_id, app_slug),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- ─── SupportCore ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sc_customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    address TEXT DEFAULT '',
+    contact_person TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS sc_services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS sc_support_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS sc_sla_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    priority TEXT DEFAULT 'Medium',
+    response_time_hours REAL DEFAULT 4,
+    resolution_time_hours REAL DEFAULT 24,
+    description TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 MIGRATIONS = [
@@ -349,6 +390,13 @@ APP_PERMISSIONS = {
     'aset': {
         # Akan diisi saat AssetCore dikembangkan
     },
+    'support': {
+        'sc_view':             'Lihat data SupportCore',
+        'sc_manage_customers': 'Kelola master customer',
+        'sc_manage_services':  'Kelola master layanan/jasa',
+        'sc_manage_types':     'Kelola master tipe support',
+        'sc_manage_sla':       'Kelola master kategori SLA',
+    },
 }
 # Backward-compat: ALL_PERMISSIONS = gabungan semua app + portal perms
 ALL_PERMISSIONS = {
@@ -364,8 +412,9 @@ CRITICAL_PERMISSIONS = {'view_salary', 'manage_salary', 'manage_users', 'manage_
 SYSTEM_ROLE_DEFAULTS = {
     'superadmin': list(ALL_PERMISSIONS.keys()),
     'admin': ['manage_employees','manage_divisions','manage_evaluations',
-              'view_evaluations','send_reminders','manage_template'],
-    'viewer': ['view_evaluations'],
+              'view_evaluations','send_reminders','manage_template',
+              'sc_view','sc_manage_customers','sc_manage_services','sc_manage_types','sc_manage_sla'],
+    'viewer': ['view_evaluations','sc_view'],
 }
 
 def init_db():
@@ -408,6 +457,8 @@ def init_db():
          'clipboard2-check', '#4da8da', '#e8f4fd', '/', 1, 0, 0, ''),
         ('aset', 'AssetCore', 'Pencatatan & tracking aset perusahaan',
          'box-seam', '#6f42c1', '#f0ecff', '/aset/', 1, 1, 1, ''),
+        ('support', 'SupportCore', 'Monitoring annual technical support & SLA project',
+         'headset', '#0d9488', '#e6faf8', '/support/', 1, 0, 2, ''),
     ]
     for slug, name, desc, icon, color, bg, url, active, soon, sort, perm in _apps:
         db.execute('''INSERT INTO superapp_apps
@@ -432,6 +483,15 @@ def init_db():
     for rname, perms in SYSTEM_ROLE_DEFAULTS.items():
         for perm in perms:
             db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
+    # Seed default support types
+    for st_code, st_name, st_desc in [
+        ('CORRECTIVE', 'Corrective Support', 'Penanganan gangguan/kerusakan sistem yang sudah terjadi'),
+        ('PREVENTIVE', 'Preventive Support', 'Pemeliharaan rutin untuk mencegah kerusakan/gangguan'),
+        ('ONSITE',     'Onsite Support',     'Kunjungan langsung ke lokasi customer'),
+    ]:
+        db.execute('INSERT OR IGNORE INTO sc_support_types(code,name,description) VALUES(?,?,?)',
+                   (st_code, st_name, st_desc))
+    db.commit()
     # Pastikan semua user existing punya akses ke evaluasi (default)
     db.execute('''
         INSERT OR IGNORE INTO user_app_access(user_id, app_slug, app_role, is_active)
@@ -2492,6 +2552,289 @@ def reminder_log():
         FROM reminder_logs GROUP BY channel, status
     ''').fetchall()
     return render_template('reminder_log.html', logs=logs, stats=stats)
+
+# ─── SupportCore ───────────────────────────────────────────────────────────────
+
+def sc_require(perm):
+    """Check SupportCore permission, redirect to /support if denied."""
+    db = get_db()
+    if not has_permission(session.get('user_role', ''), perm, db):
+        flash(f'Akses ditolak — permission "{perm}" diperlukan', 'danger')
+        return False
+    return True
+
+@app.route('/support/')
+@login_required
+def sc_index():
+    db = get_db()
+    counts = {
+        'customers':    db.execute('SELECT COUNT(*) FROM sc_customers WHERE is_active=1').fetchone()[0],
+        'services':     db.execute('SELECT COUNT(*) FROM sc_services WHERE is_active=1').fetchone()[0],
+        'support_types':db.execute('SELECT COUNT(*) FROM sc_support_types WHERE is_active=1').fetchone()[0],
+        'sla_categories':db.execute('SELECT COUNT(*) FROM sc_sla_categories WHERE is_active=1').fetchone()[0],
+    }
+    return render_template('sc_index.html', counts=counts)
+
+# ── Master Customer ────────────────────────────────────────────────────────────
+@app.route('/support/customers')
+@login_required
+def sc_customers():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    rows = db.execute('SELECT * FROM sc_customers ORDER BY name').fetchall()
+    return render_template('sc_customers.html', rows=rows)
+
+@app.route('/support/customers/add', methods=['GET', 'POST'])
+@login_required
+def sc_customer_add():
+    if not sc_require('sc_manage_customers'): return redirect(url_for('sc_customers'))
+    db = get_db()
+    if request.method == 'POST':
+        code = request.form.get('code', '').strip().upper()
+        name = request.form.get('name', '').strip()
+        if not code or not name:
+            flash('Kode dan nama wajib diisi', 'danger')
+        else:
+            try:
+                db.execute(
+                    'INSERT INTO sc_customers(code,name,address,contact_person,phone,email,notes) VALUES(?,?,?,?,?,?,?)',
+                    (code, name, request.form.get('address','').strip(),
+                     request.form.get('contact_person','').strip(),
+                     request.form.get('phone','').strip(),
+                     request.form.get('email','').strip(),
+                     request.form.get('notes','').strip()))
+                db.commit()
+                flash(f'Customer "{name}" ditambahkan', 'success')
+                return redirect(url_for('sc_customers'))
+            except Exception:
+                flash('Kode customer sudah ada', 'danger')
+    return render_template('sc_customer_form.html', row=None)
+
+@app.route('/support/customers/<int:cid>/edit', methods=['GET', 'POST'])
+@login_required
+def sc_customer_edit(cid):
+    if not sc_require('sc_manage_customers'): return redirect(url_for('sc_customers'))
+    db  = get_db()
+    row = db.execute('SELECT * FROM sc_customers WHERE id=?', (cid,)).fetchone()
+    if not row:
+        flash('Customer tidak ditemukan', 'danger')
+        return redirect(url_for('sc_customers'))
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        is_active = 1 if request.form.get('is_active') else 0
+        db.execute('''UPDATE sc_customers SET name=?,address=?,contact_person=?,phone=?,email=?,notes=?,is_active=?
+                      WHERE id=?''',
+                   (name, request.form.get('address','').strip(),
+                    request.form.get('contact_person','').strip(),
+                    request.form.get('phone','').strip(),
+                    request.form.get('email','').strip(),
+                    request.form.get('notes','').strip(),
+                    is_active, cid))
+        db.commit()
+        flash('Customer diperbarui', 'success')
+        return redirect(url_for('sc_customers'))
+    return render_template('sc_customer_form.html', row=row)
+
+@app.route('/support/customers/<int:cid>/delete', methods=['POST'])
+@login_required
+def sc_customer_delete(cid):
+    if not sc_require('sc_manage_customers'): return redirect(url_for('sc_customers'))
+    db = get_db()
+    db.execute('UPDATE sc_customers SET is_active=0 WHERE id=?', (cid,))
+    db.commit()
+    flash('Customer dinonaktifkan', 'warning')
+    return redirect(url_for('sc_customers'))
+
+# ── Master Services ────────────────────────────────────────────────────────────
+@app.route('/support/services')
+@login_required
+def sc_services():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    rows = db.execute('SELECT * FROM sc_services ORDER BY name').fetchall()
+    return render_template('sc_services.html', rows=rows)
+
+@app.route('/support/services/add', methods=['GET', 'POST'])
+@login_required
+def sc_service_add():
+    if not sc_require('sc_manage_services'): return redirect(url_for('sc_services'))
+    db = get_db()
+    if request.method == 'POST':
+        code = request.form.get('code', '').strip().upper()
+        name = request.form.get('name', '').strip()
+        if not code or not name:
+            flash('Kode dan nama wajib diisi', 'danger')
+        else:
+            try:
+                db.execute('INSERT INTO sc_services(code,name,description) VALUES(?,?,?)',
+                           (code, name, request.form.get('description','').strip()))
+                db.commit()
+                flash(f'Layanan "{name}" ditambahkan', 'success')
+                return redirect(url_for('sc_services'))
+            except Exception:
+                flash('Kode layanan sudah ada', 'danger')
+    return render_template('sc_service_form.html', row=None)
+
+@app.route('/support/services/<int:sid>/edit', methods=['GET', 'POST'])
+@login_required
+def sc_service_edit(sid):
+    if not sc_require('sc_manage_services'): return redirect(url_for('sc_services'))
+    db  = get_db()
+    row = db.execute('SELECT * FROM sc_services WHERE id=?', (sid,)).fetchone()
+    if not row:
+        flash('Layanan tidak ditemukan', 'danger')
+        return redirect(url_for('sc_services'))
+    if request.method == 'POST':
+        is_active = 1 if request.form.get('is_active') else 0
+        db.execute('UPDATE sc_services SET name=?,description=?,is_active=? WHERE id=?',
+                   (request.form.get('name','').strip(),
+                    request.form.get('description','').strip(),
+                    is_active, sid))
+        db.commit()
+        flash('Layanan diperbarui', 'success')
+        return redirect(url_for('sc_services'))
+    return render_template('sc_service_form.html', row=row)
+
+@app.route('/support/services/<int:sid>/delete', methods=['POST'])
+@login_required
+def sc_service_delete(sid):
+    if not sc_require('sc_manage_services'): return redirect(url_for('sc_services'))
+    db = get_db()
+    db.execute('UPDATE sc_services SET is_active=0 WHERE id=?', (sid,))
+    db.commit()
+    flash('Layanan dinonaktifkan', 'warning')
+    return redirect(url_for('sc_services'))
+
+# ── Master Support Types ───────────────────────────────────────────────────────
+@app.route('/support/support-types')
+@login_required
+def sc_support_types():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    rows = db.execute('SELECT * FROM sc_support_types ORDER BY code').fetchall()
+    return render_template('sc_support_types.html', rows=rows)
+
+@app.route('/support/support-types/add', methods=['GET', 'POST'])
+@login_required
+def sc_support_type_add():
+    if not sc_require('sc_manage_types'): return redirect(url_for('sc_support_types'))
+    db = get_db()
+    if request.method == 'POST':
+        code = request.form.get('code', '').strip().upper()
+        name = request.form.get('name', '').strip()
+        if not code or not name:
+            flash('Kode dan nama wajib diisi', 'danger')
+        else:
+            try:
+                db.execute('INSERT INTO sc_support_types(code,name,description) VALUES(?,?,?)',
+                           (code, name, request.form.get('description','').strip()))
+                db.commit()
+                flash(f'Tipe support "{name}" ditambahkan', 'success')
+                return redirect(url_for('sc_support_types'))
+            except Exception:
+                flash('Kode tipe sudah ada', 'danger')
+    return render_template('sc_support_type_form.html', row=None)
+
+@app.route('/support/support-types/<int:tid>/edit', methods=['GET', 'POST'])
+@login_required
+def sc_support_type_edit(tid):
+    if not sc_require('sc_manage_types'): return redirect(url_for('sc_support_types'))
+    db  = get_db()
+    row = db.execute('SELECT * FROM sc_support_types WHERE id=?', (tid,)).fetchone()
+    if not row:
+        flash('Tipe support tidak ditemukan', 'danger')
+        return redirect(url_for('sc_support_types'))
+    if request.method == 'POST':
+        is_active = 1 if request.form.get('is_active') else 0
+        db.execute('UPDATE sc_support_types SET name=?,description=?,is_active=? WHERE id=?',
+                   (request.form.get('name','').strip(),
+                    request.form.get('description','').strip(),
+                    is_active, tid))
+        db.commit()
+        flash('Tipe support diperbarui', 'success')
+        return redirect(url_for('sc_support_types'))
+    return render_template('sc_support_type_form.html', row=row)
+
+@app.route('/support/support-types/<int:tid>/delete', methods=['POST'])
+@login_required
+def sc_support_type_delete(tid):
+    if not sc_require('sc_manage_types'): return redirect(url_for('sc_support_types'))
+    db = get_db()
+    db.execute('UPDATE sc_support_types SET is_active=0 WHERE id=?', (tid,))
+    db.commit()
+    flash('Tipe support dinonaktifkan', 'warning')
+    return redirect(url_for('sc_support_types'))
+
+# ── Master SLA Categories ──────────────────────────────────────────────────────
+@app.route('/support/sla-categories')
+@login_required
+def sc_sla_categories():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    rows = db.execute('SELECT * FROM sc_sla_categories ORDER BY priority, name').fetchall()
+    return render_template('sc_sla_categories.html', rows=rows)
+
+@app.route('/support/sla-categories/add', methods=['GET', 'POST'])
+@login_required
+def sc_sla_category_add():
+    if not sc_require('sc_manage_sla'): return redirect(url_for('sc_sla_categories'))
+    db = get_db()
+    if request.method == 'POST':
+        code = request.form.get('code', '').strip().upper()
+        name = request.form.get('name', '').strip()
+        if not code or not name:
+            flash('Kode dan nama wajib diisi', 'danger')
+        else:
+            try:
+                db.execute('''INSERT INTO sc_sla_categories
+                              (code,name,priority,response_time_hours,resolution_time_hours,description)
+                              VALUES(?,?,?,?,?,?)''',
+                           (code, name,
+                            request.form.get('priority','Medium'),
+                            float(request.form.get('response_time_hours', 4) or 4),
+                            float(request.form.get('resolution_time_hours', 24) or 24),
+                            request.form.get('description','').strip()))
+                db.commit()
+                flash(f'Kategori SLA "{name}" ditambahkan', 'success')
+                return redirect(url_for('sc_sla_categories'))
+            except Exception:
+                flash('Kode kategori sudah ada', 'danger')
+    return render_template('sc_sla_category_form.html', row=None)
+
+@app.route('/support/sla-categories/<int:kid>/edit', methods=['GET', 'POST'])
+@login_required
+def sc_sla_category_edit(kid):
+    if not sc_require('sc_manage_sla'): return redirect(url_for('sc_sla_categories'))
+    db  = get_db()
+    row = db.execute('SELECT * FROM sc_sla_categories WHERE id=?', (kid,)).fetchone()
+    if not row:
+        flash('Kategori SLA tidak ditemukan', 'danger')
+        return redirect(url_for('sc_sla_categories'))
+    if request.method == 'POST':
+        is_active = 1 if request.form.get('is_active') else 0
+        db.execute('''UPDATE sc_sla_categories
+                      SET name=?,priority=?,response_time_hours=?,resolution_time_hours=?,description=?,is_active=?
+                      WHERE id=?''',
+                   (request.form.get('name','').strip(),
+                    request.form.get('priority','Medium'),
+                    float(request.form.get('response_time_hours', 4) or 4),
+                    float(request.form.get('resolution_time_hours', 24) or 24),
+                    request.form.get('description','').strip(),
+                    is_active, kid))
+        db.commit()
+        flash('Kategori SLA diperbarui', 'success')
+        return redirect(url_for('sc_sla_categories'))
+    return render_template('sc_sla_category_form.html', row=row)
+
+@app.route('/support/sla-categories/<int:kid>/delete', methods=['POST'])
+@login_required
+def sc_sla_category_delete(kid):
+    if not sc_require('sc_manage_sla'): return redirect(url_for('sc_sla_categories'))
+    db = get_db()
+    db.execute('UPDATE sc_sla_categories SET is_active=0 WHERE id=?', (kid,))
+    db.commit()
+    flash('Kategori SLA dinonaktifkan', 'warning')
+    return redirect(url_for('sc_sla_categories'))
 
 # ─── Settings ─────────────────────────────────────────────────────────────────
 

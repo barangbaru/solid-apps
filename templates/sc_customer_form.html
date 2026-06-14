@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if row else 'Tambah' }} Customer — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit Customer' if row else 'Tambah Customer' }}</span>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-7">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-bold">
+    <i class="bi bi-building text-primary me-1"></i>
+    {{ 'Edit Customer' if row else 'Tambah Customer Baru' }}
+  </div>
+  <div class="card-body p-4">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Kode <span class="text-danger">*</span></label>
+          <input type="text" name="code" class="form-control form-control-sm text-uppercase"
+                 value="{{ row.code if row else '' }}"
+                 placeholder="CUST001" maxlength="20"
+                 {{ 'readonly' if row else 'required' }}
+                 style="{{ 'background:#f8f9fa' if row else '' }}">
+          {% if row %}<div class="form-text">Kode tidak dapat diubah.</div>{% endif %}
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-semibold small">Nama Customer <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control form-control-sm"
+                 value="{{ row.name if row else '' }}" placeholder="PT. Nama Perusahaan" required>
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Alamat</label>
+          <textarea name="address" class="form-control form-control-sm" rows="2"
+                    placeholder="Jl. ....">{{ row.address if row else '' }}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">Contact Person</label>
+          <input type="text" name="contact_person" class="form-control form-control-sm"
+                 value="{{ row.contact_person if row else '' }}" placeholder="Nama PIC">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">No. Telepon</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="bi bi-telephone"></i></span>
+            <input type="text" name="phone" class="form-control"
+                   value="{{ row.phone if row else '' }}" placeholder="08xxxxxxxxxx">
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">Email</label>
+          <div class="input-group input-group-sm">
+            <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+            <input type="email" name="email" class="form-control"
+                   value="{{ row.email if row else '' }}" placeholder="pic@perusahaan.com">
+          </div>
+        </div>
+        {% if row %}
+        <div class="col-md-6 d-flex align-items-end pb-1">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
+                   {{ 'checked' if row.is_active else '' }}>
+            <label class="form-check-label fw-semibold small" for="isActive">Customer Aktif</label>
+          </div>
+        </div>
+        {% endif %}
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Catatan</label>
+          <textarea name="notes" class="form-control form-control-sm" rows="2"
+                    placeholder="Catatan tambahan...">{{ row.notes if row else '' }}</textarea>
+        </div>
+      </div>
+      <hr class="my-3">
+      <div class="d-flex gap-2">
+        <a href="/support/customers" class="btn btn-secondary btn-sm">Batal</a>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-save me-1"></i>{{ 'Update' if row else 'Simpan' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

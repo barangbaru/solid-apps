@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if row else 'Tambah' }} Kategori SLA — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit Kategori SLA' if row else 'Tambah Kategori SLA' }}</span>{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-bold">
+    <i class="bi bi-speedometer2 text-primary me-1"></i>
+    {{ 'Edit Kategori SLA' if row else 'Tambah Kategori SLA Baru' }}
+  </div>
+  <div class="card-body p-4">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Kode <span class="text-danger">*</span></label>
+          <input type="text" name="code" class="form-control form-control-sm text-uppercase"
+                 value="{{ row.code if row else '' }}" placeholder="SLA-P1" maxlength="20"
+                 {{ 'readonly' if row else 'required' }}
+                 style="{{ 'background:#f8f9fa' if row else '' }}">
+          {% if row %}<div class="form-text">Kode tidak dapat diubah.</div>{% endif %}
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-semibold small">Nama Kategori <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control form-control-sm"
+                 value="{{ row.name if row else '' }}" placeholder="Priority 1 — Critical" required>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Prioritas <span class="text-danger">*</span></label>
+          <div class="d-flex gap-2 flex-wrap">
+            {% for p, cls in [('Critical','danger'),('High','warning'),('Medium','primary'),('Low','secondary')] %}
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="priority" id="p{{ p }}" value="{{ p }}"
+                     {{ 'checked' if (row and row.priority == p) or (not row and p == 'Medium') }}>
+              <label class="form-check-label" for="p{{ p }}">
+                <span class="badge bg-{{ cls }} {{ 'text-dark' if p == 'High' else '' }}">{{ p }}</span>
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-clock text-warning me-1"></i>Response Time
+          </label>
+          <div class="input-group input-group-sm">
+            <input type="number" name="response_time_hours" class="form-control"
+                   value="{{ row.response_time_hours if row else '4' }}"
+                   min="0.25" step="0.25" placeholder="4">
+            <span class="input-group-text">jam</span>
+          </div>
+          <div class="form-text">Waktu maksimal untuk merespons tiket. Gunakan 0.5 untuk 30 menit.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-check-circle text-success me-1"></i>Resolution Time
+          </label>
+          <div class="input-group input-group-sm">
+            <input type="number" name="resolution_time_hours" class="form-control"
+                   value="{{ row.resolution_time_hours if row else '24' }}"
+                   min="1" step="1" placeholder="24">
+            <span class="input-group-text">jam</span>
+          </div>
+          <div class="form-text">Waktu maksimal untuk menyelesaikan tiket. 24 = 1 hari kerja.</div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Deskripsi</label>
+          <textarea name="description" class="form-control form-control-sm" rows="2"
+                    placeholder="Ketentuan SLA untuk kategori ini...">{{ row.description if row else '' }}</textarea>
+        </div>
+
+        {% if row %}
+        <div class="col-12">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
+                   {{ 'checked' if row.is_active else '' }}>
+            <label class="form-check-label fw-semibold small" for="isActive">Kategori Aktif</label>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      <hr class="my-3">
+      <div class="d-flex gap-2">
+        <a href="/support/sla-categories" class="btn btn-secondary btn-sm">Batal</a>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-save me-1"></i>{{ 'Update' if row else 'Simpan' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Master Customer — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Master Customer</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-building text-primary me-2"></i>Master Customer</h5>
+    <div class="text-muted small mt-1">Daftar customer pemegang kontrak technical support</div>
+  </div>
+  <a href="/support/customers/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i>Tambah Customer
+  </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:100px">Kode</th>
+          <th>Nama Customer</th>
+          <th>Contact Person</th>
+          <th>Kontak</th>
+          <th class="text-center">Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{{ '' if r.is_active else 'table-secondary text-muted' }}">
+          <td class="ps-3">
+            <span class="badge bg-light border text-dark fw-semibold" style="font-size:.75rem">{{ r.code }}</span>
+          </td>
+          <td>
+            <div class="fw-semibold">{{ r.name }}</div>
+            {% if r.address %}<div class="text-muted small">{{ r.address }}</div>{% endif %}
+          </td>
+          <td class="small">{{ r.contact_person or '—' }}</td>
+          <td class="small">
+            {% if r.phone %}<div><i class="bi bi-telephone me-1 text-success"></i>{{ r.phone }}</div>{% endif %}
+            {% if r.email %}<div><i class="bi bi-envelope me-1 text-primary"></i>{{ r.email }}</div>{% endif %}
+            {% if not r.phone and not r.email %}—{% endif %}
+          </td>
+          <td class="text-center">
+            <span class="badge {{ 'bg-success' if r.is_active else 'bg-secondary' }}">
+              {{ 'Aktif' if r.is_active else 'Nonaktif' }}
+            </span>
+          </td>
+          <td class="text-end pe-3">
+            <a href="/support/customers/{{ r.id }}/edit" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form action="/support/customers/{{ r.id }}/delete" method="post" class="d-inline"
+                  data-confirm="Nonaktifkan customer {{ r.name | e }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
+              <button class="btn btn-sm btn-outline-danger" title="Nonaktifkan">
+                <i class="bi bi-x-circle"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">
+          <i class="bi bi-building" style="font-size:2rem;opacity:.3"></i>
+          <div class="mt-2">Belum ada customer. <a href="/support/customers/add">Tambah sekarang</a>.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
