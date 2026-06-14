@@ -1,0 +1,291 @@
+{% extends 'base.html' %}
+{% block title %}Audit Trail — Portal{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Audit Trail</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-shield-check text-primary me-2"></i>Audit Trail</h5>
+    <div class="text-muted small mt-1">Log aktivitas user, error aplikasi, dan notifikasi sistem</div>
+  </div>
+  <form method="post" action="/portal/audit/clear" class="d-inline"
+        onsubmit="return confirm('Hapus semua log tab ini? Tindakan tidak dapat dibatalkan.')">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <input type="hidden" name="app" value="{{ app_filter }}">
+    <button class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-trash me-1"></i>Hapus Log
+    </button>
+  </form>
+</div>
+
+{# ── Filter bar ── #}
+<form method="get" class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-auto">
+        <input type="hidden" name="tab" value="{{ tab }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold small mb-1">Aplikasi</label>
+        <select name="app" class="form-select form-select-sm">
+          <option value="">Semua Aplikasi</option>
+          <option value="portal" {{ 'selected' if app_filter=='portal' }}>Portal</option>
+          {% for a in apps_list %}
+          <option value="{{ a.slug }}" {{ 'selected' if app_filter==a.slug }}>{{ a.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if tab == 'activity' %}
+      <div class="col-md-2">
+        <label class="form-label fw-semibold small mb-1">User</label>
+        <input type="text" name="user" class="form-control form-control-sm"
+               value="{{ user_filter }}" placeholder="Nama/username...">
+      </div>
+      {% endif %}
+      <div class="col-md-2">
+        <label class="form-label fw-semibold small mb-1">Dari Tanggal</label>
+        <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold small mb-1">Sampai Tanggal</label>
+        <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Filter</button>
+        <a href="/portal/audit?tab={{ tab }}" class="btn btn-outline-secondary btn-sm ms-1">Reset</a>
+      </div>
+      <div class="col-auto ms-auto text-muted small">
+        Total: <strong>{{ total }}</strong> baris
+      </div>
+    </div>
+  </div>
+</form>
+
+{# ── Tabs ── #}
+<ul class="nav nav-tabs mb-0" style="border-bottom:none">
+  <li class="nav-item">
+    <a class="nav-link {{ 'active fw-semibold' if tab=='activity' }}"
+       href="/portal/audit?tab=activity&app={{ app_filter }}&from={{ date_from }}&to={{ date_to }}">
+      <i class="bi bi-person-lines-fill me-1"></i>Aktivitas User
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {{ 'active fw-semibold' if tab=='errors' }}"
+       href="/portal/audit?tab=errors&app={{ app_filter }}&from={{ date_from }}&to={{ date_to }}">
+      <i class="bi bi-exclamation-triangle me-1 text-danger"></i>Log Error
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {{ 'active fw-semibold' if tab=='notifications' }}"
+       href="/portal/audit?tab=notifications&app={{ app_filter }}&from={{ date_from }}&to={{ date_to }}">
+      <i class="bi bi-bell me-1 text-info"></i>Log Notifikasi
+    </a>
+  </li>
+</ul>
+
+<div class="card border-0 shadow-sm" style="border-radius:0 0 .5rem .5rem">
+  <div class="card-body p-0">
+
+    {# ── TAB: Aktivitas User ── #}
+    {% if tab == 'activity' %}
+    <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:140px">Waktu</th>
+          <th style="width:80px">Aplikasi</th>
+          <th style="width:130px">User</th>
+          <th style="width:120px">Aksi</th>
+          <th style="width:100px">Resource</th>
+          <th>Detail</th>
+          <th style="width:110px">IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="ps-3 text-muted">{{ r.created_at }}</td>
+          <td>
+            <span class="badge bg-secondary bg-opacity-15 text-dark border" style="font-size:.7rem">
+              {{ r.app_slug }}
+            </span>
+          </td>
+          <td>
+            <span class="fw-semibold">{{ r.username or '—' }}</span>
+          </td>
+          <td>
+            {% set action_colors = {
+              'login': 'success', 'logout': 'secondary', 'open_app': 'primary',
+              'create': 'info', 'update': 'warning', 'delete': 'danger'
+            } %}
+            {% set color = action_colors.get(r.action, 'dark') %}
+            <span class="badge bg-{{ color }} bg-opacity-15 text-{{ color }} border border-{{ color }}" style="font-size:.7rem">
+              {{ r.action }}
+            </span>
+          </td>
+          <td class="text-muted">
+            {% if r.resource %}
+            <span>{{ r.resource }}</span>{% if r.resource_id %} <code style="font-size:.7rem">#{{ r.resource_id }}</code>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ r.detail or '—' }}</td>
+          <td class="text-muted font-monospace" style="font-size:.75rem">{{ r.ip or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-5">
+          <i class="bi bi-inbox" style="font-size:2rem;opacity:.3"></i>
+          <div class="mt-2">Belum ada log aktivitas.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {# ── TAB: Log Error ── #}
+    {% elif tab == 'errors' %}
+    <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:140px">Waktu</th>
+          <th style="width:80px">Aplikasi</th>
+          <th style="width:100px">User</th>
+          <th style="width:55px">Code</th>
+          <th style="width:120px">Tipe Error</th>
+          <th>URL · Pesan</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="ps-3 text-muted">{{ r.created_at }}</td>
+          <td>
+            <span class="badge bg-secondary bg-opacity-15 text-dark border" style="font-size:.7rem">
+              {{ r.app_slug }}
+            </span>
+          </td>
+          <td class="fw-semibold">{{ r.username or '—' }}</td>
+          <td>
+            <span class="badge {{ 'bg-danger' if r.error_code >= 500 else 'bg-warning text-dark' }}" style="font-size:.7rem">
+              {{ r.error_code }}
+            </span>
+          </td>
+          <td>
+            <span class="text-danger fw-semibold">{{ r.error_type or '—' }}</span>
+          </td>
+          <td>
+            <div class="text-muted" style="font-size:.75rem">
+              <span class="badge bg-light border text-dark me-1">{{ r.method }}</span>
+              <code>{{ r.url }}</code>
+            </div>
+            <div class="mt-1">{{ r.error_msg or '—' }}</div>
+            {% if r.traceback %}
+            <details class="mt-1">
+              <summary class="text-muted small" style="cursor:pointer">Traceback</summary>
+              <pre class="mt-1 p-2 bg-light rounded small" style="font-size:.72rem;max-height:150px;overflow:auto;white-space:pre-wrap">{{ r.traceback }}</pre>
+            </details>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-5">
+          <i class="bi bi-check-circle" style="font-size:2rem;color:#16a34a;opacity:.5"></i>
+          <div class="mt-2">Tidak ada error tercatat. Aplikasi berjalan normal.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {# ── TAB: Log Notifikasi ── #}
+    {% else %}
+    <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:140px">Waktu</th>
+          <th style="width:80px">Aplikasi</th>
+          <th style="width:90px">Channel</th>
+          <th style="width:130px">Penerima</th>
+          <th style="width:80px">Status</th>
+          <th>Subjek / Pesan</th>
+          <th style="width:130px">Triggered By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="ps-3 text-muted">{{ r.created_at }}</td>
+          <td>
+            <span class="badge bg-secondary bg-opacity-15 text-dark border" style="font-size:.7rem">
+              {{ r.app_slug }}
+            </span>
+          </td>
+          <td>
+            {% set ch_icons = {'telegram': ('bi-telegram', 'info'), 'email': ('bi-envelope', 'primary'), 'whatsapp': ('bi-whatsapp', 'success'), 'wa': ('bi-whatsapp', 'success')} %}
+            {% set ico, col = ch_icons.get(r.channel, ('bi-bell', 'secondary')) %}
+            <span class="badge bg-{{ col }} bg-opacity-15 text-{{ col }} border" style="font-size:.7rem">
+              <i class="bi {{ ico }} me-1"></i>{{ r.channel }}
+            </span>
+          </td>
+          <td class="text-muted font-monospace" style="font-size:.75rem">{{ r.recipient or '—' }}</td>
+          <td>
+            {% if r.status == 'sent' %}
+            <span class="badge bg-success-subtle text-success border border-success" style="font-size:.7rem">
+              <i class="bi bi-check me-1"></i>Terkirim
+            </span>
+            {% else %}
+            <span class="badge bg-danger-subtle text-danger border border-danger" style="font-size:.7rem">
+              <i class="bi bi-x me-1"></i>Gagal
+            </span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.subject %}
+            <div class="fw-semibold">{{ r.subject }}</div>
+            {% endif %}
+            <div class="text-muted" style="font-size:.75rem;white-space:pre-wrap">{{ (r.message or '')[:200] }}{% if r.message|length > 200 %}…{% endif %}</div>
+            {% if r.error_msg %}
+            <div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>{{ r.error_msg }}</div>
+            {% endif %}
+          </td>
+          <td class="text-muted small">{{ r.triggered_by or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-5">
+          <i class="bi bi-bell-slash" style="font-size:2rem;opacity:.3"></i>
+          <div class="mt-2">Belum ada log notifikasi.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+  </div>
+
+  {# Pagination #}
+  {% if total_pages > 1 %}
+  <div class="card-footer py-2 d-flex justify-content-between align-items-center">
+    <div class="text-muted small">Halaman {{ page }} dari {{ total_pages }}</div>
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% if page > 1 %}
+        <li class="page-item">
+          <a class="page-link" href="?tab={{ tab }}&app={{ app_filter }}&user={{ user_filter }}&from={{ date_from }}&to={{ date_to }}&page={{ page - 1 }}">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+        </li>
+        {% endif %}
+        {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+        <li class="page-item {{ 'active' if p == page }}">
+          <a class="page-link" href="?tab={{ tab }}&app={{ app_filter }}&user={{ user_filter }}&from={{ date_from }}&to={{ date_to }}&page={{ p }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+        {% if page < total_pages %}
+        <li class="page-item">
+          <a class="page-link" href="?tab={{ tab }}&app={{ app_filter }}&user={{ user_filter }}&from={{ date_from }}&to={{ date_to }}&page={{ page + 1 }}">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

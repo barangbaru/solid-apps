@@ -277,6 +277,49 @@ CREATE TABLE IF NOT EXISTS user_app_access (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- ─── Audit Trail ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS audit_activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_slug TEXT NOT NULL DEFAULT 'portal',
+    user_id INTEGER,
+    username TEXT DEFAULT '',
+    action TEXT NOT NULL,
+    resource TEXT DEFAULT '',
+    resource_id TEXT DEFAULT '',
+    detail TEXT DEFAULT '',
+    ip TEXT DEFAULT '',
+    user_agent TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS audit_errors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_slug TEXT NOT NULL DEFAULT 'portal',
+    user_id INTEGER,
+    username TEXT DEFAULT '',
+    url TEXT DEFAULT '',
+    method TEXT DEFAULT '',
+    error_code INTEGER DEFAULT 500,
+    error_type TEXT DEFAULT '',
+    error_msg TEXT DEFAULT '',
+    traceback TEXT DEFAULT '',
+    ip TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS audit_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_slug TEXT NOT NULL DEFAULT 'portal',
+    channel TEXT DEFAULT '',
+    recipient TEXT DEFAULT '',
+    subject TEXT DEFAULT '',
+    message TEXT DEFAULT '',
+    status TEXT DEFAULT 'sent',
+    error_msg TEXT DEFAULT '',
+    triggered_by TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
 -- ─── SupportCore ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS sc_apps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1042,16 +1085,45 @@ def send_whatsapp(openwa_url, api_key, session_id, phone, message):
     except Exception as e:
         return False, str(e)
 
-def send_telegram(bot_token, chat_id, message):
+def send_telegram(bot_token, chat_id, message, _log_subject='', _app_slug=None):
     try:
         r = req_lib.post(
             f'https://api.telegram.org/bot{bot_token}/sendMessage',
             json={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
             timeout=10)
         r.raise_for_status()
+        audit_notif('telegram', chat_id, _log_subject or message[:60], message, True, app_slug=_app_slug)
         return True, None
     except Exception as e:
+        audit_notif('telegram', chat_id, _log_subject or message[:60], message, False, str(e), app_slug=_app_slug)
         return False, str(e)
+
+def audit_log(action, resource='', resource_id='', detail='', app_slug=None):
+    """Catat aktivitas user ke audit_activity. Dipanggil dari route mana saja."""
+    try:
+        db = get_db()
+        slug = app_slug or session.get('active_app') or 'portal'
+        db.execute('''INSERT INTO audit_activity(app_slug,user_id,username,action,resource,resource_id,detail,ip,user_agent)
+                      VALUES(?,?,?,?,?,?,?,?,?)''',
+                   (slug, session.get('user_id'), session.get('user_name',''),
+                    action, resource, str(resource_id), detail,
+                    request.remote_addr or '', request.user_agent.string[:200] if request.user_agent else ''))
+        db.commit()
+    except Exception:
+        pass
+
+def audit_notif(channel, recipient, subject, message, ok, err='', triggered_by='', app_slug=None):
+    """Catat log notifikasi (email/telegram/wa)."""
+    try:
+        db = get_db()
+        slug = app_slug or session.get('active_app') or 'portal'
+        db.execute('''INSERT INTO audit_notifications(app_slug,channel,recipient,subject,message,status,error_msg,triggered_by)
+                      VALUES(?,?,?,?,?,?,?,?)''',
+                   (slug, channel, str(recipient), subject, message[:1000],
+                    'sent' if ok else 'failed', err or '', triggered_by))
+        db.commit()
+    except Exception:
+        pass
 
 def log_reminder(db, emp_id, channel, subject, message, ok, err, triggered_by='auto'):
     db.execute('''INSERT INTO reminder_logs(employee_id, channel, subject, message, status, error_msg, triggered_by)
@@ -1305,6 +1377,7 @@ def login():
             db.execute('UPDATE users SET last_login=? WHERE id=?',
                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             db.commit()
+            audit_log('login', 'users', user['id'], f"Login berhasil via form", app_slug='portal')
             flash(f'Selamat datang, {session["user_name"]}!', 'success')
             _next = request.args.get('next') or ''
             if _next and (not _next.startswith('/') or _next.startswith('//')):
@@ -1332,6 +1405,7 @@ def login_mfa():
             db.execute('UPDATE users SET last_login=? WHERE id=?',
                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             db.commit()
+            audit_log('login', 'users', user['id'], 'Login berhasil via MFA', app_slug='portal')
             flash(f'Selamat datang, {session["user_name"]}!', 'success')
             return redirect(next_url)
         flash('Kode MFA salah atau kadaluarsa. Coba lagi.', 'danger')
@@ -1577,6 +1651,7 @@ def reset_password(token):
 
 @app.route('/logout')
 def logout():
+    audit_log('logout', 'users', session.get('user_id',''), 'User logout', app_slug='portal')
     session.clear()
     flash('Anda telah logout', 'info')
     return redirect(url_for('login'))
@@ -1733,6 +1808,7 @@ def portal_open(slug):
         flash('Aplikasi ini belum tersedia.', 'info')
         return redirect(url_for('portal'))
     session['active_app'] = slug
+    audit_log('open_app', 'superapp_apps', slug, f"Buka aplikasi: {app_row['name']}", app_slug='portal')
     return redirect(app_row['url'])
 
 @app.route('/portal/settings', methods=['GET', 'POST'])
@@ -4777,6 +4853,119 @@ def emp_salary_view(emp_id):
 @mfa_challenge_required('mfa_salary_verified')
 def emp_salary_update(emp_id):
     return jsonify({'ok': True, 'msg': 'Gunakan /salary untuk edit komponen gaji'})
+
+# ─── Error handlers (audit trail) ─────────────────────────────────────────────
+
+@app.errorhandler(404)
+def err_404(e):
+    try:
+        db = get_db()
+        db.execute('''INSERT INTO audit_errors(app_slug,user_id,username,url,method,error_code,error_type,error_msg,ip)
+                      VALUES(?,?,?,?,?,?,?,?,?)''',
+                   (session.get('active_app','portal'), session.get('user_id'), session.get('user_name',''),
+                    request.path, request.method, 404, 'NotFound', str(e),
+                    request.remote_addr or ''))
+        db.commit()
+    except Exception:
+        pass
+    return render_template('error.html', code=404, msg='Halaman tidak ditemukan'), 404
+
+@app.errorhandler(500)
+def err_500(e):
+    import traceback as _tb
+    tb = _tb.format_exc()
+    try:
+        db = get_db()
+        db.execute('''INSERT INTO audit_errors(app_slug,user_id,username,url,method,error_code,error_type,error_msg,traceback,ip)
+                      VALUES(?,?,?,?,?,?,?,?,?,?)''',
+                   (session.get('active_app','portal'), session.get('user_id'), session.get('user_name',''),
+                    request.path, request.method, 500, type(e).__name__, str(e), tb[:3000],
+                    request.remote_addr or ''))
+        db.commit()
+    except Exception:
+        pass
+    return render_template('error.html', code=500, msg='Terjadi kesalahan server'), 500
+
+# ─── Portal: Audit Trail ───────────────────────────────────────────────────────
+
+@app.route('/portal/audit')
+@login_required
+def portal_audit():
+    if not is_portal_admin():
+        flash('Akses ditolak', 'danger')
+        return redirect(url_for('portal'))
+    db = get_db()
+    app_filter   = request.args.get('app', '')
+    tab          = request.args.get('tab', 'activity')
+    user_filter  = request.args.get('user', '')
+    date_from    = request.args.get('from', '')
+    date_to      = request.args.get('to', '')
+    page         = max(1, int(request.args.get('page', 1)))
+    per_page     = 50
+    offset       = (page - 1) * per_page
+
+    apps_list = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+
+    def build_where(base_conds, params):
+        where = ' AND '.join(base_conds) if base_conds else '1=1'
+        return f'WHERE {where}', params
+
+    if tab == 'activity':
+        conds, params = [], []
+        if app_filter: conds.append('app_slug=?'); params.append(app_filter)
+        if user_filter: conds.append('username LIKE ?'); params.append(f'%{user_filter}%')
+        if date_from: conds.append('created_at >= ?'); params.append(date_from)
+        if date_to: conds.append('created_at <= ?'); params.append(date_to + ' 23:59:59')
+        where, params = build_where(conds, params)
+        total = db.execute(f'SELECT COUNT(*) FROM audit_activity {where}', params).fetchone()[0]
+        rows  = db.execute(f'SELECT * FROM audit_activity {where} ORDER BY id DESC LIMIT ? OFFSET ?',
+                           params + [per_page, offset]).fetchall()
+
+    elif tab == 'errors':
+        conds, params = [], []
+        if app_filter: conds.append('app_slug=?'); params.append(app_filter)
+        if date_from: conds.append('created_at >= ?'); params.append(date_from)
+        if date_to: conds.append('created_at <= ?'); params.append(date_to + ' 23:59:59')
+        where, params = build_where(conds, params)
+        total = db.execute(f'SELECT COUNT(*) FROM audit_errors {where}', params).fetchone()[0]
+        rows  = db.execute(f'SELECT * FROM audit_errors {where} ORDER BY id DESC LIMIT ? OFFSET ?',
+                           params + [per_page, offset]).fetchall()
+
+    else:  # notifications
+        conds, params = [], []
+        if app_filter: conds.append('app_slug=?'); params.append(app_filter)
+        if date_from: conds.append('created_at >= ?'); params.append(date_from)
+        if date_to: conds.append('created_at <= ?'); params.append(date_to + ' 23:59:59')
+        where, params = build_where(conds, params)
+        total = db.execute(f'SELECT COUNT(*) FROM audit_notifications {where}', params).fetchone()[0]
+        rows  = db.execute(f'SELECT * FROM audit_notifications {where} ORDER BY id DESC LIMIT ? OFFSET ?',
+                           params + [per_page, offset]).fetchall()
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    return render_template('portal_audit.html',
+                           rows=rows, tab=tab, apps_list=apps_list,
+                           app_filter=app_filter, user_filter=user_filter,
+                           date_from=date_from, date_to=date_to,
+                           page=page, total_pages=total_pages, total=total)
+
+@app.route('/portal/audit/clear', methods=['POST'])
+@login_required
+def portal_audit_clear():
+    if not is_portal_admin():
+        flash('Akses ditolak', 'danger')
+        return redirect(url_for('portal'))
+    db  = get_db()
+    tab = request.form.get('tab', 'activity')
+    tbl = {'activity': 'audit_activity', 'errors': 'audit_errors', 'notifications': 'audit_notifications'}.get(tab)
+    if tbl:
+        app_filter = request.form.get('app', '')
+        if app_filter:
+            db.execute(f'DELETE FROM {tbl} WHERE app_slug=?', (app_filter,))
+        else:
+            db.execute(f'DELETE FROM {tbl}')
+        db.commit()
+        flash('Log berhasil dihapus', 'success')
+    return redirect(url_for('portal_audit', tab=tab))
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 
