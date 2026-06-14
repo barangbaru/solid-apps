@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS employees (
     employment_type TEXT DEFAULT 'tetap',
     contract_start TEXT DEFAULT '',
     contract_end TEXT DEFAULT '',
+    rate_mandays REAL DEFAULT NULL,
     email TEXT DEFAULT '',
     phone TEXT DEFAULT '',
     telegram_id TEXT DEFAULT '',
@@ -499,6 +500,7 @@ MIGRATIONS = [
     ('employees', 'employment_type', "TEXT DEFAULT 'tetap'"),
     ('employees', 'contract_start',  "TEXT DEFAULT ''"),
     ('employees', 'contract_end',    "TEXT DEFAULT ''"),
+    ('employees', 'rate_mandays',    'REAL DEFAULT NULL'),
     ('employees', 'email',           "TEXT DEFAULT ''"),
     ('employees', 'phone',           "TEXT DEFAULT ''"),
     ('employees', 'telegram_id',     "TEXT DEFAULT ''"),
@@ -1394,7 +1396,7 @@ def run_contract_reminders(triggered_by='auto'):
         sent = failed = 0
         today = date.today()
         emps = db.execute('''SELECT * FROM employees
-                             WHERE employment_type='kontrak' AND contract_end != ''
+                             WHERE employment_type IN ('kontrak','staff_worker') AND contract_end != ''
                              AND contract_end IS NOT NULL AND is_active=1''').fetchall()
         for emp in emps:
             try:
@@ -1922,7 +1924,14 @@ def portal_settings():
     for r in rows:
         access_map[(r['user_id'], r['app_slug'])] = {'role': r['app_role'], 'active': r['is_active']}
 
-    return render_template('portal_settings.html', users=users, apps=apps, access_map=access_map)
+    # Roles per app_slug dari tabel roles
+    all_roles = db.execute("SELECT name, description, app_slug FROM roles ORDER BY app_slug, name").fetchall()
+    roles_by_app = {}
+    for r in all_roles:
+        roles_by_app.setdefault(r['app_slug'], []).append(r)
+
+    return render_template('portal_settings.html', users=users, apps=apps,
+                           access_map=access_map, roles_by_app=roles_by_app)
 
 def is_portal_admin():
     """True jika user adalah superadmin atau admin (dapat akses portal management)."""
@@ -2296,17 +2305,21 @@ def emp_add():
         db = get_db()
         def _int_or_none(v):
             return int(v) if v and str(v).isdigit() else None
+        emp_type = request.form.get('employment_type','tetap')
+        rate_md_raw = request.form.get('rate_mandays','').strip()
+        rate_md = float(rate_md_raw) if rate_md_raw and emp_type == 'staff_worker' else None
         db.execute('''INSERT INTO employees(name,jabatan,divisi,level,employment_type,
-                      contract_start,contract_end,email,phone,telegram_id,notes,
+                      contract_start,contract_end,rate_mandays,email,phone,telegram_id,notes,
                       supervisor_id,leader_id,manager_id)
-                      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
             name,
             request.form.get('jabatan','').strip(),
             divisi,
             request.form.get('level','Staff'),
-            request.form.get('employment_type','tetap'),
-            request.form.get('contract_start',''),
-            request.form.get('contract_end',''),
+            emp_type,
+            request.form.get('contract_start','') if emp_type in ('kontrak','staff_worker') else '',
+            request.form.get('contract_end','')   if emp_type in ('kontrak','staff_worker') else '',
+            rate_md,
             request.form.get('email','').strip(),
             request.form.get('phone','').strip(),
             normalize_telegram_id(request.form.get('telegram_id','')),
@@ -2348,8 +2361,10 @@ def emp_edit(emp_id):
         def _int_or_none(v):
             return int(v) if v and str(v).isdigit() else None
         emp_type = request.form.get('employment_type', 'tetap')
+        rate_md_raw = request.form.get('rate_mandays','').strip()
+        rate_md = float(rate_md_raw) if rate_md_raw and emp_type == 'staff_worker' else None
         db.execute('''UPDATE employees SET name=?,jabatan=?,divisi=?,level=?,
-                      employment_type=?,contract_start=?,contract_end=?,
+                      employment_type=?,contract_start=?,contract_end=?,rate_mandays=?,
                       email=?,phone=?,telegram_id=?,notes=?,
                       supervisor_id=?,leader_id=?,manager_id=? WHERE id=?''', (
             request.form['name'].strip(),
@@ -2357,8 +2372,9 @@ def emp_edit(emp_id):
             request.form['divisi'],
             request.form.get('level','Staff'),
             emp_type,
-            request.form.get('contract_start','') if emp_type == 'kontrak' else '',
-            request.form.get('contract_end','')   if emp_type == 'kontrak' else '',
+            request.form.get('contract_start','') if emp_type in ('kontrak','staff_worker') else '',
+            request.form.get('contract_end','')   if emp_type in ('kontrak','staff_worker') else '',
+            rate_md,
             request.form.get('email','').strip(),
             request.form.get('phone','').strip(),
             normalize_telegram_id(request.form.get('telegram_id','')),
@@ -2757,7 +2773,7 @@ def karyawan():
     kontrak = db.execute('''
         SELECT *, julianday(contract_end) - julianday('now') AS days_left
         FROM employees
-        WHERE employment_type = 'kontrak' AND is_active = 1
+        WHERE employment_type IN ('kontrak','staff_worker') AND is_active = 1
         ORDER BY CASE WHEN contract_end='' OR contract_end IS NULL THEN 1 ELSE 0 END,
                  contract_end ASC
     ''').fetchall()

@@ -8,8 +8,8 @@
     {{ 'Detail Karyawan: ' + emp.name if emp else 'Tambah Karyawan Baru' }}
   </h5>
   {% if emp %}
-  <span class="badge {% if emp.employment_type=='kontrak' %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">
-    {{ emp.employment_type | upper }}
+  <span class="badge {% if emp.employment_type=='kontrak' %}bg-warning text-dark{% elif emp.employment_type=='staff_worker' %}bg-info text-dark{% else %}bg-success{% endif %} ms-1">
+    {{ emp.employment_type | upper | replace('_',' ') }}
   </span>
   <span class="badge bg-secondary">{{ emp.level }}</span>
   {% endif %}
@@ -63,12 +63,12 @@
         <div class="card-body">
           <div class="mb-3">
             <label class="form-label fw-semibold">Tipe Kepegawaian *</label>
-            <div class="d-flex gap-3">
+            <div class="d-flex gap-3 flex-wrap">
               <div class="form-check">
                 <input class="form-check-input" type="radio" name="employment_type"
                        id="typeTetap" value="tetap"
                        {{ 'checked' if not emp or emp.employment_type=='tetap' else '' }}
-                       onchange="toggleContract(false)">
+                       onchange="toggleEmpType('tetap')">
                 <label class="form-check-label fw-semibold text-success" for="typeTetap">
                   <i class="bi bi-person-check me-1"></i>Karyawan Tetap
                 </label>
@@ -77,28 +77,47 @@
                 <input class="form-check-input" type="radio" name="employment_type"
                        id="typeKontrak" value="kontrak"
                        {{ 'checked' if emp and emp.employment_type=='kontrak' else '' }}
-                       onchange="toggleContract(true)">
+                       onchange="toggleEmpType('kontrak')">
                 <label class="form-check-label fw-semibold text-warning" for="typeKontrak">
                   <i class="bi bi-file-earmark-text me-1"></i>Karyawan Kontrak
                 </label>
               </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="employment_type"
+                       id="typeStaffWorker" value="staff_worker"
+                       {{ 'checked' if emp and emp.employment_type=='staff_worker' else '' }}
+                       onchange="toggleEmpType('staff_worker')">
+                <label class="form-check-label fw-semibold text-info" for="typeStaffWorker">
+                  <i class="bi bi-person-workspace me-1"></i>Staff Worker
+                </label>
+              </div>
             </div>
           </div>
-          <div id="contractFields" class="{{ '' if emp and emp.employment_type=='kontrak' else 'd-none' }}">
+          <div id="contractFields" class="{{ '' if emp and emp.employment_type in ('kontrak','staff_worker') else 'd-none' }}">
             <div class="row g-3">
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Tanggal Mulai Kontrak</label>
+                <label class="form-label fw-semibold">Tanggal Mulai Perjanjian</label>
                 <input type="date" name="contract_start" class="form-control"
                        value="{{ emp.contract_start if emp else '' }}">
               </div>
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Tanggal Akhir Kontrak</label>
+                <label class="form-label fw-semibold">Tanggal Akhir Perjanjian</label>
                 <input type="date" name="contract_end" class="form-control"
                        value="{{ emp.contract_end if emp else '' }}">
                 {% if emp and emp.contract_end %}
                   {% set today_str = today_date %}
                   <div class="form-text" id="contractCountdown"></div>
                 {% endif %}
+              </div>
+              <div class="col-md-6" id="rateMandaysField" style="{{ 'display:none' if not emp or emp.employment_type != 'staff_worker' else '' }}">
+                <label class="form-label fw-semibold">Rate Mandays <span class="text-muted fw-normal">(Rp/hari)</span></label>
+                <div class="input-group">
+                  <span class="input-group-text">Rp</span>
+                  <input type="number" name="rate_mandays" class="form-control" min="0" step="1000"
+                         value="{{ emp.rate_mandays | int if emp and emp.rate_mandays else '' }}"
+                         placeholder="Contoh: 500000">
+                </div>
+                <div class="form-text">Rate harian yang disepakati dalam perjanjian kerja.</div>
               </div>
             </div>
           </div>
@@ -366,8 +385,11 @@
 {% endblock %}
 {% block scripts %}
 <script>
-function toggleContract(show) {
-  document.getElementById('contractFields').classList.toggle('d-none', !show);
+function toggleEmpType(type) {
+  const showContract = type === 'kontrak' || type === 'staff_worker';
+  document.getElementById('contractFields').classList.toggle('d-none', !showContract);
+  const rateField = document.getElementById('rateMandaysField');
+  if (rateField) rateField.style.display = type === 'staff_worker' ? '' : 'none';
 }
 
 // Contract countdown

@@ -60,11 +60,18 @@
                      style="{{ 'display:none' if not (acc and acc.active) else '' }}">
                   <select name="role_{{ u.id }}_{{ app.slug }}"
                           class="form-select form-select-sm"
-                          style="font-size:.75rem;width:110px">
-                    {% set cur_role = acc.role if acc else 'user' %}
-                    <option value="admin"      {{ 'selected' if cur_role == 'admin' }}>Admin</option>
-                    <option value="user"       {{ 'selected' if cur_role == 'user' }}>User</option>
-                    <option value="viewer"     {{ 'selected' if cur_role == 'viewer' }}>Viewer</option>
+                          style="font-size:.75rem;width:130px">
+                    {% set cur_role = acc.role if acc else '' %}
+                    {% set app_roles = roles_by_app.get(app.slug, []) %}
+                    {% if app_roles %}
+                      {% for r in app_roles %}
+                      <option value="{{ r.name }}" {{ 'selected' if cur_role == r.name }}>{{ r.name }}</option>
+                      {% endfor %}
+                    {% else %}
+                      <option value="admin"  {{ 'selected' if cur_role == 'admin' }}>admin</option>
+                      <option value="user"   {{ 'selected' if cur_role == 'user' }}>user</option>
+                      <option value="viewer" {{ 'selected' if cur_role == 'viewer' }}>viewer</option>
+                    {% endif %}
                   </select>
                 </div>
               </div>
