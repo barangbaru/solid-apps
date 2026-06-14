@@ -550,6 +550,24 @@ def get_user_emp_id(db, user_id):
     row = db.execute('SELECT id FROM employees WHERE user_id=?', (user_id,)).fetchone()
     return row['id'] if row else None
 
+def get_user_contacts(db, user):
+    """Return merged contact dict: user fields take priority, fallback ke linked employee."""
+    uid = user['id'] if hasattr(user, 'keys') else user.get('id')
+    emp = db.execute(
+        'SELECT email, phone, telegram_id, name FROM employees WHERE user_id=? AND is_active=1',
+        (uid,)
+    ).fetchone()
+    email    = (user['email']       or '').strip() or (emp['email']       if emp else '')
+    phone    = (user['phone']       or '').strip() or (emp['phone']       if emp else '')
+    telegram = (user['telegram_id'] or '').strip() or (emp['telegram_id'] if emp else '')
+    return {
+        'email':       email,
+        'phone':       phone,
+        'telegram_id': telegram,
+        'emp_name':    emp['name'] if emp else '',
+        'linked_emp':  emp is not None,
+    }
+
 def can_review_eval(db, user_id, user_role, eval_id):
     if user_role == 'superadmin':
         return True
@@ -1120,7 +1138,7 @@ def admin_send_reset(uid):
     settings   = get_settings(db)
     base_url   = request.host_url.rstrip('/')
     reset_link = f"{base_url}/reset-password/{token}"
-    sent = _send_reset_notifications(dict(user), reset_link, settings)
+    sent = _send_reset_notifications(dict(user), reset_link, settings, db)
     if sent:
         flash(f'Link reset password dikirim ke {user["username"]} via: {", ".join(sent)}.', 'success')
     else:
@@ -1141,12 +1159,24 @@ def admin_mfa_reset(uid):
 
 RESET_TOKEN_TTL = 3600  # 1 jam
 
-def _send_reset_notifications(user, reset_link, settings):
-    """Kirim link reset password via email, Telegram, dan WhatsApp."""
+def _send_reset_notifications(user, reset_link, settings, db=None):
+    """Kirim link reset password via email, Telegram, dan WhatsApp.
+    Kontak diambil dari user fields; jika kosong, fallback ke data karyawan yang terhubung."""
     sent = []
-    subject = 'Reset Password — Aplikasi Evaluasi Kinerja'
+    # Resolve contacts — merge user fields + linked employee
+    if db is not None:
+        contacts = get_user_contacts(db, user)
+    else:
+        contacts = {
+            'email':       (user.get('email') or '').strip(),
+            'phone':       (user.get('phone') or '').strip(),
+            'telegram_id': (user.get('telegram_id') or '').strip(),
+        }
+
+    display_name = user['full_name'] or user['username']
+    subject  = 'Reset Password — Aplikasi Evaluasi Kinerja'
     body_html = f'''
-<p>Halo <b>{user['full_name'] or user['username']}</b>,</p>
+<p>Halo <b>{display_name}</b>,</p>
 <p>Anda (atau seseorang) meminta reset password untuk akun <b>{user['username']}</b>.</p>
 <p><a href="{reset_link}" style="background:#1a7a3a;color:#fff;padding:10px 20px;border-radius:6px;
    text-decoration:none;font-weight:bold">Klik di sini untuk reset password</a></p>
@@ -1154,16 +1184,15 @@ def _send_reset_notifications(user, reset_link, settings):
 <p>Jika bukan Anda yang meminta, abaikan email ini.</p>
 <hr><p style="color:#888;font-size:12px">Aplikasi Evaluasi Kinerja Tim IT</p>
 '''
-    body_text = f'Reset password akun {user["username"]}:\n{reset_link}\n\nLink berlaku 1 jam, sekali pakai.'
 
     # Email
-    if user.get('email'):
+    if contacts.get('email'):
         try:
-            ok, err = send_email(
-                settings.get('smtp_host',''), int(settings.get('smtp_port',587) or 587),
+            ok, _ = send_email(
+                settings.get('smtp_host',''), int(settings.get('smtp_port', 587) or 587),
                 settings.get('smtp_user',''), settings.get('smtp_password',''),
                 settings.get('smtp_from', settings.get('smtp_user','')),
-                user['email'], subject, body_html
+                contacts['email'], subject, body_html
             )
             if ok:
                 sent.append('email')
@@ -1172,11 +1201,11 @@ def _send_reset_notifications(user, reset_link, settings):
 
     # Telegram
     bot_token = settings.get('telegram_bot_token','').strip()
-    if bot_token and user.get('telegram_id'):
-        tg_msg = (f'🔐 *Reset Password*\n\nHalo {user["full_name"] or user["username"]},\n'
+    if bot_token and contacts.get('telegram_id'):
+        tg_msg = (f'🔐 *Reset Password*\n\nHalo {display_name},\n'
                   f'Klik link berikut untuk reset password akun `{user["username"]}`:\n\n'
                   f'{reset_link}\n\n_Link berlaku 1 jam dan sekali pakai._')
-        ok, _ = send_telegram(bot_token, user['telegram_id'], tg_msg)
+        ok, _ = send_telegram(bot_token, contacts['telegram_id'], tg_msg)
         if ok:
             sent.append('telegram')
 
@@ -1184,11 +1213,11 @@ def _send_reset_notifications(user, reset_link, settings):
     wa_url     = settings.get('openwa_url','').strip()
     wa_key     = settings.get('openwa_api_key','').strip()
     wa_session = settings.get('openwa_session','').strip()
-    if wa_url and user.get('phone'):
-        wa_msg = (f'🔐 Reset Password\n\nHalo {user["full_name"] or user["username"]},\n'
+    if wa_url and contacts.get('phone'):
+        wa_msg = (f'🔐 Reset Password\n\nHalo {display_name},\n'
                   f'Link reset password akun *{user["username"]}*:\n\n{reset_link}\n\n'
                   f'Link berlaku 1 jam dan langsung kadaluarsa setelah dibuka.')
-        send_whatsapp(wa_url, wa_key, wa_session, user['phone'], wa_msg)
+        send_whatsapp(wa_url, wa_key, wa_session, contacts['phone'], wa_msg)
         sent.append('whatsapp')
 
     return sent
@@ -1218,7 +1247,7 @@ def forgot_password():
             settings = get_settings(db)
             base_url = request.host_url.rstrip('/')
             reset_link = f"{base_url}/reset-password/{token}"
-            sent = _send_reset_notifications(dict(user), reset_link, settings)
+            sent = _send_reset_notifications(dict(user), reset_link, settings, db)
             flash(f'Link reset password telah dikirim via: {", ".join(sent) if sent else "—"}. '
                   f'Cek email/Telegram/WhatsApp Anda.', 'success')
         else:
@@ -1280,9 +1309,14 @@ def logout():
 @app.route('/users')
 @superadmin_required
 def users_list():
-    db = get_db()
+    db    = get_db()
     users = db.execute('SELECT * FROM users ORDER BY role, username').fetchall()
-    return render_template('users.html', users=users)
+    # Map user_id → linked employee contact (untuk ditampilkan di tabel)
+    emps  = db.execute(
+        'SELECT user_id, email, phone, telegram_id, name FROM employees WHERE user_id IS NOT NULL AND is_active=1'
+    ).fetchall()
+    linked_emps = {e['user_id']: e for e in emps}
+    return render_template('users.html', users=users, linked_emps=linked_emps)
 
 @app.route('/users/add', methods=['GET', 'POST'])
 @superadmin_required
@@ -1342,7 +1376,11 @@ def user_edit(uid):
             session['user_name'] = full_name or session['username']
             session['user_role'] = role
         return redirect(url_for('users_list'))
-    return render_template('user_form.html', user=user)
+    linked_emp = db.execute(
+        'SELECT name, email, phone, telegram_id FROM employees WHERE user_id=? AND is_active=1',
+        (uid,)
+    ).fetchone()
+    return render_template('user_form.html', user=user, linked_emp=linked_emp)
 
 @app.route('/users/<int:uid>/delete', methods=['POST'])
 @superadmin_required

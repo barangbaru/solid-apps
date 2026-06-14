@@ -23,12 +23,33 @@
             {% if u.id == current_user.id %}<span class="badge bg-info ms-1 small">Anda</span>{% endif %}
           </td>
           <td>{{ u.full_name or '—' }}</td>
-          <td class="small text-muted">
-            {% if u.email %}
-              <i class="bi bi-envelope me-1"></i>{{ u.email }}
-            {% else %}—{% endif %}
-            {% if u.phone %}<br><i class="bi bi-whatsapp text-success me-1"></i><span class="text-muted">{{ u.phone }}</span>{% endif %}
-            {% if u.telegram_id %}<br><i class="bi bi-telegram text-primary me-1"></i><span class="text-muted">{{ u.telegram_id }}</span>{% endif %}
+          <td class="small">
+            {# Tampilkan kontak user; jika kosong, cari dari karyawan terhubung #}
+            {% set emp_c = linked_emps.get(u.id) if linked_emps else none %}
+            {% set show_email = u.email or (emp_c.email if emp_c else '') %}
+            {% set show_phone = u.phone or (emp_c.phone if emp_c else '') %}
+            {% set show_tg    = u.telegram_id or (emp_c.telegram_id if emp_c else '') %}
+            {% if show_email %}
+              <div>
+                <i class="bi bi-envelope me-1 text-muted"></i>{{ show_email }}
+                {% if not u.email and emp_c %}<span class="badge bg-light text-success border ms-1" style="font-size:.6rem">karyawan</span>{% endif %}
+              </div>
+            {% endif %}
+            {% if show_phone %}
+              <div>
+                <i class="bi bi-whatsapp me-1 text-success"></i>{{ show_phone }}
+                {% if not u.phone and emp_c %}<span class="badge bg-light text-success border ms-1" style="font-size:.6rem">karyawan</span>{% endif %}
+              </div>
+            {% endif %}
+            {% if show_tg %}
+              <div>
+                <i class="bi bi-telegram me-1 text-primary"></i>{{ show_tg }}
+                {% if not u.telegram_id and emp_c %}<span class="badge bg-light text-success border ms-1" style="font-size:.6rem">karyawan</span>{% endif %}
+              </div>
+            {% endif %}
+            {% if not show_email and not show_phone and not show_tg %}
+              <span class="text-muted">—</span>
+            {% endif %}
           </td>
           <td class="text-center">
             <span class="badge {% if u.role=='superadmin' %}bg-warning text-dark{% else %}bg-primary{% endif %}">

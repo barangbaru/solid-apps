@@ -76,14 +76,29 @@
             <span class="text-normal fw-normal text-muted ms-1" style="font-size:.75rem">(untuk link lupa password &amp; notifikasi)</span>
           </div>
 
+          {% if linked_emp %}
+          <div class="alert alert-success py-2 small mb-3 d-flex align-items-start gap-2">
+            <i class="bi bi-link-45deg fs-5 mt-0"></i>
+            <div>
+              Terhubung ke karyawan <b>{{ linked_emp.name }}</b>.
+              Jika kolom di bawah dikosongkan, kontak akan diambil otomatis dari data karyawan tersebut.
+            </div>
+          </div>
+          {% endif %}
+
           <div class="mb-3">
             <label class="form-label fw-semibold small">Email</label>
             <div class="input-group">
               <span class="input-group-text"><i class="bi bi-envelope"></i></span>
               <input type="email" name="email" class="form-control"
                      value="{{ user.email if user else '' }}"
-                     placeholder="nama@perusahaan.com">
+                     placeholder="{{ linked_emp.email if linked_emp and linked_emp.email else 'nama@perusahaan.com' }}">
             </div>
+            {% if linked_emp and linked_emp.email and not (user and user.email) %}
+            <div class="form-text text-success">
+              <i class="bi bi-arrow-right-circle me-1"></i>Akan menggunakan: <b>{{ linked_emp.email }}</b> (dari data karyawan)
+            </div>
+            {% endif %}
           </div>
 
           <div class="row g-3 mb-4">
@@ -93,9 +108,15 @@
                 <span class="input-group-text"><i class="bi bi-whatsapp text-success"></i></span>
                 <input type="text" name="phone" class="form-control"
                        value="{{ user.phone if user else '' }}"
-                       placeholder="628123456789">
+                       placeholder="{{ linked_emp.phone if linked_emp and linked_emp.phone else '628123456789' }}">
               </div>
+              {% if linked_emp and linked_emp.phone and not (user and user.phone) %}
+              <div class="form-text text-success">
+                <i class="bi bi-arrow-right-circle me-1"></i>Akan menggunakan: <b>{{ linked_emp.phone }}</b>
+              </div>
+              {% else %}
               <div class="form-text">Format internasional tanpa + (mis. 628xxx)</div>
+              {% endif %}
             </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold small">Telegram ID / Username</label>
@@ -103,8 +124,13 @@
                 <span class="input-group-text"><i class="bi bi-telegram text-primary"></i></span>
                 <input type="text" name="telegram_id" class="form-control"
                        value="{{ user.telegram_id if user else '' }}"
-                       placeholder="@username atau chat_id">
+                       placeholder="{{ linked_emp.telegram_id if linked_emp and linked_emp.telegram_id else '@username atau chat_id' }}">
               </div>
+              {% if linked_emp and linked_emp.telegram_id and not (user and user.telegram_id) %}
+              <div class="form-text text-success">
+                <i class="bi bi-arrow-right-circle me-1"></i>Akan menggunakan: <b>{{ linked_emp.telegram_id }}</b>
+              </div>
+              {% endif %}
             </div>
           </div>
 
