@@ -181,47 +181,83 @@
             Tentukan atasan langsung, leader, dan manager karyawan ini.
             Mereka akan menjadi reviewer dan approver pada proses TalentCore.
           </p>
+
+          {# Group employees by divisi for each role level #}
+          {% set coleader_levels = ['Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director'] %}
+          {% set leader_levels   = ['Leader', 'Manager', 'Senior Manager', 'Director'] %}
+          {% set manager_levels  = ['Manager', 'Senior Manager', 'Director'] %}
+
+          {# Build divisi groups #}
+          {% set ns = namespace(cur_div='') %}
+
           <div class="row g-3">
             <div class="col-md-4">
-              <label class="form-label fw-semibold small">Atasan Langsung / Co-Leader</label>
-              <select name="supervisor_id" class="form-select form-select-sm">
+              <label class="form-label fw-semibold small">
+                <i class="bi bi-person-fill-up text-secondary me-1"></i>Atasan Langsung / Co-Leader
+                <span class="badge bg-secondary fw-normal ms-1" style="font-size:.62rem">Co-Leader ke atas</span>
+              </label>
+              <select name="supervisor_id" class="form-select form-select-sm" id="selSupervisor">
                 <option value="">— Tidak ditentukan —</option>
-                {% for e in employees_all %}
-                <option value="{{ e.id }}"
-                  {{ 'selected' if emp and emp.supervisor_id == e.id else '' }}>
-                  {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
-                </option>
+                {% set ns.cur_div = '' %}
+                {% for e in employees_all if e.level in coleader_levels %}
+                  {% if e.divisi != ns.cur_div %}
+                    {% if ns.cur_div != '' %}</optgroup>{% endif %}
+                    {% set ns.cur_div = e.divisi %}
+                    <optgroup label="{{ e.divisi }}">
+                  {% endif %}
+                  <option value="{{ e.id }}" {{ 'selected' if emp and emp.supervisor_id == e.id else '' }}>
+                    {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %} [{{ e.level }}]
+                  </option>
                 {% endfor %}
+                {% if ns.cur_div != '' %}</optgroup>{% endif %}
               </select>
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-semibold small">Leader</label>
-              <select name="leader_id" class="form-select form-select-sm">
+              <label class="form-label fw-semibold small">
+                <i class="bi bi-person-fill-up text-primary me-1"></i>Leader
+                <span class="badge bg-primary fw-normal ms-1" style="font-size:.62rem">Leader ke atas</span>
+              </label>
+              <select name="leader_id" class="form-select form-select-sm" id="selLeader">
                 <option value="">— Tidak ditentukan —</option>
-                {% for e in employees_all %}
-                <option value="{{ e.id }}"
-                  {{ 'selected' if emp and emp.leader_id == e.id else '' }}>
-                  {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
-                </option>
+                {% set ns.cur_div = '' %}
+                {% for e in employees_all if e.level in leader_levels %}
+                  {% if e.divisi != ns.cur_div %}
+                    {% if ns.cur_div != '' %}</optgroup>{% endif %}
+                    {% set ns.cur_div = e.divisi %}
+                    <optgroup label="{{ e.divisi }}">
+                  {% endif %}
+                  <option value="{{ e.id }}" {{ 'selected' if emp and emp.leader_id == e.id else '' }}>
+                    {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %} [{{ e.level }}]
+                  </option>
                 {% endfor %}
+                {% if ns.cur_div != '' %}</optgroup>{% endif %}
               </select>
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-semibold small">Manager</label>
-              <select name="manager_id" class="form-select form-select-sm">
+              <label class="form-label fw-semibold small">
+                <i class="bi bi-person-fill-up text-danger me-1"></i>Manager
+                <span class="badge bg-danger fw-normal ms-1" style="font-size:.62rem">Manager ke atas</span>
+              </label>
+              <select name="manager_id" class="form-select form-select-sm" id="selManager">
                 <option value="">— Tidak ditentukan —</option>
-                {% for e in employees_all %}
-                <option value="{{ e.id }}"
-                  {{ 'selected' if emp and emp.manager_id == e.id else '' }}>
-                  {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
-                </option>
+                {% set ns.cur_div = '' %}
+                {% for e in employees_all if e.level in manager_levels %}
+                  {% if e.divisi != ns.cur_div %}
+                    {% if ns.cur_div != '' %}</optgroup>{% endif %}
+                    {% set ns.cur_div = e.divisi %}
+                    <optgroup label="{{ e.divisi }}">
+                  {% endif %}
+                  <option value="{{ e.id }}" {{ 'selected' if emp and emp.manager_id == e.id else '' }}>
+                    {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %} [{{ e.level }}]
+                  </option>
                 {% endfor %}
+                {% if ns.cur_div != '' %}</optgroup>{% endif %}
               </select>
             </div>
           </div>
           <div class="form-text mt-2">
             <i class="bi bi-info-circle me-1"></i>
-            Pilih dari daftar karyawan. Reviewer harus memiliki akun aplikasi agar bisa login dan mereview.
+            Pilihan difilter berdasarkan level/grade. Reviewer harus memiliki akun aplikasi agar bisa login dan mereview.
           </div>
         </div>
       </div>
