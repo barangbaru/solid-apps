@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if row else 'Buat' }} Tiket — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if row else 'Buat' }} Tiket</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0">
+      <i class="bi bi-ticket-detailed text-primary me-2"></i>
+      {{ 'Edit Tiket ' + row.ticket_no if row else 'Buat Tiket Baru' }}
+    </h5>
+  </div>
+  <a href="/support/tickets" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Kembali
+  </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Customer <span class="text-danger">*</span></label>
+          <select name="customer_id" class="form-select" required>
+            <option value="">— Pilih Customer —</option>
+            {% for c in customers %}
+            <option value="{{ c.id }}" {{ 'selected' if row and row.customer_id == c.id }}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Kontrak (opsional)</label>
+          <select name="contract_id" class="form-select">
+            <option value="">— Tanpa Kontrak —</option>
+            {% for co in contracts %}
+            <option value="{{ co.id }}" {{ 'selected' if row and row.contract_id == co.id }}>{{ co.code }} — {{ co.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Tipe Support <span class="text-danger">*</span></label>
+          <select name="support_type_id" class="form-select" required>
+            <option value="">— Pilih Tipe —</option>
+            {% for st in support_types %}
+            <option value="{{ st.id }}" {{ 'selected' if row and row.support_type_id == st.id }}>{{ st.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Kategori SLA (opsional)</label>
+          <select name="sla_category_id" class="form-select">
+            <option value="">— Tanpa SLA —</option>
+            {% for s in sla_cats %}
+            <option value="{{ s.id }}" {{ 'selected' if row and row.sla_category_id == s.id }}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold">Subjek <span class="text-danger">*</span></label>
+          <input type="text" name="subject" class="form-control" required
+                 value="{{ row.subject if row else '' }}" placeholder="Deskripsi singkat masalah...">
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold">Deskripsi Detail</label>
+          <textarea name="description" class="form-control" rows="4" placeholder="Detail masalah, langkah reproduksi, dll...">{{ row.description if row else '' }}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Dilaporkan Oleh</label>
+          <input type="text" name="reported_by" class="form-control"
+                 value="{{ row.reported_by if row else '' }}" placeholder="Nama pelapor">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Waktu Lapor</label>
+          <input type="datetime-local" name="reported_at" class="form-control"
+                 value="{{ row.reported_at[:16].replace(' ','T') if row and row.reported_at else '' }}">
+          <div class="form-text">Kosongkan untuk menggunakan waktu sekarang</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold">Catatan</label>
+          <textarea name="notes" class="form-control" rows="2">{{ row.notes if row else '' }}</textarea>
+        </div>
+        <div class="col-12 mt-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i>{{ 'Simpan Perubahan' if row else 'Buat Tiket' }}
+          </button>
+          <a href="/support/tickets" class="btn btn-outline-secondary ms-2">Batal</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

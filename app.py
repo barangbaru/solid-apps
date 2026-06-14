@@ -317,6 +317,53 @@ CREATE TABLE IF NOT EXISTS sc_sla_categories (
     is_active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS sc_contracts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    customer_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    contract_value REAL DEFAULT 0,
+    status TEXT DEFAULT 'active',
+    notes TEXT DEFAULT '',
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(customer_id) REFERENCES sc_customers(id)
+);
+CREATE TABLE IF NOT EXISTS sc_contract_services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER NOT NULL,
+    service_id INTEGER NOT NULL,
+    UNIQUE(contract_id, service_id),
+    FOREIGN KEY(contract_id) REFERENCES sc_contracts(id) ON DELETE CASCADE,
+    FOREIGN KEY(service_id) REFERENCES sc_services(id)
+);
+CREATE TABLE IF NOT EXISTS sc_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_no TEXT NOT NULL UNIQUE,
+    contract_id INTEGER DEFAULT NULL,
+    customer_id INTEGER NOT NULL,
+    support_type_id INTEGER NOT NULL,
+    sla_category_id INTEGER DEFAULT NULL,
+    subject TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT DEFAULT 'open',
+    reported_by TEXT DEFAULT '',
+    reported_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    responded_at TEXT DEFAULT NULL,
+    resolved_at TEXT DEFAULT NULL,
+    closed_at TEXT DEFAULT NULL,
+    assigned_to INTEGER DEFAULT NULL,
+    created_by INTEGER DEFAULT NULL,
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(customer_id) REFERENCES sc_customers(id),
+    FOREIGN KEY(contract_id) REFERENCES sc_contracts(id),
+    FOREIGN KEY(support_type_id) REFERENCES sc_support_types(id),
+    FOREIGN KEY(sla_category_id) REFERENCES sc_sla_categories(id)
+);
 """
 
 MIGRATIONS = [
@@ -396,6 +443,9 @@ APP_PERMISSIONS = {
         'sc_manage_services':  'Kelola master layanan/jasa',
         'sc_manage_types':     'Kelola master tipe support',
         'sc_manage_sla':       'Kelola master kategori SLA',
+        'sc_manage_contracts': 'Kelola kontrak support tahunan',
+        'sc_manage_tickets':   'Buat/update tiket support',
+        'sc_view_reports':     'Lihat laporan & monitoring SLA',
     },
 }
 # Backward-compat: ALL_PERMISSIONS = gabungan semua app + portal perms
@@ -413,8 +463,9 @@ SYSTEM_ROLE_DEFAULTS = {
     'superadmin': list(ALL_PERMISSIONS.keys()),
     'admin': ['manage_employees','manage_divisions','manage_evaluations',
               'view_evaluations','send_reminders','manage_template',
-              'sc_view','sc_manage_customers','sc_manage_services','sc_manage_types','sc_manage_sla'],
-    'viewer': ['view_evaluations','sc_view'],
+              'sc_view','sc_manage_customers','sc_manage_services','sc_manage_types','sc_manage_sla',
+              'sc_manage_contracts','sc_manage_tickets','sc_view_reports'],
+    'viewer': ['view_evaluations','sc_view','sc_view_reports'],
 }
 
 def init_db():
@@ -2835,6 +2886,474 @@ def sc_sla_category_delete(kid):
     db.commit()
     flash('Kategori SLA dinonaktifkan', 'warning')
     return redirect(url_for('sc_sla_categories'))
+
+# ─── SupportCore Helpers ───────────────────────────────────────────────────────
+
+def generate_ticket_no(db):
+    from datetime import datetime as _dt
+    year = _dt.now().year
+    last = db.execute(
+        "SELECT ticket_no FROM sc_tickets WHERE ticket_no LIKE ? ORDER BY id DESC LIMIT 1",
+        (f'TKT-{year}-%',)
+    ).fetchone()
+    seq = (int(last['ticket_no'].rsplit('-', 1)[-1]) + 1) if last else 1
+    return f'TKT-{year}-{seq:04d}'
+
+def calc_sla(reported_at_str, done_at_str, limit_hours):
+    """Returns ('met'|'violated'|'pending', hours_taken_or_None)"""
+    if not reported_at_str:
+        return 'pending', None
+    from datetime import datetime as _dt
+    fmt = '%Y-%m-%d %H:%M:%S'
+    try:
+        t0 = _dt.strptime(reported_at_str[:19], fmt)
+        if done_at_str:
+            t1 = _dt.strptime(done_at_str[:19], fmt)
+            hours = (t1 - t0).total_seconds() / 3600
+            return ('met' if hours <= limit_hours else 'violated'), round(hours, 1)
+        return 'pending', None
+    except Exception:
+        return 'pending', None
+
+# ─── SupportCore: Contracts ────────────────────────────────────────────────────
+
+@app.route('/support/contracts')
+@login_required
+def sc_contracts():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    customer_id = request.args.get('customer_id', '')
+    status_f    = request.args.get('status', '')
+    q = '''SELECT c.*, cu.name as customer_name
+           FROM sc_contracts c
+           JOIN sc_customers cu ON cu.id = c.customer_id
+           WHERE 1=1'''
+    params = []
+    if customer_id:
+        q += ' AND c.customer_id=?'; params.append(customer_id)
+    if status_f:
+        q += ' AND c.status=?'; params.append(status_f)
+    q += ' ORDER BY c.start_date DESC'
+    rows = db.execute(q, params).fetchall()
+    customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    # Compute display status
+    contracts = []
+    for r in rows:
+        d = dict(r)
+        if d['status'] not in ('terminated', 'draft') and d['end_date'] < today:
+            d['display_status'] = 'expired'
+        else:
+            d['display_status'] = d['status']
+        contracts.append(d)
+    return render_template('sc_contracts.html', contracts=contracts, customers=customers,
+                           filter_customer=customer_id, filter_status=status_f, today=today)
+
+@app.route('/support/contracts/add', methods=['GET','POST'])
+@login_required
+def sc_contract_add():
+    if not sc_require('sc_manage_contracts'): return redirect(url_for('sc_contracts'))
+    db = get_db()
+    customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    services  = db.execute('SELECT id, name FROM sc_services WHERE is_active=1 ORDER BY name').fetchall()
+    if request.method == 'POST':
+        code      = request.form['code'].strip()
+        cid       = request.form['customer_id']
+        title     = request.form['title'].strip()
+        desc      = request.form.get('description','').strip()
+        sd        = request.form['start_date']
+        ed        = request.form['end_date']
+        val       = float(request.form.get('contract_value') or 0)
+        status    = request.form.get('status','active')
+        notes     = request.form.get('notes','').strip()
+        svc_ids   = request.form.getlist('service_ids')
+        try:
+            db.execute('''INSERT INTO sc_contracts(code,customer_id,title,description,start_date,end_date,
+                          contract_value,status,notes,created_by)
+                          VALUES(?,?,?,?,?,?,?,?,?,?)''',
+                       (code, cid, title, desc, sd, ed, val, status, notes, session.get('user_id')))
+            ctr_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+            for sid in svc_ids:
+                db.execute('INSERT OR IGNORE INTO sc_contract_services(contract_id,service_id) VALUES(?,?)', (ctr_id, sid))
+            db.commit()
+            flash('Kontrak berhasil ditambahkan', 'success')
+            return redirect(url_for('sc_contracts'))
+        except Exception as e:
+            flash(f'Error: {e}', 'danger')
+    return render_template('sc_contract_form.html', row=None, customers=customers, services=services, sel_services=[])
+
+@app.route('/support/contracts/<int:cid>/edit', methods=['GET','POST'])
+@login_required
+def sc_contract_edit(cid):
+    if not sc_require('sc_manage_contracts'): return redirect(url_for('sc_contracts'))
+    db = get_db()
+    row = db.execute('SELECT * FROM sc_contracts WHERE id=?', (cid,)).fetchone()
+    if not row: abort(404)
+    customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    services  = db.execute('SELECT id, name FROM sc_services WHERE is_active=1 ORDER BY name').fetchall()
+    sel_services = [r['service_id'] for r in db.execute('SELECT service_id FROM sc_contract_services WHERE contract_id=?', (cid,)).fetchall()]
+    if request.method == 'POST':
+        code   = request.form['code'].strip()
+        custid = request.form['customer_id']
+        title  = request.form['title'].strip()
+        desc   = request.form.get('description','').strip()
+        sd     = request.form['start_date']
+        ed     = request.form['end_date']
+        val    = float(request.form.get('contract_value') or 0)
+        status = request.form.get('status','active')
+        notes  = request.form.get('notes','').strip()
+        svc_ids = request.form.getlist('service_ids')
+        try:
+            db.execute('''UPDATE sc_contracts SET code=?,customer_id=?,title=?,description=?,start_date=?,
+                          end_date=?,contract_value=?,status=?,notes=? WHERE id=?''',
+                       (code, custid, title, desc, sd, ed, val, status, notes, cid))
+            db.execute('DELETE FROM sc_contract_services WHERE contract_id=?', (cid,))
+            for sid in svc_ids:
+                db.execute('INSERT OR IGNORE INTO sc_contract_services(contract_id,service_id) VALUES(?,?)', (cid, sid))
+            db.commit()
+            flash('Kontrak diperbarui', 'success')
+            return redirect(url_for('sc_contracts'))
+        except Exception as e:
+            flash(f'Error: {e}', 'danger')
+    return render_template('sc_contract_form.html', row=row, customers=customers, services=services, sel_services=sel_services)
+
+@app.route('/support/contracts/<int:cid>')
+@login_required
+def sc_contract_detail(cid):
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    row = db.execute('''SELECT c.*, cu.name as customer_name
+                        FROM sc_contracts c JOIN sc_customers cu ON cu.id=c.customer_id
+                        WHERE c.id=?''', (cid,)).fetchone()
+    if not row: abort(404)
+    ctr = dict(row)
+    if ctr['status'] not in ('terminated','draft') and ctr['end_date'] < today:
+        ctr['display_status'] = 'expired'
+    else:
+        ctr['display_status'] = ctr['status']
+    svcs = db.execute('''SELECT s.name FROM sc_contract_services cs
+                         JOIN sc_services s ON s.id=cs.service_id
+                         WHERE cs.contract_id=?''', (cid,)).fetchall()
+    tickets = db.execute('''SELECT t.*, st.name as type_name, sc.name as sla_name,
+                             sc.response_time_hours, sc.resolution_time_hours
+                             FROM sc_tickets t
+                             JOIN sc_support_types st ON st.id=t.support_type_id
+                             LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
+                             WHERE t.contract_id=?
+                             ORDER BY t.reported_at DESC''', (cid,)).fetchall()
+    sla_stats = {'met': 0, 'violated': 0, 'pending': 0}
+    ticket_list = []
+    for t in tickets:
+        d = dict(t)
+        d['sla_status'], _ = calc_sla(d['reported_at'], d['responded_at'], d['response_time_hours'] or 999)
+        sla_stats[d['sla_status']] += 1
+        ticket_list.append(d)
+    return render_template('sc_contract_detail.html', ctr=ctr, svcs=svcs, tickets=ticket_list, sla_stats=sla_stats)
+
+@app.route('/support/contracts/<int:cid>/delete', methods=['POST'])
+@login_required
+def sc_contract_delete(cid):
+    if not sc_require('sc_manage_contracts'): return redirect(url_for('sc_contracts'))
+    db = get_db()
+    db.execute("UPDATE sc_contracts SET status='terminated' WHERE id=?", (cid,))
+    db.commit()
+    flash('Kontrak diterminasi', 'warning')
+    return redirect(url_for('sc_contracts'))
+
+# ─── SupportCore: Tickets ──────────────────────────────────────────────────────
+
+@app.route('/support/tickets')
+@login_required
+def sc_tickets():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    status_f  = request.args.get('status','')
+    cust_f    = request.args.get('customer_id','')
+    type_f    = request.args.get('support_type_id','')
+    date_from = request.args.get('date_from','')
+    date_to   = request.args.get('date_to','')
+    q = '''SELECT t.*, cu.name as customer_name, st.name as type_name,
+                  sc.name as sla_name, sc.response_time_hours
+           FROM sc_tickets t
+           JOIN sc_customers cu ON cu.id=t.customer_id
+           JOIN sc_support_types st ON st.id=t.support_type_id
+           LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
+           WHERE 1=1'''
+    params = []
+    if status_f:
+        q += ' AND t.status=?'; params.append(status_f)
+    if cust_f:
+        q += ' AND t.customer_id=?'; params.append(cust_f)
+    if type_f:
+        q += ' AND t.support_type_id=?'; params.append(type_f)
+    if date_from:
+        q += ' AND t.reported_at >= ?'; params.append(date_from)
+    if date_to:
+        q += ' AND t.reported_at <= ?'; params.append(date_to + ' 23:59:59')
+    q += ' ORDER BY t.reported_at DESC'
+    rows = db.execute(q, params).fetchall()
+    tickets = []
+    for r in rows:
+        d = dict(r)
+        d['sla_status'], d['sla_hours'] = calc_sla(d['reported_at'], d['responded_at'], d['response_time_hours'] or 999)
+        tickets.append(d)
+    customers    = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    support_types = db.execute('SELECT id, name FROM sc_support_types WHERE is_active=1 ORDER BY name').fetchall()
+    return render_template('sc_tickets.html', tickets=tickets, customers=customers,
+                           support_types=support_types, filter_status=status_f,
+                           filter_customer=cust_f, filter_type=type_f,
+                           filter_date_from=date_from, filter_date_to=date_to)
+
+@app.route('/support/tickets/add', methods=['GET','POST'])
+@login_required
+def sc_ticket_add():
+    if not sc_require('sc_manage_tickets'): return redirect(url_for('sc_tickets'))
+    db = get_db()
+    customers     = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    support_types = db.execute('SELECT id, name FROM sc_support_types WHERE is_active=1 ORDER BY name').fetchall()
+    sla_cats      = db.execute('SELECT id, name FROM sc_sla_categories WHERE is_active=1 ORDER BY name').fetchall()
+    contracts     = db.execute('SELECT id, code, title FROM sc_contracts ORDER BY start_date DESC').fetchall()
+    if request.method == 'POST':
+        ticket_no     = generate_ticket_no(db)
+        contract_id   = request.form.get('contract_id') or None
+        customer_id   = request.form['customer_id']
+        support_type_id = request.form['support_type_id']
+        sla_cat_id    = request.form.get('sla_category_id') or None
+        subject       = request.form['subject'].strip()
+        description   = request.form.get('description','').strip()
+        reported_by   = request.form.get('reported_by','').strip()
+        reported_at   = request.form.get('reported_at','').strip() or None
+        notes         = request.form.get('notes','').strip()
+        from datetime import datetime as _dt
+        if not reported_at:
+            reported_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            db.execute('''INSERT INTO sc_tickets(ticket_no,contract_id,customer_id,support_type_id,
+                          sla_category_id,subject,description,reported_by,reported_at,notes,created_by)
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                       (ticket_no, contract_id, customer_id, support_type_id, sla_cat_id,
+                        subject, description, reported_by, reported_at, notes, session.get('user_id')))
+            db.commit()
+            flash(f'Tiket {ticket_no} berhasil dibuat', 'success')
+            return redirect(url_for('sc_tickets'))
+        except Exception as e:
+            flash(f'Error: {e}', 'danger')
+    return render_template('sc_ticket_form.html', row=None, customers=customers,
+                           support_types=support_types, sla_cats=sla_cats, contracts=contracts)
+
+@app.route('/support/tickets/<int:tid>/edit', methods=['GET','POST'])
+@login_required
+def sc_ticket_edit(tid):
+    if not sc_require('sc_manage_tickets'): return redirect(url_for('sc_tickets'))
+    db = get_db()
+    row = db.execute('SELECT * FROM sc_tickets WHERE id=?', (tid,)).fetchone()
+    if not row: abort(404)
+    customers     = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    support_types = db.execute('SELECT id, name FROM sc_support_types WHERE is_active=1 ORDER BY name').fetchall()
+    sla_cats      = db.execute('SELECT id, name FROM sc_sla_categories WHERE is_active=1 ORDER BY name').fetchall()
+    contracts     = db.execute('SELECT id, code, title FROM sc_contracts ORDER BY start_date DESC').fetchall()
+    if request.method == 'POST':
+        contract_id     = request.form.get('contract_id') or None
+        customer_id     = request.form['customer_id']
+        support_type_id = request.form['support_type_id']
+        sla_cat_id      = request.form.get('sla_category_id') or None
+        subject         = request.form['subject'].strip()
+        description     = request.form.get('description','').strip()
+        reported_by     = request.form.get('reported_by','').strip()
+        reported_at     = request.form.get('reported_at','').strip() or None
+        notes           = request.form.get('notes','').strip()
+        try:
+            db.execute('''UPDATE sc_tickets SET contract_id=?,customer_id=?,support_type_id=?,
+                          sla_category_id=?,subject=?,description=?,reported_by=?,reported_at=?,notes=?
+                          WHERE id=?''',
+                       (contract_id, customer_id, support_type_id, sla_cat_id,
+                        subject, description, reported_by, reported_at, notes, tid))
+            db.commit()
+            flash('Tiket diperbarui', 'success')
+            return redirect(url_for('sc_ticket_detail', tid=tid))
+        except Exception as e:
+            flash(f'Error: {e}', 'danger')
+    return render_template('sc_ticket_form.html', row=row, customers=customers,
+                           support_types=support_types, sla_cats=sla_cats, contracts=contracts)
+
+@app.route('/support/tickets/<int:tid>')
+@login_required
+def sc_ticket_detail(tid):
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db = get_db()
+    row = db.execute('''SELECT t.*, cu.name as customer_name, st.name as type_name,
+                        sc.name as sla_name, sc.response_time_hours, sc.resolution_time_hours,
+                        co.code as contract_code, co.title as contract_title
+                        FROM sc_tickets t
+                        JOIN sc_customers cu ON cu.id=t.customer_id
+                        JOIN sc_support_types st ON st.id=t.support_type_id
+                        LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
+                        LEFT JOIN sc_contracts co ON co.id=t.contract_id
+                        WHERE t.id=?''', (tid,)).fetchone()
+    if not row: abort(404)
+    t = dict(row)
+    t['resp_sla'], t['resp_hours'] = calc_sla(t['reported_at'], t['responded_at'], t['response_time_hours'] or 999)
+    t['res_sla'],  t['res_hours']  = calc_sla(t['reported_at'], t['resolved_at'],  t['resolution_time_hours'] or 999)
+    return render_template('sc_ticket_detail.html', t=t)
+
+@app.route('/support/tickets/<int:tid>/status', methods=['POST'])
+@login_required
+def sc_ticket_status(tid):
+    if not sc_require('sc_manage_tickets'): return redirect(url_for('sc_tickets'))
+    db = get_db()
+    new_status = request.form.get('new_status','')
+    from datetime import datetime as _dt
+    now = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+    row = db.execute('SELECT * FROM sc_tickets WHERE id=?', (tid,)).fetchone()
+    if not row: abort(404)
+    updates = {'status': new_status}
+    if new_status == 'in_progress' and not row['responded_at']:
+        updates['responded_at'] = now
+    if new_status == 'resolved':
+        updates['resolved_at'] = now
+    if new_status == 'closed':
+        updates['closed_at'] = now
+    sets = ', '.join(f'{k}=?' for k in updates)
+    db.execute(f'UPDATE sc_tickets SET {sets} WHERE id=?', list(updates.values()) + [tid])
+    db.commit()
+    flash(f'Status tiket diubah ke {new_status}', 'success')
+    return redirect(url_for('sc_ticket_detail', tid=tid))
+
+# ─── SupportCore: SLA Monitor ──────────────────────────────────────────────────
+
+@app.route('/support/sla-monitor')
+@login_required
+def sc_sla_monitor():
+    if not sc_require('sc_view_reports'): return redirect(url_for('sc_index'))
+    db = get_db()
+    from datetime import date as _date
+    month = request.args.get('month', _date.today().strftime('%Y-%m'))
+    date_from = month + '-01'
+    # last day
+    import calendar
+    y, m = int(month[:4]), int(month[5:7])
+    last_day = calendar.monthrange(y, m)[1]
+    date_to = f'{month}-{last_day:02d} 23:59:59'
+    tickets = db.execute('''SELECT t.*, cu.name as customer_name, st.name as type_name,
+                             sc.response_time_hours, sc.resolution_time_hours
+                             FROM sc_tickets t
+                             JOIN sc_customers cu ON cu.id=t.customer_id
+                             JOIN sc_support_types st ON st.id=t.support_type_id
+                             LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
+                             WHERE t.reported_at >= ? AND t.reported_at <= ?
+                             ORDER BY t.reported_at DESC''', (date_from, date_to)).fetchall()
+    total = len(tickets)
+    open_cnt = sum(1 for t in tickets if t['status'] == 'open')
+    inprog   = sum(1 for t in tickets if t['status'] == 'in_progress')
+    sla_met  = 0; sla_vio = 0
+    by_customer = {}
+    by_type     = {}
+    for t in tickets:
+        st, _ = calc_sla(t['reported_at'], t['responded_at'], t['response_time_hours'] or 999)
+        if st == 'met':   sla_met += 1
+        elif st == 'violated': sla_vio += 1
+        cn = t['customer_name']
+        if cn not in by_customer:
+            by_customer[cn] = {'total':0,'met':0,'violated':0,'pending':0}
+        by_customer[cn]['total'] += 1
+        by_customer[cn][st] += 1
+        tn = t['type_name']
+        if tn not in by_type:
+            by_type[tn] = {'total':0,'met':0,'violated':0,'pending':0}
+        by_type[tn]['total'] += 1
+        by_type[tn][st] += 1
+    # Monthly trend last 6 months
+    import json
+    trend_labels = []
+    trend_met    = []
+    trend_vio    = []
+    for i in range(5, -1, -1):
+        mm = m - i
+        yy = y
+        while mm <= 0: mm += 12; yy -= 1
+        label = f'{yy}-{mm:02d}'
+        ld = calendar.monthrange(yy, mm)[1]
+        df = f'{label}-01'
+        dt = f'{label}-{ld:02d} 23:59:59'
+        ts = db.execute('''SELECT t.reported_at, t.responded_at, sc.response_time_hours
+                           FROM sc_tickets t
+                           LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
+                           WHERE t.reported_at >= ? AND t.reported_at <= ?''', (df, dt)).fetchall()
+        met_c = sum(1 for x in ts if calc_sla(x['reported_at'], x['responded_at'], x['response_time_hours'] or 999)[0] == 'met')
+        vio_c = sum(1 for x in ts if calc_sla(x['reported_at'], x['responded_at'], x['response_time_hours'] or 999)[0] == 'violated')
+        trend_labels.append(label)
+        trend_met.append(met_c)
+        trend_vio.append(vio_c)
+    sla_pct = round(sla_met / total * 100, 1) if total > 0 else 0
+    return render_template('sc_sla_monitor.html',
+                           total=total, open_cnt=open_cnt, inprog=inprog,
+                           sla_met=sla_met, sla_vio=sla_vio, sla_pct=sla_pct,
+                           by_customer=by_customer, by_type=by_type,
+                           trend_labels=json.dumps(trend_labels),
+                           trend_met=json.dumps(trend_met),
+                           trend_vio=json.dumps(trend_vio),
+                           month=month)
+
+# ─── SupportCore: Reports ──────────────────────────────────────────────────────
+
+@app.route('/support/reports')
+@login_required
+def sc_reports():
+    if not sc_require('sc_view_reports'): return redirect(url_for('sc_index'))
+    db = get_db()
+    from datetime import date as _date
+    year    = request.args.get('year', str(_date.today().year))
+    cust_f  = request.args.get('customer_id','')
+    q_base = '''FROM sc_tickets t
+                JOIN sc_customers cu ON cu.id=t.customer_id
+                JOIN sc_support_types st ON st.id=t.support_type_id
+                LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
+                WHERE strftime('%Y', t.reported_at)=?'''
+    params = [year]
+    if cust_f:
+        q_base += ' AND t.customer_id=?'; params.append(cust_f)
+    tickets = db.execute('SELECT t.*, cu.name as customer_name, st.name as type_name, '
+                         'sc.response_time_hours, sc.resolution_time_hours ' + q_base
+                         + ' ORDER BY t.reported_at', params).fetchall()
+    # Monthly summary
+    monthly = {}
+    for t in tickets:
+        mo = t['reported_at'][:7]
+        if mo not in monthly:
+            monthly[mo] = {'total':0,'open':0,'closed':0,'corrective':0,'preventive':0,'onsite':0}
+        monthly[mo]['total'] += 1
+        if t['status'] in ('open','in_progress'): monthly[mo]['open'] += 1
+        else: monthly[mo]['closed'] += 1
+        tn = (t['type_name'] or '').lower()
+        if 'corrective' in tn: monthly[mo]['corrective'] += 1
+        elif 'preventive' in tn: monthly[mo]['preventive'] += 1
+        elif 'onsite' in tn: monthly[mo]['onsite'] += 1
+    # Avg response & resolution time
+    resp_times = []
+    res_times  = []
+    for t in tickets:
+        _, rh = calc_sla(t['reported_at'], t['responded_at'], 999)
+        if rh is not None: resp_times.append(rh)
+        _, reh = calc_sla(t['reported_at'], t['resolved_at'], 999)
+        if reh is not None: res_times.append(reh)
+    avg_resp = round(sum(resp_times)/len(resp_times), 1) if resp_times else None
+    avg_res  = round(sum(res_times)/len(res_times), 1)  if res_times  else None
+    # Top customers
+    cust_count = {}
+    for t in tickets:
+        cn = t['customer_name']
+        cust_count[cn] = cust_count.get(cn, 0) + 1
+    top_customers = sorted(cust_count.items(), key=lambda x: -x[1])[:10]
+    customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    years = db.execute("SELECT DISTINCT strftime('%Y', reported_at) as yr FROM sc_tickets ORDER BY yr DESC").fetchall()
+    return render_template('sc_reports.html', monthly=monthly, avg_resp=avg_resp,
+                           avg_res=avg_res, top_customers=top_customers,
+                           customers=customers, years=years,
+                           filter_year=year, filter_customer=cust_f,
+                           total_tickets=len(tickets))
 
 # ─── Settings ─────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+{% block title %}{{ t.ticket_no }} — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Detail Tiket</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0">
+      <i class="bi bi-ticket-detailed text-primary me-2"></i>{{ t.ticket_no }}
+    </h5>
+    <div class="text-muted small mt-1">{{ t.subject }}</div>
+  </div>
+  <div>
+    <a href="/support/tickets/{{ t.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">
+      <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    <a href="/support/tickets" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Kembali
+    </a>
+  </div>
+</div>
+
+<div class="row g-3">
+  {# Status & Quick Actions #}
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Status Tiket</div>
+      <div class="card-body">
+        <div class="mb-3 text-center">
+          {% if t.status=='open' %}<span class="badge bg-secondary fs-6 px-3 py-2">Open</span>
+          {% elif t.status=='in_progress' %}<span class="badge bg-primary fs-6 px-3 py-2">In Progress</span>
+          {% elif t.status=='resolved' %}<span class="badge bg-success fs-6 px-3 py-2">Resolved</span>
+          {% else %}<span class="badge bg-dark fs-6 px-3 py-2">Closed</span>{% endif %}
+        </div>
+        <div class="d-grid gap-2">
+          {% if t.status == 'open' %}
+          <form action="/support/tickets/{{ t.id }}/status" method="post"
+                data-confirm="Ubah status ke In Progress?"
+                onsubmit="return confirm(this.dataset.confirm)">
+            <input type="hidden" name="new_status" value="in_progress">
+            <button class="btn btn-primary btn-sm w-100"><i class="bi bi-play-fill me-1"></i>Mulai Kerjakan</button>
+          </form>
+          {% endif %}
+          {% if t.status in ['open','in_progress'] %}
+          <form action="/support/tickets/{{ t.id }}/status" method="post"
+                data-confirm="Tandai sebagai Resolved?"
+                onsubmit="return confirm(this.dataset.confirm)">
+            <input type="hidden" name="new_status" value="resolved">
+            <button class="btn btn-success btn-sm w-100"><i class="bi bi-check-circle me-1"></i>Resolved</button>
+          </form>
+          {% endif %}
+          {% if t.status == 'resolved' %}
+          <form action="/support/tickets/{{ t.id }}/status" method="post"
+                data-confirm="Tutup tiket ini?"
+                onsubmit="return confirm(this.dataset.confirm)">
+            <input type="hidden" name="new_status" value="closed">
+            <button class="btn btn-dark btn-sm w-100"><i class="bi bi-lock me-1"></i>Tutup Tiket</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# SLA Compliance #}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Kepatuhan SLA</div>
+      <div class="card-body">
+        <div class="mb-2">
+          <div class="small text-muted mb-1">Response SLA
+            {% if t.response_time_hours %}(≤ {{ t.response_time_hours }}j){% endif %}
+          </div>
+          {% if t.resp_sla=='met' %}
+            <span class="badge bg-success">Met</span>
+            {% if t.resp_hours %}<span class="ms-1 small text-muted">{{ t.resp_hours }}j</span>{% endif %}
+          {% elif t.resp_sla=='violated' %}
+            <span class="badge bg-danger">Violated</span>
+            {% if t.resp_hours %}<span class="ms-1 small text-muted">{{ t.resp_hours }}j</span>{% endif %}
+          {% else %}
+            <span class="badge bg-warning text-dark">Pending</span>
+          {% endif %}
+        </div>
+        <div>
+          <div class="small text-muted mb-1">Resolution SLA
+            {% if t.resolution_time_hours %}(≤ {{ t.resolution_time_hours }}j){% endif %}
+          </div>
+          {% if t.res_sla=='met' %}
+            <span class="badge bg-success">Met</span>
+            {% if t.res_hours %}<span class="ms-1 small text-muted">{{ t.res_hours }}j</span>{% endif %}
+          {% elif t.res_sla=='violated' %}
+            <span class="badge bg-danger">Violated</span>
+            {% if t.res_hours %}<span class="ms-1 small text-muted">{{ t.res_hours }}j</span>{% endif %}
+          {% else %}
+            <span class="badge bg-warning text-dark">Pending</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Detail Info #}
+  <div class="col-md-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Informasi Tiket</div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal" style="width:160px">No. Tiket</th>
+              <td><span class="badge bg-light border text-dark fw-semibold">{{ t.ticket_no }}</span></td></tr>
+          <tr><th class="text-muted fw-normal">Customer</th><td>{{ t.customer_name }}</td></tr>
+          {% if t.contract_code %}
+          <tr><th class="text-muted fw-normal">Kontrak</th>
+              <td><a href="/support/contracts/{{ t.contract_id }}">{{ t.contract_code }}</a> — {{ t.contract_title }}</td></tr>
+          {% endif %}
+          <tr><th class="text-muted fw-normal">Tipe Support</th><td>{{ t.type_name }}</td></tr>
+          {% if t.sla_name %}
+          <tr><th class="text-muted fw-normal">Kategori SLA</th><td>{{ t.sla_name }}</td></tr>
+          {% endif %}
+          <tr><th class="text-muted fw-normal">Dilaporkan Oleh</th><td>{{ t.reported_by or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Waktu Lapor</th><td>{{ t.reported_at[:16] if t.reported_at else '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Waktu Respons</th><td>{{ t.responded_at[:16] if t.responded_at else '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Waktu Resolved</th><td>{{ t.resolved_at[:16] if t.resolved_at else '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Waktu Closed</th><td>{{ t.closed_at[:16] if t.closed_at else '—' }}</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Deskripsi</div>
+      <div class="card-body">
+        <p class="mb-0">{{ t.description or '(tidak ada deskripsi)' }}</p>
+      </div>
+    </div>
+
+    {% if t.notes %}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Catatan</div>
+      <div class="card-body">
+        <p class="mb-0 small">{{ t.notes }}</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

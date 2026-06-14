@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% block title %}Detail Kontrak {{ ctr.code }} — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Detail Kontrak</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-file-earmark-text text-primary me-2"></i>{{ ctr.code }} — {{ ctr.title }}</h5>
+    <div class="text-muted small mt-1">{{ ctr.customer_name }}</div>
+  </div>
+  <div>
+    <a href="/support/contracts/{{ ctr.id }}/edit" class="btn btn-sm btn-outline-secondary me-1">
+      <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    <a href="/support/contracts" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>Kembali
+    </a>
+  </div>
+</div>
+
+<div class="row g-3">
+  {# Info Kontrak #}
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Info Kontrak</div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr><th class="text-muted fw-normal" style="width:140px">Kode</th><td><span class="badge bg-light border text-dark fw-semibold">{{ ctr.code }}</span></td></tr>
+          <tr><th class="text-muted fw-normal">Customer</th><td>{{ ctr.customer_name }}</td></tr>
+          <tr><th class="text-muted fw-normal">Periode</th><td>{{ ctr.start_date }} s/d {{ ctr.end_date }}</td></tr>
+          <tr><th class="text-muted fw-normal">Nilai</th><td>{% if ctr.contract_value %}Rp {{ '{:,.0f}'.format(ctr.contract_value) }}{% else %}—{% endif %}</td></tr>
+          <tr><th class="text-muted fw-normal">Status</th><td>
+            {% set ds = ctr.display_status %}
+            {% if ds=='active' %}<span class="badge bg-success">Aktif</span>
+            {% elif ds=='expired' %}<span class="badge bg-warning text-dark">Expired</span>
+            {% elif ds=='draft' %}<span class="badge bg-secondary">Draft</span>
+            {% else %}<span class="badge bg-danger">Terminated</span>{% endif %}
+          </td></tr>
+          {% if ctr.description %}<tr><th class="text-muted fw-normal">Deskripsi</th><td class="small">{{ ctr.description }}</td></tr>{% endif %}
+          {% if ctr.notes %}<tr><th class="text-muted fw-normal">Catatan</th><td class="small">{{ ctr.notes }}</td></tr>{% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# SLA Stats + Layanan #}
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Kepatuhan SLA (Response)</div>
+      <div class="card-body">
+        <div class="row g-2 text-center">
+          <div class="col-4">
+            <div class="fs-3 fw-bold text-success">{{ sla_stats.met }}</div>
+            <div class="small text-muted">Met</div>
+          </div>
+          <div class="col-4">
+            <div class="fs-3 fw-bold text-danger">{{ sla_stats.violated }}</div>
+            <div class="small text-muted">Violated</div>
+          </div>
+          <div class="col-4">
+            <div class="fs-3 fw-bold text-warning">{{ sla_stats.pending }}</div>
+            <div class="small text-muted">Pending</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Layanan yang Dicakup</div>
+      <div class="card-body">
+        {% if svcs %}
+        <div class="d-flex flex-wrap gap-1">
+          {% for s in svcs %}
+          <span class="badge bg-light border text-dark">{{ s.name }}</span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">Tidak ada layanan terdaftar</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Tiket terkait #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
+        <span>Tiket Terkait ({{ tickets|length }})</span>
+        <a href="/support/tickets/add" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-plus-circle me-1"></i>Buat Tiket
+        </a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">No. Tiket</th>
+              <th>Subjek</th>
+              <th>Tipe</th>
+              <th class="text-center">Status</th>
+              <th class="text-center">SLA</th>
+              <th>Dilaporkan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in tickets %}
+            <tr>
+              <td class="ps-3">
+                <a href="/support/tickets/{{ t.id }}" class="badge bg-light border text-dark text-decoration-none fw-semibold" style="font-size:.75rem">
+                  {{ t.ticket_no }}
+                </a>
+              </td>
+              <td class="small">{{ t.subject }}</td>
+              <td class="small">{{ t.type_name }}</td>
+              <td class="text-center">
+                {% if t.status=='open' %}<span class="badge bg-secondary">Open</span>
+                {% elif t.status=='in_progress' %}<span class="badge bg-primary">In Progress</span>
+                {% elif t.status=='resolved' %}<span class="badge bg-success">Resolved</span>
+                {% else %}<span class="badge bg-dark">Closed</span>{% endif %}
+              </td>
+              <td class="text-center">
+                {% if t.sla_status=='met' %}<span class="badge bg-success">Met</span>
+                {% elif t.sla_status=='violated' %}<span class="badge bg-danger">Violated</span>
+                {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+              </td>
+              <td class="small text-muted">{{ t.reported_at[:16] }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">Belum ada tiket</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

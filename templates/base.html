@@ -394,6 +394,32 @@
       </a>
     </li>
   </ul>
+  <div class="sidebar-section">Operasional</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/support/contracts" class="{{ 'active' if '/support/contracts' in request.path }}">
+        <i class="bi bi-file-earmark-text nav-icon"></i> Kontrak
+      </a>
+    </li>
+    <li>
+      <a href="/support/tickets" class="{{ 'active' if '/support/tickets' in request.path }}">
+        <i class="bi bi-ticket-detailed nav-icon"></i> Tiket Support
+      </a>
+    </li>
+  </ul>
+  <div class="sidebar-section">Analitik</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/support/sla-monitor" class="{{ 'active' if '/support/sla-monitor' in request.path }}">
+        <i class="bi bi-graph-up nav-icon"></i> Monitoring SLA
+      </a>
+    </li>
+    <li>
+      <a href="/support/reports" class="{{ 'active' if '/support/reports' in request.path }}">
+        <i class="bi bi-bar-chart-line nav-icon"></i> Laporan
+      </a>
+    </li>
+  </ul>
 
   {% else %}
   {# ── App sidebar: TalentCore ── #}

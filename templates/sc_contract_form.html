@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if row else 'Tambah' }} Kontrak — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if row else 'Tambah' }} Kontrak</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0">
+      <i class="bi bi-file-earmark-text text-primary me-2"></i>
+      {{ 'Edit Kontrak' if row else 'Tambah Kontrak Baru' }}
+    </h5>
+  </div>
+  <a href="/support/contracts" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Kembali
+  </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Kode Kontrak <span class="text-danger">*</span></label>
+          <input type="text" name="code" class="form-control" required
+                 value="{{ row.code if row else '' }}" placeholder="CTR-2024-001">
+        </div>
+        <div class="col-md-9">
+          <label class="form-label fw-semibold">Judul Kontrak <span class="text-danger">*</span></label>
+          <input type="text" name="title" class="form-control" required
+                 value="{{ row.title if row else '' }}" placeholder="Annual Technical Support ...">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Customer <span class="text-danger">*</span></label>
+          <select name="customer_id" class="form-select" required>
+            <option value="">— Pilih Customer —</option>
+            {% for c in customers %}
+            <option value="{{ c.id }}" {{ 'selected' if row and row.customer_id == c.id }}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Status</label>
+          <select name="status" class="form-select">
+            <option value="active"     {{ 'selected' if row and row.status=='active' }}>Aktif</option>
+            <option value="draft"      {{ 'selected' if row and row.status=='draft' }}>Draft</option>
+            <option value="terminated" {{ 'selected' if row and row.status=='terminated' }}>Terminated</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Nilai Kontrak (Rp)</label>
+          <input type="number" name="contract_value" class="form-control" min="0" step="1000"
+                 value="{{ row.contract_value if row else '' }}" placeholder="0">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Tanggal Mulai <span class="text-danger">*</span></label>
+          <input type="date" name="start_date" class="form-control" required
+                 value="{{ row.start_date if row else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Tanggal Selesai <span class="text-danger">*</span></label>
+          <input type="date" name="end_date" class="form-control" required
+                 value="{{ row.end_date if row else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Deskripsi</label>
+          <textarea name="description" class="form-control" rows="3">{{ row.description if row else '' }}</textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Catatan</label>
+          <textarea name="notes" class="form-control" rows="3">{{ row.notes if row else '' }}</textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold">Layanan/Jasa yang Dicakup</label>
+          <div class="row g-2">
+            {% for s in services %}
+            <div class="col-md-4 col-lg-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="service_ids" value="{{ s.id }}"
+                       id="svc_{{ s.id }}"
+                       {{ 'checked' if s.id in sel_services }}>
+                <label class="form-check-label small" for="svc_{{ s.id }}">{{ s.name }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-12 mt-2">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save me-1"></i>{{ 'Simpan Perubahan' if row else 'Tambah Kontrak' }}
+          </button>
+          <a href="/support/contracts" class="btn btn-outline-secondary ms-2">Batal</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

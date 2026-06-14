@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% block title %}Tiket Support — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Tiket Support</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-ticket-detailed text-primary me-2"></i>Tiket Support</h5>
+    <div class="text-muted small mt-1">Manajemen tiket technical support</div>
+  </div>
+  <a href="/support/tickets/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i>Buat Tiket
+  </a>
+</div>
+
+{# Filter #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Status</label>
+        <select name="status" class="form-select form-select-sm">
+          <option value="">Semua</option>
+          <option value="open"        {{ 'selected' if filter_status=='open' }}>Open</option>
+          <option value="in_progress" {{ 'selected' if filter_status=='in_progress' }}>In Progress</option>
+          <option value="resolved"    {{ 'selected' if filter_status=='resolved' }}>Resolved</option>
+          <option value="closed"      {{ 'selected' if filter_status=='closed' }}>Closed</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">Customer</label>
+        <select name="customer_id" class="form-select form-select-sm" style="min-width:160px">
+          <option value="">Semua</option>
+          {% for c in customers %}
+          <option value="{{ c.id }}" {{ 'selected' if filter_customer == c.id|string }}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">Tipe</label>
+        <select name="support_type_id" class="form-select form-select-sm" style="min-width:140px">
+          <option value="">Semua</option>
+          {% for t in support_types %}
+          <option value="{{ t.id }}" {{ 'selected' if filter_type == t.id|string }}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">Dari</label>
+        <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filter_date_from }}">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">S/d</label>
+        <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filter_date_to }}">
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-secondary">Filter</button>
+        <a href="/support/tickets" class="btn btn-sm btn-outline-secondary ms-1">Reset</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:130px">No. Tiket</th>
+          <th>Subjek</th>
+          <th>Customer</th>
+          <th>Tipe</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">SLA</th>
+          <th>Dilaporkan</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tickets %}
+        <tr>
+          <td class="ps-3">
+            <a href="/support/tickets/{{ t.id }}" class="badge bg-light border text-dark text-decoration-none fw-semibold" style="font-size:.75rem">
+              {{ t.ticket_no }}
+            </a>
+          </td>
+          <td>
+            <div class="fw-semibold small">
+              <a href="/support/tickets/{{ t.id }}" class="text-decoration-none text-dark">{{ t.subject }}</a>
+            </div>
+            {% if t.reported_by %}<div class="text-muted" style="font-size:.75rem">oleh {{ t.reported_by }}</div>{% endif %}
+          </td>
+          <td class="small">{{ t.customer_name }}</td>
+          <td class="small">{{ t.type_name }}</td>
+          <td class="text-center">
+            {% if t.status=='open' %}<span class="badge bg-secondary">Open</span>
+            {% elif t.status=='in_progress' %}<span class="badge bg-primary">In Progress</span>
+            {% elif t.status=='resolved' %}<span class="badge bg-success">Resolved</span>
+            {% else %}<span class="badge bg-dark">Closed</span>{% endif %}
+          </td>
+          <td class="text-center">
+            {% if t.sla_status=='met' %}<span class="badge bg-success">Met</span>
+            {% elif t.sla_status=='violated' %}<span class="badge bg-danger">Violated</span>
+            {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+          </td>
+          <td class="small text-muted">{{ t.reported_at[:16] if t.reported_at else '—' }}</td>
+          <td class="text-end pe-3">
+            <a href="/support/tickets/{{ t.id }}/edit" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-pencil"></i>
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">
+          <i class="bi bi-ticket-detailed" style="font-size:2rem;opacity:.3"></i>
+          <div class="mt-2">Belum ada tiket. <a href="/support/tickets/add">Buat tiket baru</a>.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

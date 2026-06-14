@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+{% block title %}Monitoring SLA — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Monitoring SLA</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-graph-up text-primary me-2"></i>Monitoring SLA</h5>
+    <div class="text-muted small mt-1">Dashboard kepatuhan SLA tiket support</div>
+  </div>
+  <form method="get" class="d-flex align-items-center gap-2">
+    <label class="small text-muted mb-0">Bulan:</label>
+    <input type="month" name="month" class="form-control form-control-sm" value="{{ month }}" style="width:150px">
+    <button type="submit" class="btn btn-sm btn-secondary">Tampilkan</button>
+  </form>
+</div>
+
+{# Summary Cards #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-2">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-primary">{{ total }}</div>
+        <div class="small text-muted">Total Tiket</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-secondary">{{ open_cnt }}</div>
+        <div class="small text-muted">Open</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-primary">{{ inprog }}</div>
+        <div class="small text-muted">In Progress</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-success">{{ sla_pct }}%</div>
+        <div class="small text-muted">SLA Met %</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-success">{{ sla_met }}</div>
+        <div class="small text-muted">SLA Met</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card border-0 shadow-sm text-center">
+      <div class="card-body py-3">
+        <div class="fs-2 fw-bold text-danger">{{ sla_vio }}</div>
+        <div class="small text-muted">SLA Violated</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Trend Chart #}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-transparent fw-semibold">Tren SLA 6 Bulan Terakhir</div>
+  <div class="card-body">
+    <canvas id="trendChart" height="80"></canvas>
+  </div>
+</div>
+
+<div class="row g-3">
+  {# By Customer #}
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold">Per Customer</div>
+      <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Customer</th>
+              <th class="text-center">Total</th>
+              <th class="text-center text-success">Met</th>
+              <th class="text-center text-danger">Violated</th>
+              <th class="text-center">Compliance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for name, s in by_customer.items() %}
+            <tr>
+              <td class="ps-3 small">{{ name }}</td>
+              <td class="text-center">{{ s.total }}</td>
+              <td class="text-center text-success">{{ s.met }}</td>
+              <td class="text-center text-danger">{{ s.violated }}</td>
+              <td class="text-center">
+                {% set pct = (s.met / s.total * 100)|round(1) if s.total > 0 else 0 %}
+                <span class="badge {{ 'bg-success' if pct >= 80 else ('bg-warning text-dark' if pct >= 50 else 'bg-danger') }}">
+                  {{ pct }}%
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">Tidak ada data</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# By Type #}
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold">Per Tipe Support</div>
+      <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Tipe</th>
+              <th class="text-center">Total</th>
+              <th class="text-center text-success">Met</th>
+              <th class="text-center text-danger">Violated</th>
+              <th class="text-center">Compliance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for name, s in by_type.items() %}
+            <tr>
+              <td class="ps-3 small">{{ name }}</td>
+              <td class="text-center">{{ s.total }}</td>
+              <td class="text-center text-success">{{ s.met }}</td>
+              <td class="text-center text-danger">{{ s.violated }}</td>
+              <td class="text-center">
+                {% set pct = (s.met / s.total * 100)|round(1) if s.total > 0 else 0 %}
+                <span class="badge {{ 'bg-success' if pct >= 80 else ('bg-warning text-dark' if pct >= 50 else 'bg-danger') }}">
+                  {{ pct }}%
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">Tidak ada data</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const ctx = document.getElementById('trendChart').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: {{ trend_labels | safe }},
+    datasets: [
+      {
+        label: 'SLA Met',
+        data: {{ trend_met | safe }},
+        backgroundColor: 'rgba(25,135,84,0.7)',
+        borderColor: 'rgba(25,135,84,1)',
+        borderWidth: 1
+      },
+      {
+        label: 'SLA Violated',
+        data: {{ trend_vio | safe }},
+        backgroundColor: 'rgba(220,53,69,0.7)',
+        borderColor: 'rgba(220,53,69,1)',
+        borderWidth: 1
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { position: 'top' } },
+    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+  }
+});
+</script>
+{% endblock %}

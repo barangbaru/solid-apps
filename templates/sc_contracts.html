@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% block title %}Kontrak Support — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Kontrak Support</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-file-earmark-text text-primary me-2"></i>Kontrak Support</h5>
+    <div class="text-muted small mt-1">Daftar kontrak support tahunan per customer</div>
+  </div>
+  <a href="/support/contracts/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i>Tambah Kontrak
+  </a>
+</div>
+
+{# Filter #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small mb-1">Customer</label>
+        <select name="customer_id" class="form-select form-select-sm" style="min-width:180px">
+          <option value="">Semua Customer</option>
+          {% for c in customers %}
+          <option value="{{ c.id }}" {{ 'selected' if filter_customer == c.id|string }}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small mb-1">Status</label>
+        <select name="status" class="form-select form-select-sm">
+          <option value="">Semua Status</option>
+          <option value="active"     {{ 'selected' if filter_status=='active' }}>Aktif</option>
+          <option value="expired"    {{ 'selected' if filter_status=='expired' }}>Expired</option>
+          <option value="draft"      {{ 'selected' if filter_status=='draft' }}>Draft</option>
+          <option value="terminated" {{ 'selected' if filter_status=='terminated' }}>Terminated</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-secondary">Filter</button>
+        <a href="/support/contracts" class="btn btn-sm btn-outline-secondary ms-1">Reset</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:110px">Kode</th>
+          <th>Judul Kontrak</th>
+          <th>Customer</th>
+          <th>Periode</th>
+          <th class="text-end">Nilai</th>
+          <th class="text-center">Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contracts %}
+        <tr>
+          <td class="ps-3">
+            <a href="/support/contracts/{{ c.id }}" class="badge bg-light border text-dark fw-semibold text-decoration-none" style="font-size:.75rem">
+              {{ c.code }}
+            </a>
+          </td>
+          <td>
+            <div class="fw-semibold">
+              <a href="/support/contracts/{{ c.id }}" class="text-decoration-none text-dark">{{ c.title }}</a>
+            </div>
+            {% if c.description %}<div class="text-muted small">{{ c.description[:80] }}{% if c.description|length > 80 %}…{% endif %}</div>{% endif %}
+          </td>
+          <td class="small">{{ c.customer_name }}</td>
+          <td class="small">
+            <div>{{ c.start_date }}</div>
+            <div class="text-muted">s/d {{ c.end_date }}</div>
+          </td>
+          <td class="text-end small">
+            {% if c.contract_value %}
+            Rp {{ '{:,.0f}'.format(c.contract_value) }}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-center">
+            {% set ds = c.display_status %}
+            {% if ds == 'active' %}<span class="badge bg-success">Aktif</span>
+            {% elif ds == 'expired' %}<span class="badge bg-warning text-dark">Expired</span>
+            {% elif ds == 'draft' %}<span class="badge bg-secondary">Draft</span>
+            {% elif ds == 'terminated' %}<span class="badge bg-danger">Terminated</span>
+            {% else %}<span class="badge bg-light text-dark">{{ ds }}</span>{% endif %}
+          </td>
+          <td class="text-end pe-3">
+            <a href="/support/contracts/{{ c.id }}/edit" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form action="/support/contracts/{{ c.id }}/delete" method="post" class="d-inline"
+                  data-confirm="Terminasi kontrak {{ c.code }}?"
+                  onsubmit="return confirm(this.dataset.confirm)">
+              <button class="btn btn-sm btn-outline-danger" title="Terminasi">
+                <i class="bi bi-x-circle"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">
+          <i class="bi bi-file-earmark-text" style="font-size:2rem;opacity:.3"></i>
+          <div class="mt-2">Belum ada kontrak. <a href="/support/contracts/add">Tambah sekarang</a>.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
