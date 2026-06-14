@@ -16,7 +16,7 @@
     {% if app.is_coming_soon %}
     <div class="card h-100 border-0 shadow-sm" style="opacity:.7; cursor:default">
     {% else %}
-    <a href="{{ app.url }}" class="card h-100 border-0 shadow-sm text-decoration-none app-card" style="transition:transform .15s,box-shadow .15s">
+    <a href="/portal/open/{{ app.slug }}" class="card h-100 border-0 shadow-sm text-decoration-none app-card" style="transition:transform .15s,box-shadow .15s">
     {% endif %}
       <div class="card-body p-4 d-flex flex-column">
         <div class="d-flex align-items-start justify-content-between mb-3">

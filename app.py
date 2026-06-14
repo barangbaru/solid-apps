@@ -715,7 +715,7 @@ def inject_globals():
         'user_perms':      user_perms,
         'ALL_PERMISSIONS': ALL_PERMISSIONS,
         'portal_apps':      portal_apps,
-        'current_app_slug': 'portal' if request.path.startswith('/portal') else 'evaluasi',
+        'current_app_slug': session.get('active_app') or 'portal',
     }
 
 # ─── Force MFA setup for all logged-in users ───────────────────────────────────
@@ -1177,8 +1177,8 @@ def mfa_setup():
                            (secret, user['id']))
                 db.commit()
                 session.pop('pending_totp_secret', None)
-                flash('Google Authenticator MFA berhasil diaktifkan!', 'success')
-                return redirect(url_for('profile'))
+                flash('Google Authenticator MFA berhasil diaktifkan! Silakan pilih aplikasi.', 'success')
+                return redirect(url_for('portal'))
             flash('Kode verifikasi salah. Scan ulang QR dan coba lagi.', 'danger')
             uri = get_totp_uri(secret, user['username'])
             qr  = qr_png_base64(uri)
@@ -1505,6 +1505,7 @@ def profile():
 @app.route('/portal')
 @login_required
 def portal():
+    session.pop('active_app', None)   # clear app saat kembali ke portal
     db   = get_db()
     role = session.get('user_role', '')
     uid  = session.get('user_id')
@@ -1517,6 +1518,27 @@ def portal():
             WHERE a.is_active=1 ORDER BY a.sort_order, a.name
         ''', (uid,)).fetchall()
     return render_template('portal.html', apps=apps)
+
+@app.route('/portal/open/<slug>')
+@login_required
+def portal_open(slug):
+    db  = get_db()
+    app_row = db.execute('SELECT * FROM superapp_apps WHERE slug=? AND is_active=1', (slug,)).fetchone()
+    if not app_row:
+        flash('Aplikasi tidak ditemukan.', 'danger')
+        return redirect(url_for('portal'))
+    # Cek akses (superadmin bypass)
+    if session.get('user_role') != 'superadmin':
+        acc = db.execute('SELECT 1 FROM user_app_access WHERE user_id=? AND app_slug=? AND is_active=1',
+                         (session['user_id'], slug)).fetchone()
+        if not acc:
+            flash('Anda tidak memiliki akses ke aplikasi ini.', 'danger')
+            return redirect(url_for('portal'))
+    if app_row['is_coming_soon']:
+        flash('Aplikasi ini belum tersedia.', 'info')
+        return redirect(url_for('portal'))
+    session['active_app'] = slug
+    return redirect(app_row['url'])
 
 @app.route('/portal/settings', methods=['GET', 'POST'])
 @login_required
