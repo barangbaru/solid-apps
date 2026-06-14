@@ -12,6 +12,10 @@ import pyotp, qrcode
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'evalkey-2024-superadmin-secure!')
 
+# Agar request.host_url benar di balik nginx (ProxyFix)
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 _default_db = os.path.join(os.path.dirname(__file__), 'evaluasi.db')
 DB_PATH = os.environ.get('DATABASE_PATH', _default_db)
 DIVISI_LIST = list(ALL_DIVISIONS.keys())
@@ -294,6 +298,7 @@ DEFAULT_SETTINGS = {
     'openwa_session_id': 'default',
     'openwa_enabled': '0',
     'openwa_extra_phones': '',
+    'app_url': '',  # URL publik aplikasi mis. https://evaluasi.perusahaan.com (kosong = auto-detect)
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director']
@@ -1136,14 +1141,13 @@ def admin_send_reset(uid):
                (uid, token, expires))
     db.commit()
     settings   = get_settings(db)
-    base_url   = request.host_url.rstrip('/')
-    reset_link = f"{base_url}/reset-password/{token}"
+    reset_link = f"{get_base_url(settings)}/reset-password/{token}"
     sent = _send_reset_notifications(dict(user), reset_link, settings, db)
     if sent:
         flash(f'Link reset password dikirim ke {user["username"]} via: {", ".join(sent)}.', 'success')
     else:
-        flash(f'Token dibuat tapi tidak ada kontak (email/WA/Telegram) yang terdaftar untuk {user["username"]}. '
-              f'Link: {reset_link}', 'warning')
+        flash(f'Tidak ada kontak terdaftar untuk {user["username"]}. '
+              f'Salin link ini dan kirim manual: {reset_link}', 'warning')
     return redirect(url_for('users_list'))
 
 @app.route('/admin/users/<int:uid>/mfa-reset', methods=['POST'])
@@ -1156,6 +1160,14 @@ def admin_mfa_reset(uid):
     return redirect(url_for('users_list'))
 
 # ─── Forgot / Reset Password ───────────────────────────────────────────────────
+
+def get_base_url(settings=None):
+    """Kembalikan URL publik aplikasi. Prioritas: setting app_url > ProxyFix request.host_url."""
+    if settings:
+        configured = (settings.get('app_url') or '').strip().rstrip('/')
+        if configured:
+            return configured
+    return request.host_url.rstrip('/')
 
 RESET_TOKEN_TTL = 3600  # 1 jam
 
@@ -1212,13 +1224,14 @@ def _send_reset_notifications(user, reset_link, settings, db=None):
     # WhatsApp
     wa_url     = settings.get('openwa_url','').strip()
     wa_key     = settings.get('openwa_api_key','').strip()
-    wa_session = settings.get('openwa_session','').strip()
+    wa_session = settings.get('openwa_session_id','').strip()  # fix: key benar
     if wa_url and contacts.get('phone'):
         wa_msg = (f'🔐 Reset Password\n\nHalo {display_name},\n'
                   f'Link reset password akun *{user["username"]}*:\n\n{reset_link}\n\n'
                   f'Link berlaku 1 jam dan langsung kadaluarsa setelah dibuka.')
-        send_whatsapp(wa_url, wa_key, wa_session, contacts['phone'], wa_msg)
-        sent.append('whatsapp')
+        ok, _ = send_whatsapp(wa_url, wa_key, wa_session, contacts['phone'], wa_msg)
+        if ok:
+            sent.append('whatsapp')
 
     return sent
 
@@ -1244,12 +1257,19 @@ def forgot_password():
                 (user['id'], token, expires)
             )
             db.commit()
-            settings = get_settings(db)
-            base_url = request.host_url.rstrip('/')
-            reset_link = f"{base_url}/reset-password/{token}"
+            settings   = get_settings(db)
+            reset_link = f"{get_base_url(settings)}/reset-password/{token}"
             sent = _send_reset_notifications(dict(user), reset_link, settings, db)
-            flash(f'Link reset password telah dikirim via: {", ".join(sent) if sent else "—"}. '
-                  f'Cek email/Telegram/WhatsApp Anda.', 'success')
+            contacts = get_user_contacts(db, dict(user))
+            if sent:
+                flash(f'Link reset password dikirim via: {", ".join(sent)}. '
+                      f'Cek email/Telegram/WhatsApp Anda.', 'success')
+            elif not any([contacts.get('email'), contacts.get('phone'), contacts.get('telegram_id')]):
+                flash('Tidak ada kontak (email/WA/Telegram) yang terdaftar pada akun ini. '
+                      'Hubungi admin untuk reset password.', 'danger')
+            else:
+                flash('Gagal mengirim notifikasi — periksa konfigurasi email/WA/Telegram di pengaturan. '
+                      'Hubungi admin untuk mendapatkan link reset.', 'warning')
         else:
             # Pesan generik agar tidak bisa enumerate user
             flash('Jika username/email terdaftar, link reset akan dikirim ke kontak yang tersimpan.', 'info')
