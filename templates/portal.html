@@ -21,6 +21,7 @@
     <p class="text-muted mb-0" style="font-size:.88rem">Pilih aplikasi yang ingin Anda gunakan.</p>
   </div>
 
+  {% if apps %}
   <div class="row g-3">
     {% for app in apps %}
     <div class="col-sm-6 col-lg-4 col-xl-3">
@@ -49,6 +50,31 @@
     </div>
     {% endfor %}
   </div>
+  {% else %}
+  <div class="d-flex flex-column align-items-center justify-content-center py-5 mt-4">
+    <div class="mb-4 d-flex gap-2">
+      <div style="width:48px;height:48px;background:#e8f4fd;border-radius:12px;display:flex;align-items:center;justify-content:center">
+        <i class="bi bi-grid" style="color:#4da8da;font-size:1.4rem"></i>
+      </div>
+      <div style="width:48px;height:48px;background:#e6faf8;border-radius:12px;display:flex;align-items:center;justify-content:center">
+        <i class="bi bi-headset" style="color:#0d9488;font-size:1.4rem"></i>
+      </div>
+      <div style="width:48px;height:48px;background:#f0ecff;border-radius:12px;display:flex;align-items:center;justify-content:center;opacity:.4">
+        <i class="bi bi-box-seam" style="color:#6f42c1;font-size:1.4rem"></i>
+      </div>
+    </div>
+    <h6 class="fw-bold mb-2" style="color:#1e2a3a">Akun Anda belum memiliki akses aplikasi</h6>
+    <p class="text-muted text-center mb-4" style="font-size:.88rem;max-width:380px;line-height:1.6">
+      Akun Anda berhasil terdaftar melalui Google. Silakan hubungi administrator untuk mendapatkan akses ke aplikasi yang Anda butuhkan.
+    </p>
+    <div class="d-flex align-items-center gap-2 px-4 py-3 rounded-3"
+         style="background:#f8f9fa;border:1px solid #e9ecef;font-size:.83rem;color:#6c757d">
+      <i class="bi bi-envelope me-1"></i>
+      <span>Informasikan email Google Anda kepada administrator:</span>
+      <strong style="color:#1e2a3a">{{ current_user.email or current_user.username }}</strong>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <style>

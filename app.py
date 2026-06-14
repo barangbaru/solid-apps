@@ -1608,11 +1608,21 @@ def login_google_callback():
                           (google_email,)).fetchone()
 
     if not user:
-        flash(f'Akun dengan email {google_email} tidak terdaftar di sistem. '
-              'Hubungi administrator untuk mendapatkan akses.', 'danger')
-        audit_log('login_google_rejected', 'users', 0,
-                  f'Email tidak ditemukan: {google_email}', app_slug='portal')
-        return redirect(url_for('login'))
+        # Auto-create user baru tanpa akses app — admin harus grant via Akses Aplikasi
+        username_base = google_email.split('@')[0].lower().replace('.', '_')
+        username = username_base
+        suffix = 1
+        while db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone():
+            username = f'{username_base}{suffix}'
+            suffix += 1
+        cur = db.execute(
+            'INSERT INTO users(username,password_hash,full_name,role,email,google_id,is_active) VALUES(?,?,?,?,?,?,1)',
+            (username, generate_password_hash(secrets.token_hex(32), method='pbkdf2:sha256'),
+             google_name, 'user', google_email, google_id))
+        db.commit()
+        user = db.execute('SELECT * FROM users WHERE id=?', (cur.lastrowid,)).fetchone()
+        audit_log('register_google', 'users', user['id'],
+                  f'Akun baru via Google ({google_email})', app_slug='portal')
 
     # Update google_id dan last_login
     db.execute("UPDATE users SET google_id=?, last_login=? WHERE id=?",
@@ -2035,7 +2045,7 @@ def portal_settings():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     db    = get_db()
-    users = db.execute('SELECT id, username, full_name, role FROM users WHERE is_active=1 ORDER BY username').fetchall()
+    users = db.execute('SELECT id, username, full_name, role, email, google_id FROM users WHERE is_active=1 ORDER BY role DESC, username').fetchall()
     apps  = db.execute('SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
 
     if request.method == 'POST':
