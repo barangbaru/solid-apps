@@ -724,7 +724,7 @@ def inject_globals():
 def enforce_mfa_setup():
     if 'user_id' not in session:
         return
-    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'portal', 'portal_settings', 'static'}
+    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'static'}
     if request.endpoint in exempt or (request.endpoint or '').startswith('static'):
         return
     try:
