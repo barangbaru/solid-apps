@@ -286,4 +286,4 @@ APP_PERMISSIONS = {
 
 ---
 
-*Internal use — Tim IT MMI*
+*Developed by barangbaru & AI Team*
