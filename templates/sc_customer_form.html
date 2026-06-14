@@ -151,6 +151,49 @@
           {% endif %}
         </div>
 
+        {# Tipe Customer #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-tag text-primary me-1"></i>Tipe Customer
+          </label>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="customer_type" id="typeAktif"
+                     value="aktif" {{ 'checked' if not row or (row.customer_type or 'aktif') == 'aktif' }}>
+              <label class="form-check-label small fw-semibold text-success" for="typeAktif">
+                <i class="bi bi-check-circle me-1"></i>Aktif
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="customer_type" id="typeCalon"
+                     value="calon" {{ 'checked' if row and row.customer_type == 'calon' }}>
+              <label class="form-check-label small fw-semibold text-warning" for="typeCalon">
+                <i class="bi bi-hourglass-split me-1"></i>Calon (Prospect)
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {# PIC Sales #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-person-badge-fill text-warning me-1"></i>PIC Sales
+          </label>
+          {% if sales %}
+          <select name="pic_sales_id" class="form-select form-select-sm">
+            <option value="">— Tidak ditentukan —</option>
+            {% for e in sales %}
+            <option value="{{ e.id }}" {{ 'selected' if row and row.pic_sales_id == e.id }}>
+              {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <div class="text-muted small fst-italic">Tidak ada karyawan divisi Sales.</div>
+          <input type="hidden" name="pic_sales_id" value="">
+          {% endif %}
+        </div>
+
         {# Telegram Group #}
         <div class="mb-3">
           <label class="form-label fw-semibold small">

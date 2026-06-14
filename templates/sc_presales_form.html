@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if row else 'Buat' }} Request Presales — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if row else 'Buat' }} Request Presales/POC</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="fw-bold mb-0">
+    <i class="bi bi-person-plus text-primary me-2"></i>
+    {{ 'Edit Request ' + row.req_no if row else 'Buat Request Baru' }}
+  </h5>
+  <a href="/support/presales" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Kembali
+  </a>
+</div>
+
+<form method="post">
+<div class="row g-3">
+
+  {# ── Kolom kiri ── #}
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-info-circle me-1"></i>Informasi Request
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+
+          {# Tipe Request #}
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Tipe Request <span class="text-danger">*</span></label>
+            <div class="d-flex gap-4">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="request_type" id="typePresales"
+                       value="presales" {{ 'checked' if not row or (row.request_type or 'presales') == 'presales' }}>
+                <label class="form-check-label fw-semibold" for="typePresales">
+                  <span class="badge bg-primary me-1">P</span>Presales Awal
+                  <div class="text-muted small fw-normal">Presentasi produk, demo awal kepada calon customer</div>
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="request_type" id="typePOC"
+                       value="poc" {{ 'checked' if row and row.request_type == 'poc' }}>
+                <label class="form-check-label fw-semibold" for="typePOC">
+                  <span class="badge bg-warning text-dark me-1">POC</span>Proof of Concept
+                  <div class="text-muted small fw-normal">Implementasi percobaan / uji coba teknis</div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {# Customer #}
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">Customer <span class="text-danger">*</span></label>
+            <select name="customer_id" class="form-select form-select-sm" required>
+              <option value="">— Pilih Customer —</option>
+              {% for c in calon_customers %}
+              <option value="{{ c.id }}" {{ 'selected' if row and row.customer_id == c.id }}>
+                {{ c.code }} — {{ c.name }}
+              </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">
+              Customer aktif maupun calon (prospect) bisa dipilih.
+              <a href="/support/customers/add">Tambah customer baru</a>
+            </div>
+          </div>
+
+          {# Status (hanya di edit) #}
+          {% if row %}
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Status</label>
+            <select name="status" class="form-select form-select-sm">
+              {% for val, label, color in sc_presales_statuses %}
+              <option value="{{ val }}" {{ 'selected' if row.status == val }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Subjek / Judul Request <span class="text-danger">*</span></label>
+            <input type="text" name="subject" class="form-control form-control-sm" required
+                   value="{{ row.subject if row else '' }}"
+                   placeholder="Cth: Demo Modul HR untuk PT. XYZ">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Deskripsi Kebutuhan</label>
+            <textarea name="description" class="form-control form-control-sm" rows="4"
+                      placeholder="Jelaskan kebutuhan teknis, scope demo/POC, timeline yang diharapkan...">{{ row.description if row else '' }}</textarea>
+          </div>
+
+          {% if row %}
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Keterangan Status</label>
+            <textarea name="status_note" class="form-control form-control-sm" rows="2"
+                      placeholder="Update progress, kendala, atau catatan terbaru...">{{ row.status_note if row else '' }}</textarea>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Kolom kanan: Assignee ── #}
+  <div class="col-lg-4">
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted d-flex justify-content-between">
+        <span><i class="bi bi-people me-1"></i>Tim Technical</span>
+        <span class="badge bg-primary" id="assigneeBadge">{{ sel_assignees|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="px-3 py-2 bg-light border-bottom" style="font-size:.78rem;color:#6b7280">
+          <i class="bi bi-info-circle me-1"></i>
+          Pilih PIC technical dari berbagai divisi yang akan terlibat
+        </div>
+        <div style="max-height:350px;overflow-y:auto">
+          {% set ns = namespace(cur_div='') %}
+          {% for e in employees %}
+            {% if e.divisi != ns.cur_div %}
+              {% if ns.cur_div != '' %}</ul>{% endif %}
+              {% set ns.cur_div = e.divisi %}
+              <div class="px-3 pt-2 pb-1 text-muted fw-bold" style="font-size:.7rem;background:#f8f9fa;letter-spacing:.03em;text-transform:uppercase">
+                {{ e.divisi or 'Lainnya' }}
+              </div>
+              <ul class="list-unstyled mb-0">
+            {% endif %}
+            <li class="px-3 py-1 border-bottom">
+              <div class="form-check form-check-sm">
+                <input class="form-check-input assignee-cb" type="checkbox"
+                       name="assignee_ids" value="{{ e.id }}"
+                       id="pa_{{ e.id }}"
+                       {{ 'checked' if e.id in sel_assignees }}
+                       onchange="updateBadge()">
+                <label class="form-check-label small" for="pa_{{ e.id }}">
+                  <span class="fw-semibold">{{ e.name }}</span>
+                  {% if e.jabatan %}<span class="text-muted"> — {{ e.jabatan }}</span>{% endif %}
+                </label>
+              </div>
+            </li>
+          {% endfor %}
+          {% if employees %}</ul>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-body d-grid gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save me-1"></i>{{ 'Simpan Perubahan' if row else 'Buat Request' }}
+        </button>
+        <a href="/support/presales" class="btn btn-outline-secondary btn-sm">Batal</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateBadge() {
+  const cnt = document.querySelectorAll('.assignee-cb:checked').length;
+  document.getElementById('assigneeBadge').textContent = cnt;
+}
+</script>
+{% endblock %}

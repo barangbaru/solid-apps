@@ -21,123 +21,275 @@
 </div>
 
 <div class="row g-3">
-  {# Status & Quick Actions #}
-  <div class="col-md-4">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Status Tiket</div>
+
+  {# ── Kolom kiri: Status, Assignees, SLA ── #}
+  <div class="col-lg-4">
+
+    {# Status Panel #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-activity me-1"></i>Status Tiket
+      </div>
       <div class="card-body">
-        <div class="mb-3 text-center">
-          {% if t.status=='open' %}<span class="badge bg-secondary fs-6 px-3 py-2">Open</span>
-          {% elif t.status=='in_progress' %}<span class="badge bg-primary fs-6 px-3 py-2">In Progress</span>
-          {% elif t.status=='resolved' %}<span class="badge bg-success fs-6 px-3 py-2">Resolved</span>
-          {% else %}<span class="badge bg-dark fs-6 px-3 py-2">Closed</span>{% endif %}
+        {% set status_map = dict(sc_ticket_statuses) %}
+        {% for val, label, color in sc_ticket_statuses %}
+          {% if t.status == val %}
+        <div class="text-center mb-3">
+          <span class="badge bg-{{ color }} fs-6 px-3 py-2">{{ label }}</span>
         </div>
-        <div class="d-grid gap-2">
-          {% if t.status == 'open' %}
-          <form action="/support/tickets/{{ t.id }}/status" method="post"
-                data-confirm="Ubah status ke In Progress?"
-                onsubmit="return confirm(this.dataset.confirm)">
-            <input type="hidden" name="new_status" value="in_progress">
-            <button class="btn btn-primary btn-sm w-100"><i class="bi bi-play-fill me-1"></i>Mulai Kerjakan</button>
-          </form>
           {% endif %}
-          {% if t.status in ['open','in_progress'] %}
-          <form action="/support/tickets/{{ t.id }}/status" method="post"
-                data-confirm="Tandai sebagai Resolved?"
-                onsubmit="return confirm(this.dataset.confirm)">
-            <input type="hidden" name="new_status" value="resolved">
-            <button class="btn btn-success btn-sm w-100"><i class="bi bi-check-circle me-1"></i>Resolved</button>
-          </form>
-          {% endif %}
-          {% if t.status == 'resolved' %}
-          <form action="/support/tickets/{{ t.id }}/status" method="post"
-                data-confirm="Tutup tiket ini?"
-                onsubmit="return confirm(this.dataset.confirm)">
-            <input type="hidden" name="new_status" value="closed">
-            <button class="btn btn-dark btn-sm w-100"><i class="bi bi-lock me-1"></i>Tutup Tiket</button>
-          </form>
-          {% endif %}
+        {% endfor %}
+        {% if t.status_note %}
+        <div class="alert alert-light border py-2 small mb-3">
+          <i class="bi bi-chat-text me-1 text-muted"></i>{{ t.status_note }}
         </div>
+        {% endif %}
+
+        {# Progress #}
+        {% if t.pct_done is not none %}
+        <div class="mb-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span class="text-muted">Progress</span>
+            <span class="fw-semibold">{{ t.pct_done }}%</span>
+          </div>
+          <div class="progress" style="height:6px">
+            <div class="progress-bar bg-success" style="width:{{ t.pct_done }}%"></div>
+          </div>
+        </div>
+        {% endif %}
+
+        {# Quick status change #}
+        <form action="/support/tickets/{{ t.id }}/status" method="post" class="mb-2">
+          <div class="mb-2">
+            <select name="new_status" class="form-select form-select-sm">
+              {% for val, label, color in sc_ticket_statuses %}
+              <option value="{{ val }}" {{ 'selected' if t.status == val }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <textarea name="status_note" class="form-control form-control-sm" rows="2"
+                      placeholder="Keterangan perubahan status...">{{ t.status_note or '' }}</textarea>
+          </div>
+          <div class="row g-1 mb-2">
+            <div class="col-6">
+              <input type="number" name="pct_done" class="form-control form-control-sm"
+                     placeholder="% Done" min="0" max="100" value="{{ t.pct_done or 0 }}">
+            </div>
+            <div class="col-6">
+              <input type="number" name="mandays" class="form-control form-control-sm"
+                     placeholder="Mandays" min="0" step="0.5" value="{{ t.mandays or '' }}">
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-arrow-repeat me-1"></i>Update Status
+          </button>
+        </form>
       </div>
     </div>
 
-    {# SLA Compliance #}
-    <div class="card border-0 shadow-sm mt-3">
-      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Kepatuhan SLA</div>
+    {# Assignees #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-people me-1"></i>Assignee
+        <span class="badge bg-primary ms-1">{{ assignees|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% if assignees %}
+          {% set ns = namespace(cur_div='') %}
+          {% for a in assignees %}
+            {% if a.divisi != ns.cur_div %}
+              {% set ns.cur_div = a.divisi %}
+              <div class="px-3 pt-2 pb-1 text-muted" style="font-size:.7rem;font-weight:600;background:#f8f9fa;text-transform:uppercase">
+                {{ a.divisi or 'Lainnya' }}
+              </div>
+            {% endif %}
+            <div class="d-flex align-items-center gap-2 px-3 py-2 border-bottom" style="font-size:.83rem">
+              <i class="bi bi-person-fill text-primary" style="width:16px"></i>
+              <div>
+                <div class="fw-semibold">{{ a.name }}</div>
+                {% if a.jabatan %}<div class="text-muted" style="font-size:.72rem">{{ a.jabatan }}</div>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        {% else %}
+        <div class="text-muted small text-center py-3">
+          <i class="bi bi-person-dash opacity-25" style="font-size:1.5rem"></i>
+          <div class="mt-1">Belum ada assignee.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# SLA #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-speedometer2 me-1"></i>Kepatuhan SLA
+      </div>
       <div class="card-body">
         <div class="mb-2">
-          <div class="small text-muted mb-1">Response SLA
-            {% if t.response_time_hours %}(≤ {{ t.response_time_hours }}j){% endif %}
-          </div>
-          {% if t.resp_sla=='met' %}
-            <span class="badge bg-success">Met</span>
-            {% if t.resp_hours %}<span class="ms-1 small text-muted">{{ t.resp_hours }}j</span>{% endif %}
-          {% elif t.resp_sla=='violated' %}
-            <span class="badge bg-danger">Violated</span>
-            {% if t.resp_hours %}<span class="ms-1 small text-muted">{{ t.resp_hours }}j</span>{% endif %}
-          {% else %}
-            <span class="badge bg-warning text-dark">Pending</span>
-          {% endif %}
+          <div class="small text-muted mb-1">Response SLA{% if t.response_time_hours %} (≤{{ t.response_time_hours }}j){% endif %}</div>
+          {% if t.resp_sla=='met' %}<span class="badge bg-success">Met</span> <span class="text-muted small">{{ t.resp_hours }}j</span>
+          {% elif t.resp_sla=='violated' %}<span class="badge bg-danger">Violated</span> <span class="text-muted small">{{ t.resp_hours }}j</span>
+          {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
         </div>
         <div>
-          <div class="small text-muted mb-1">Resolution SLA
-            {% if t.resolution_time_hours %}(≤ {{ t.resolution_time_hours }}j){% endif %}
-          </div>
-          {% if t.res_sla=='met' %}
-            <span class="badge bg-success">Met</span>
-            {% if t.res_hours %}<span class="ms-1 small text-muted">{{ t.res_hours }}j</span>{% endif %}
-          {% elif t.res_sla=='violated' %}
-            <span class="badge bg-danger">Violated</span>
-            {% if t.res_hours %}<span class="ms-1 small text-muted">{{ t.res_hours }}j</span>{% endif %}
-          {% else %}
-            <span class="badge bg-warning text-dark">Pending</span>
-          {% endif %}
+          <div class="small text-muted mb-1">Resolution SLA{% if t.resolution_time_hours %} (≤{{ t.resolution_time_hours }}j){% endif %}</div>
+          {% if t.res_sla=='met' %}<span class="badge bg-success">Met</span> <span class="text-muted small">{{ t.res_hours }}j</span>
+          {% elif t.res_sla=='violated' %}<span class="badge bg-danger">Violated</span> <span class="text-muted small">{{ t.res_hours }}j</span>
+          {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
         </div>
       </div>
     </div>
   </div>
 
-  {# Detail Info #}
-  <div class="col-md-8">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Informasi Tiket</div>
-      <div class="card-body">
-        <table class="table table-sm mb-0">
-          <tr><th class="text-muted fw-normal" style="width:160px">No. Tiket</th>
-              <td><span class="badge bg-light border text-dark fw-semibold">{{ t.ticket_no }}</span></td></tr>
-          <tr><th class="text-muted fw-normal">Customer</th><td>{{ t.customer_name }}</td></tr>
+  {# ── Kolom kanan: Info, Solusi, History ── #}
+  <div class="col-lg-8">
+
+    {# Info Tiket #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-info-circle me-1"></i>Informasi Tiket
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.85rem">
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3" style="width:160px">No. Tiket</th>
+            <td><span class="badge bg-light border text-dark fw-semibold">{{ t.ticket_no }}</span></td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Customer</th>
+            <td class="fw-semibold">{{ t.customer_name }}</td>
+          </tr>
           {% if t.contract_code %}
-          <tr><th class="text-muted fw-normal">Kontrak</th>
-              <td><a href="/support/contracts/{{ t.contract_id }}">{{ t.contract_code }}</a> — {{ t.contract_title }}</td></tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Kontrak</th>
+            <td><a href="/support/contracts/{{ t.contract_id }}">{{ t.contract_code }}</a> — {{ t.contract_title }}</td>
+          </tr>
           {% endif %}
-          <tr><th class="text-muted fw-normal">Tipe Support</th><td>{{ t.type_name }}</td></tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Tipe Support</th>
+            <td>{{ t.type_name }}</td>
+          </tr>
           {% if t.sla_name %}
-          <tr><th class="text-muted fw-normal">Kategori SLA</th><td>{{ t.sla_name }}</td></tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Kategori SLA</th>
+            <td>{{ t.sla_name }}</td>
+          </tr>
           {% endif %}
-          <tr><th class="text-muted fw-normal">Dilaporkan Oleh</th><td>{{ t.reported_by or '—' }}</td></tr>
-          <tr><th class="text-muted fw-normal">Waktu Lapor</th><td>{{ t.reported_at[:16] if t.reported_at else '—' }}</td></tr>
-          <tr><th class="text-muted fw-normal">Waktu Respons</th><td>{{ t.responded_at[:16] if t.responded_at else '—' }}</td></tr>
-          <tr><th class="text-muted fw-normal">Waktu Resolved</th><td>{{ t.resolved_at[:16] if t.resolved_at else '—' }}</td></tr>
-          <tr><th class="text-muted fw-normal">Waktu Closed</th><td>{{ t.closed_at[:16] if t.closed_at else '—' }}</td></tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Media Lapor</th>
+            <td>{{ t.media_lapor or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Dilaporkan Oleh</th>
+            <td>{{ t.reported_by or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Waktu Lapor</th>
+            <td>{{ t.reported_at[:16] if t.reported_at else '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Respons</th>
+            <td>{{ t.responded_at[:16] if t.responded_at else '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Resolved</th>
+            <td>{{ t.resolved_at[:16] if t.resolved_at else '—' }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal ps-3">Closed</th>
+            <td>{{ t.closed_at[:16] if t.closed_at else '—' }}</td>
+          </tr>
         </table>
       </div>
     </div>
 
-    <div class="card border-0 shadow-sm mt-3">
-      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Deskripsi</div>
-      <div class="card-body">
-        <p class="mb-0">{{ t.description or '(tidak ada deskripsi)' }}</p>
+    {# Deskripsi #}
+    {% if t.description %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-file-text me-1"></i>Deskripsi
       </div>
+      <div class="card-body" style="font-size:.88rem;white-space:pre-wrap">{{ t.description }}</div>
     </div>
+    {% endif %}
 
-    {% if t.notes %}
-    <div class="card border-0 shadow-sm mt-3">
-      <div class="card-header bg-transparent fw-semibold border-bottom-0 pb-0">Catatan</div>
-      <div class="card-body">
-        <p class="mb-0 small">{{ t.notes }}</p>
+    {# Solusi #}
+    {% if t.solution_type or t.solution_note %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-check2-circle me-1"></i>Penyelesaian
+      </div>
+      <div class="card-body" style="font-size:.88rem">
+        {% if t.solution_type %}
+        <div class="mb-2">
+          <span class="text-muted small">Tipe Solusi:</span>
+          <span class="badge bg-success-subtle text-success border border-success ms-1">{{ t.solution_type }}</span>
+        </div>
+        {% endif %}
+        <div class="row g-2 mb-2">
+          {% if t.work_start_date %}<div class="col-auto"><span class="text-muted small">Mulai:</span> <strong>{{ t.work_start_date }}</strong></div>{% endif %}
+          {% if t.due_date %}<div class="col-auto"><span class="text-muted small">Due:</span> <strong>{{ t.due_date }}</strong></div>{% endif %}
+          {% if t.mandays %}<div class="col-auto"><span class="text-muted small">Mandays:</span> <strong>{{ t.mandays }}</strong></div>{% endif %}
+        </div>
+        {% if t.solution_note %}
+        <div class="p-2 bg-light rounded" style="white-space:pre-wrap">{{ t.solution_note }}</div>
+        {% endif %}
       </div>
     </div>
     {% endif %}
+
+    {# History #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-clock-history me-1"></i>Riwayat Perubahan
+        <span class="badge bg-secondary ms-1">{{ history|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% if history %}
+        <div style="max-height:400px;overflow-y:auto">
+          {% for h in history %}
+          {% set action_icons = {
+            'created':         ('bi-plus-circle-fill','success'),
+            'status_change':   ('bi-arrow-repeat','primary'),
+            'assignee_added':  ('bi-person-plus-fill','info'),
+            'assignee_removed':('bi-person-dash-fill','warning'),
+            'update':          ('bi-pencil-fill','secondary'),
+          } %}
+          {% set ico, col = action_icons.get(h.action, ('bi-circle-fill','secondary')) %}
+          <div class="d-flex gap-3 px-3 py-2 border-bottom" style="font-size:.82rem">
+            <div class="flex-shrink-0 mt-1">
+              <i class="bi {{ ico }} text-{{ col }}"></i>
+            </div>
+            <div class="flex-grow-1">
+              <div class="d-flex justify-content-between">
+                <span class="fw-semibold">{{ h.changed_by_name or 'System' }}</span>
+                <span class="text-muted">{{ h.created_at[:16] if h.created_at else '' }}</span>
+              </div>
+              {% if h.notes %}
+              <div class="text-muted mt-1">{{ h.notes }}</div>
+              {% endif %}
+              {% if h.old_value or h.new_value %}
+              <div class="mt-1 d-flex align-items-center gap-2" style="font-size:.78rem">
+                {% if h.old_value %}<span class="badge bg-danger-subtle text-danger border">{{ h.old_value }}</span>{% endif %}
+                {% if h.old_value and h.new_value %}<i class="bi bi-arrow-right text-muted"></i>{% endif %}
+                {% if h.new_value %}<span class="badge bg-success-subtle text-success border">{{ h.new_value }}</span>{% endif %}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small text-center py-4">
+          <i class="bi bi-clock opacity-25" style="font-size:1.5rem"></i>
+          <div class="mt-1">Belum ada riwayat perubahan.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
   </div>
 </div>
 {% endblock %}

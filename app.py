@@ -277,6 +277,66 @@ CREATE TABLE IF NOT EXISTS user_app_access (
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- ─── SupportCore: Ticket History & Multi-Assignee ────────────────────────────
+CREATE TABLE IF NOT EXISTS sc_ticket_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    changed_by INTEGER,
+    changed_by_name TEXT DEFAULT '',
+    action TEXT DEFAULT '',
+    field_name TEXT DEFAULT '',
+    old_value TEXT DEFAULT '',
+    new_value TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(ticket_id) REFERENCES sc_tickets(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS sc_ticket_assignees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    employee_id INTEGER NOT NULL,
+    divisi TEXT DEFAULT '',
+    role_note TEXT DEFAULT '',
+    assigned_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(ticket_id, employee_id),
+    FOREIGN KEY(ticket_id) REFERENCES sc_tickets(id) ON DELETE CASCADE,
+    FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
+-- ─── SupportCore: Presales & POC ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sc_presales_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    req_no TEXT NOT NULL UNIQUE,
+    customer_id INTEGER NOT NULL,
+    request_type TEXT DEFAULT 'presales',
+    subject TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT DEFAULT 'new',
+    status_note TEXT DEFAULT '',
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(customer_id) REFERENCES sc_customers(id)
+);
+CREATE TABLE IF NOT EXISTS sc_presales_assignees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL,
+    employee_id INTEGER NOT NULL,
+    divisi TEXT DEFAULT '',
+    role_note TEXT DEFAULT '',
+    UNIQUE(request_id, employee_id),
+    FOREIGN KEY(request_id) REFERENCES sc_presales_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY(employee_id) REFERENCES employees(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS sc_presales_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL,
+    changed_by INTEGER,
+    changed_by_name TEXT DEFAULT '',
+    action TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(request_id) REFERENCES sc_presales_requests(id) ON DELETE CASCADE
+);
+
 -- ─── Audit Trail ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS audit_activity (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -479,6 +539,8 @@ MIGRATIONS = [
     ('sc_tickets',         'due_date',                "TEXT DEFAULT NULL"),
     ('sc_tickets',         'work_start_date',         "TEXT DEFAULT NULL"),
     ('sc_tickets',         'media_lapor',             "TEXT DEFAULT ''"),
+    ('sc_customers',       'customer_type',           "TEXT DEFAULT 'aktif'"),
+    ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
 ]
 
 SC_TICKET_STATUSES = [
@@ -557,6 +619,7 @@ APP_PERMISSIONS = {
         'sc_manage_apps':      'Kelola master aplikasi & modul',
         'sc_manage_contracts': 'Kelola kontrak support tahunan',
         'sc_manage_tickets':   'Buat/update tiket support',
+        'sc_manage_presales':  'Kelola request Presales & POC',
         'sc_view_reports':     'Lihat laporan & monitoring SLA',
     },
 }
@@ -576,7 +639,7 @@ SYSTEM_ROLE_DEFAULTS = {
     'admin': ['manage_employees','manage_divisions','manage_evaluations',
               'view_evaluations','send_reminders','manage_template',
               'sc_view','sc_manage_customers','sc_manage_services','sc_manage_types','sc_manage_sla',
-              'sc_manage_contracts','sc_manage_tickets','sc_view_reports'],
+              'sc_manage_apps','sc_manage_contracts','sc_manage_tickets','sc_manage_presales','sc_view_reports'],
     'viewer': ['view_evaluations','sc_view','sc_view_reports'],
 }
 
@@ -2806,7 +2869,7 @@ def sc_api_customer_pics(cid):
 def sc_customer_add():
     if not sc_require('sc_manage_customers'): return redirect(url_for('sc_customers'))
     db = get_db()
-    helpdesk, implementor, coleader = _sc_pic_employees(db)
+    helpdesk, implementor, coleader, sales = _sc_pic_employees(db)
     if request.method == 'POST':
         code = request.form.get('code', '').strip().upper()
         name = request.form.get('name', '').strip()
@@ -2816,19 +2879,22 @@ def sc_customer_add():
             try:
                 db.execute(
                     '''INSERT INTO sc_customers
-                       (code,name,address,contact_person,phone,email,notes,
-                        pic_helpdesk_id,pic_helpdesk_backup_id,pic_implementor_id,pic_coleader_id,telegram_group_id)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                       (code,name,address,contact_person,phone,email,notes,customer_type,
+                        pic_helpdesk_id,pic_helpdesk_backup_id,pic_implementor_id,pic_coleader_id,
+                        pic_sales_id,telegram_group_id)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                     (code, name,
                      request.form.get('address','').strip(),
                      request.form.get('contact_person','').strip(),
                      request.form.get('phone','').strip(),
                      request.form.get('email','').strip(),
                      request.form.get('notes','').strip(),
+                     request.form.get('customer_type','aktif'),
                      request.form.get('pic_helpdesk_id') or None,
                      request.form.get('pic_helpdesk_backup_id') or None,
                      request.form.get('pic_implementor_id') or None,
                      request.form.get('pic_coleader_id') or None,
+                     request.form.get('pic_sales_id') or None,
                      request.form.get('telegram_group_id','').strip()))
                 db.commit()
                 flash(f'Customer "{name}" ditambahkan', 'success')
@@ -2836,7 +2902,7 @@ def sc_customer_add():
             except Exception:
                 flash('Kode customer sudah ada', 'danger')
     return render_template('sc_customer_form.html', row=None,
-                           helpdesk=helpdesk, implementor=implementor, coleader=coleader)
+                           helpdesk=helpdesk, implementor=implementor, coleader=coleader, sales=sales)
 
 @app.route('/support/customers/<int:cid>/edit', methods=['GET', 'POST'])
 @login_required
@@ -2847,14 +2913,15 @@ def sc_customer_edit(cid):
     if not row:
         flash('Customer tidak ditemukan', 'danger')
         return redirect(url_for('sc_customers'))
-    helpdesk, implementor, coleader = _sc_pic_employees(db)
+    helpdesk, implementor, coleader, sales = _sc_pic_employees(db)
     if request.method == 'POST':
         name      = request.form.get('name', '').strip()
         is_active = 1 if request.form.get('is_active') else 0
         db.execute('''UPDATE sc_customers
                       SET name=?,address=?,contact_person=?,phone=?,email=?,notes=?,is_active=?,
+                          customer_type=?,
                           pic_helpdesk_id=?,pic_helpdesk_backup_id=?,pic_implementor_id=?,pic_coleader_id=?,
-                          telegram_group_id=?
+                          pic_sales_id=?,telegram_group_id=?
                       WHERE id=?''',
                    (name,
                     request.form.get('address','').strip(),
@@ -2863,17 +2930,19 @@ def sc_customer_edit(cid):
                     request.form.get('email','').strip(),
                     request.form.get('notes','').strip(),
                     is_active,
+                    request.form.get('customer_type','aktif'),
                     request.form.get('pic_helpdesk_id') or None,
                     request.form.get('pic_helpdesk_backup_id') or None,
                     request.form.get('pic_implementor_id') or None,
                     request.form.get('pic_coleader_id') or None,
+                    request.form.get('pic_sales_id') or None,
                     request.form.get('telegram_group_id','').strip(),
                     cid))
         db.commit()
         flash('Customer diperbarui', 'success')
         return redirect(url_for('sc_customers'))
     return render_template('sc_customer_form.html', row=row,
-                           helpdesk=helpdesk, implementor=implementor, coleader=coleader)
+                           helpdesk=helpdesk, implementor=implementor, coleader=coleader, sales=sales)
 
 @app.route('/support/customers/<int:cid>/delete', methods=['POST'])
 @login_required
@@ -2886,6 +2955,40 @@ def sc_customer_delete(cid):
     return redirect(url_for('sc_customers'))
 
 # ── Notification helper ────────────────────────────────────────────────────────
+def _sc_ticket_history(db, ticket_id, action, field_name='', old_value='', new_value='', notes=''):
+    """Catat history perubahan tiket (tidak menimpa, selalu tambah baris baru)."""
+    try:
+        db.execute('''INSERT INTO sc_ticket_history
+                      (ticket_id,changed_by,changed_by_name,action,field_name,old_value,new_value,notes)
+                      VALUES(?,?,?,?,?,?,?,?)''',
+                   (ticket_id, session.get('user_id'), session.get('user_name',''),
+                    action, field_name, str(old_value or ''), str(new_value or ''), notes))
+        db.commit()
+    except Exception:
+        pass
+
+def _sc_sync_assignees(db, ticket_id, employee_ids):
+    """Sync multiple assignee ke sc_ticket_assignees."""
+    old_ids = {r['employee_id'] for r in
+               db.execute('SELECT employee_id FROM sc_ticket_assignees WHERE ticket_id=?', (ticket_id,)).fetchall()}
+    new_ids = set(int(i) for i in employee_ids if i)
+    # tambah yang baru
+    for eid in new_ids - old_ids:
+        emp = db.execute('SELECT name, divisi FROM employees WHERE id=?', (eid,)).fetchone()
+        db.execute('INSERT OR IGNORE INTO sc_ticket_assignees(ticket_id,employee_id,divisi) VALUES(?,?,?)',
+                   (ticket_id, eid, emp['divisi'] if emp else ''))
+        if emp:
+            _sc_ticket_history(db, ticket_id, 'assignee_added', 'assignee', '', emp['name'],
+                               f"Assignee ditambahkan: {emp['name']}")
+    # hapus yang dicopot
+    for eid in old_ids - new_ids:
+        emp = db.execute('SELECT name FROM employees WHERE id=?', (eid,)).fetchone()
+        db.execute('DELETE FROM sc_ticket_assignees WHERE ticket_id=? AND employee_id=?', (ticket_id, eid))
+        if emp:
+            _sc_ticket_history(db, ticket_id, 'assignee_removed', 'assignee', emp['name'], '',
+                               f"Assignee dicopot: {emp['name']}")
+    db.commit()
+
 def _sc_notify_ticket(db, ticket_id, event='created'):
     """Send Telegram notification to customer group when ticket event occurs."""
     try:
@@ -3297,11 +3400,12 @@ def sc_contracts():
                            filter_customer=customer_id, filter_status=status_f, today=today)
 
 def _sc_pic_employees(db):
-    """Return (helpdesk, implementor, coleader) employee lists for PIC dropdowns."""
+    """Return (helpdesk, implementor, coleader, sales) employee lists for PIC dropdowns."""
     helpdesk   = db.execute("SELECT id,name,jabatan FROM employees WHERE is_active=1 AND LOWER(divisi) LIKE '%helpdesk%' ORDER BY name").fetchall()
     implementor= db.execute("SELECT id,name,jabatan FROM employees WHERE is_active=1 AND LOWER(divisi) LIKE '%implementor%' ORDER BY name").fetchall()
     coleader   = db.execute("SELECT id,name,jabatan FROM employees WHERE is_active=1 AND LOWER(level) LIKE '%co-leader%' ORDER BY name").fetchall()
-    return helpdesk, implementor, coleader
+    sales      = db.execute("SELECT id,name,jabatan FROM employees WHERE is_active=1 AND (LOWER(divisi) LIKE '%sales%' OR LOWER(jabatan) LIKE '%sales%') ORDER BY name").fetchall()
+    return helpdesk, implementor, coleader, sales
 
 def _sc_customer_pic_info(db, customer_id):
     """Return dict of PIC names for a customer (for AJAX & template display)."""
@@ -3509,7 +3613,7 @@ def _sc_ticket_lookups(db):
     modules       = db.execute('''SELECT m.id, m.name, a.id as app_id, a.name as app_name
                                   FROM sc_modules m JOIN sc_apps a ON a.id=m.app_id
                                   WHERE m.is_active=1 ORDER BY a.name, m.name''').fetchall()
-    employees     = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
+    employees     = db.execute("SELECT id, name, jabatan, divisi FROM employees WHERE is_active=1 ORDER BY divisi, name").fetchall()
     return customers, support_types, sla_cats, contracts, modules, employees
 
 @app.route('/support/tickets/add', methods=['GET','POST'])
@@ -3530,7 +3634,7 @@ def sc_ticket_add():
         reported_at   = request.form.get('reported_at','').strip() or None
         notes         = request.form.get('notes','').strip()
         module_id     = request.form.get('module_id') or None
-        assignee_id   = request.form.get('assignee_id') or None
+        assignee_ids  = request.form.getlist('assignee_ids')
         status_note   = request.form.get('status_note','').strip()
         mandays       = request.form.get('mandays','').strip() or None
         pct_done      = request.form.get('pct_done',0)
@@ -3545,24 +3649,27 @@ def sc_ticket_add():
         try:
             cur = db.execute('''INSERT INTO sc_tickets(ticket_no,contract_id,customer_id,support_type_id,
                           sla_category_id,subject,description,reported_by,reported_at,notes,created_by,
-                          module_id,assignee_id,status_note,mandays,pct_done,solution_type,solution_note,
+                          module_id,status_note,mandays,pct_done,solution_type,solution_note,
                           due_date,work_start_date,media_lapor)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                        (ticket_no, contract_id, customer_id, support_type_id, sla_cat_id,
                         subject, description, reported_by, reported_at, notes, session.get('user_id'),
-                        module_id, assignee_id, status_note, mandays, pct_done,
+                        module_id, status_note, mandays, pct_done,
                         solution_type, solution_note, due_date, work_start_date, media_lapor))
             new_id = cur.lastrowid
             db.commit()
+            _sc_ticket_history(db, new_id, 'created', notes=f'Tiket dibuat oleh {session.get("user_name","")}')
+            _sc_sync_assignees(db, new_id, assignee_ids)
             _sc_notify_ticket(db, new_id, 'created')
-            if assignee_id:
+            if assignee_ids:
                 _sc_notify_ticket(db, new_id, 'assigned')
-                _sc_log_ticket_to_eval(db, new_id, 'assigned')
+                for aid in assignee_ids:
+                    if aid: _sc_log_ticket_to_eval(db, new_id, 'assigned')
             flash(f'Tiket {ticket_no} berhasil dibuat', 'success')
             return redirect(url_for('sc_tickets'))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
-    return render_template('sc_ticket_form.html', row=None, customers=customers,
+    return render_template('sc_ticket_form.html', row=None, sel_assignees=[], customers=customers,
                            support_types=support_types, sla_cats=sla_cats, contracts=contracts,
                            modules=modules, employees=employees,
                            sc_ticket_statuses=SC_TICKET_STATUSES,
@@ -3577,8 +3684,9 @@ def sc_ticket_edit(tid):
     row = db.execute('SELECT * FROM sc_tickets WHERE id=?', (tid,)).fetchone()
     if not row: abort(404)
     customers, support_types, sla_cats, contracts, modules, employees = _sc_ticket_lookups(db)
+    sel_assignees = [r['employee_id'] for r in
+                     db.execute('SELECT employee_id FROM sc_ticket_assignees WHERE ticket_id=?', (tid,)).fetchall()]
     if request.method == 'POST':
-        prev_assignee   = row['assignee_id']
         contract_id     = request.form.get('contract_id') or None
         customer_id     = request.form['customer_id']
         support_type_id = request.form['support_type_id']
@@ -3589,7 +3697,7 @@ def sc_ticket_edit(tid):
         reported_at     = request.form.get('reported_at','').strip() or None
         notes           = request.form.get('notes','').strip()
         module_id       = request.form.get('module_id') or None
-        assignee_id     = request.form.get('assignee_id') or None
+        assignee_ids    = request.form.getlist('assignee_ids')
         status_note     = request.form.get('status_note','').strip()
         mandays         = request.form.get('mandays','').strip() or None
         pct_done        = request.form.get('pct_done',0)
@@ -3598,27 +3706,32 @@ def sc_ticket_edit(tid):
         due_date        = request.form.get('due_date','').strip() or None
         work_start_date = request.form.get('work_start_date','').strip() or None
         media_lapor     = request.form.get('media_lapor','').strip()
+        # Track changed fields for history
+        changed = []
+        if row['status_note'] != status_note: changed.append(('status_note','Keterangan',row['status_note'],status_note))
+        if str(row['pct_done'] or 0) != str(pct_done): changed.append(('pct_done','% Done',row['pct_done'],pct_done))
+        if (row['solution_type'] or '') != solution_type: changed.append(('solution_type','Tipe Solusi',row['solution_type'],solution_type))
         try:
             db.execute('''UPDATE sc_tickets SET contract_id=?,customer_id=?,support_type_id=?,
                           sla_category_id=?,subject=?,description=?,reported_by=?,reported_at=?,notes=?,
-                          module_id=?,assignee_id=?,status_note=?,mandays=?,pct_done=?,
+                          module_id=?,status_note=?,mandays=?,pct_done=?,
                           solution_type=?,solution_note=?,due_date=?,work_start_date=?,media_lapor=?
                           WHERE id=?''',
                        (contract_id, customer_id, support_type_id, sla_cat_id,
                         subject, description, reported_by, reported_at, notes,
-                        module_id, assignee_id, status_note, mandays, pct_done,
+                        module_id, status_note, mandays, pct_done,
                         solution_type, solution_note, due_date, work_start_date, media_lapor, tid))
             db.commit()
-            if assignee_id and str(assignee_id) != str(prev_assignee or ''):
-                _sc_notify_ticket(db, tid, 'assigned')
-                _sc_log_ticket_to_eval(db, tid, 'assigned')
-            elif assignee_id:
-                _sc_log_ticket_to_eval(db, tid, 'assigned')
+            for field, label, old, new in changed:
+                _sc_ticket_history(db, tid, 'update', field, old, new, f'{label} diubah')
+            _sc_sync_assignees(db, tid, assignee_ids)
+            for aid in assignee_ids:
+                if aid: _sc_log_ticket_to_eval(db, tid, 'assigned')
             flash('Tiket diperbarui', 'success')
             return redirect(url_for('sc_ticket_detail', tid=tid))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
-    return render_template('sc_ticket_form.html', row=row, customers=customers,
+    return render_template('sc_ticket_form.html', row=row, sel_assignees=sel_assignees, customers=customers,
                            support_types=support_types, sla_cats=sla_cats, contracts=contracts,
                            modules=modules, employees=employees,
                            sc_ticket_statuses=SC_TICKET_STATUSES,
@@ -3643,7 +3756,13 @@ def sc_ticket_detail(tid):
     t = dict(row)
     t['resp_sla'], t['resp_hours'] = calc_sla(t['reported_at'], t['responded_at'], t['response_time_hours'] or 999)
     t['res_sla'],  t['res_hours']  = calc_sla(t['reported_at'], t['resolved_at'],  t['resolution_time_hours'] or 999)
-    return render_template('sc_ticket_detail.html', t=t)
+    history  = db.execute('SELECT * FROM sc_ticket_history WHERE ticket_id=? ORDER BY id DESC', (tid,)).fetchall()
+    assignees = db.execute('''SELECT e.name, e.jabatan, e.divisi, ta.role_note
+                              FROM sc_ticket_assignees ta
+                              JOIN employees e ON e.id=ta.employee_id
+                              WHERE ta.ticket_id=? ORDER BY e.divisi, e.name''', (tid,)).fetchall()
+    return render_template('sc_ticket_detail.html', t=t, history=history, assignees=assignees,
+                           sc_ticket_statuses=SC_TICKET_STATUSES)
 
 @app.route('/support/tickets/<int:tid>/status', methods=['POST'])
 @login_required
@@ -3651,10 +3770,11 @@ def sc_ticket_status(tid):
     db  = get_db()
     row = db.execute('SELECT * FROM sc_tickets WHERE id=?', (tid,)).fetchone()
     if not row: abort(404)
-    # Allow assignee OR users with sc_manage_tickets permission
+    # Allow any assignee OR users with sc_manage_tickets permission
     user_id    = session.get('user_id')
     emp        = db.execute('SELECT id FROM employees WHERE user_id=?', (user_id,)).fetchone()
-    is_assignee = emp and row['assignee_id'] == emp['id']
+    is_assignee = emp and db.execute('SELECT 1 FROM sc_ticket_assignees WHERE ticket_id=? AND employee_id=?',
+                                     (tid, emp['id'])).fetchone()
     if not is_assignee and not sc_require('sc_manage_tickets'):
         return redirect(url_for('sc_ticket_detail', tid=tid))
     new_status  = request.form.get('new_status','')
@@ -3680,6 +3800,8 @@ def sc_ticket_status(tid):
     sets = ', '.join(f'{k}=?' for k in updates)
     db.execute(f'UPDATE sc_tickets SET {sets} WHERE id=?', list(updates.values()) + [tid])
     db.commit()
+    _sc_ticket_history(db, tid, 'status_change', 'status', row['status'], new_status,
+                       status_note or f'Status diubah ke {new_status}')
     _sc_notify_ticket(db, tid, 'status')
     _sc_log_ticket_to_eval(db, tid, new_status)
     flash(f'Status tiket diubah ke {new_status}', 'success')
@@ -3759,6 +3881,167 @@ def sc_sla_monitor():
                            trend_met=json.dumps(trend_met),
                            trend_vio=json.dumps(trend_vio),
                            month=month)
+
+# ─── SupportCore: Presales & POC ──────────────────────────────────────────────
+
+def _sc_presales_no(db):
+    from datetime import date as _d
+    prefix = f"PSL-{_d.today().year}-"
+    last = db.execute("SELECT req_no FROM sc_presales_requests WHERE req_no LIKE ? ORDER BY id DESC LIMIT 1",
+                      (prefix + '%',)).fetchone()
+    seq = int(last['req_no'].split('-')[-1]) + 1 if last else 1
+    return f"{prefix}{seq:04d}"
+
+SC_PRESALES_STATUSES = [
+    ('new',         'Baru',       'secondary'),
+    ('in_progress', 'In Progress','primary'),
+    ('done',        'Selesai',    'success'),
+    ('cancelled',   'Dibatalkan', 'danger'),
+]
+
+@app.route('/support/presales')
+@login_required
+def sc_presales():
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db   = get_db()
+    type_filter   = request.args.get('type', '')
+    status_filter = request.args.get('status', '')
+    q = '''SELECT r.*, cu.name as customer_name, cu.customer_type
+           FROM sc_presales_requests r
+           JOIN sc_customers cu ON cu.id=r.customer_id'''
+    conds, params = [], []
+    if type_filter:   conds.append('r.request_type=?'); params.append(type_filter)
+    if status_filter: conds.append('r.status=?');       params.append(status_filter)
+    if conds: q += ' WHERE ' + ' AND '.join(conds)
+    q += ' ORDER BY r.id DESC'
+    rows = db.execute(q, params).fetchall()
+    # Ambil assignees per request
+    assignees_map = {}
+    for r in rows:
+        assignees_map[r['id']] = db.execute(
+            '''SELECT e.name, e.divisi FROM sc_presales_assignees pa
+               JOIN employees e ON e.id=pa.employee_id WHERE pa.request_id=?''', (r['id'],)).fetchall()
+    return render_template('sc_presales.html', rows=rows, assignees_map=assignees_map,
+                           sc_presales_statuses=SC_PRESALES_STATUSES,
+                           type_filter=type_filter, status_filter=status_filter)
+
+@app.route('/support/presales/add', methods=['GET','POST'])
+@login_required
+def sc_presales_add():
+    if not sc_require('sc_manage_presales'): return redirect(url_for('sc_presales'))
+    db = get_db()
+    calon_customers = db.execute(
+        "SELECT id, name, code FROM sc_customers WHERE is_active=1 ORDER BY name").fetchall()
+    employees = db.execute("SELECT id, name, jabatan, divisi FROM employees WHERE is_active=1 ORDER BY divisi, name").fetchall()
+    if request.method == 'POST':
+        customer_id  = request.form.get('customer_id')
+        req_type     = request.form.get('request_type', 'presales')
+        subject      = request.form.get('subject','').strip()
+        description  = request.form.get('description','').strip()
+        assignee_ids = request.form.getlist('assignee_ids')
+        if not customer_id or not subject:
+            flash('Customer dan subjek wajib diisi', 'danger')
+        else:
+            req_no = _sc_presales_no(db)
+            try:
+                cur = db.execute('''INSERT INTO sc_presales_requests
+                                    (req_no,customer_id,request_type,subject,description,created_by)
+                                    VALUES(?,?,?,?,?,?)''',
+                                 (req_no, customer_id, req_type, subject, description, session.get('user_id')))
+                req_id = cur.lastrowid
+                db.commit()
+                for eid in assignee_ids:
+                    if eid:
+                        emp = db.execute('SELECT divisi FROM employees WHERE id=?', (eid,)).fetchone()
+                        db.execute('INSERT OR IGNORE INTO sc_presales_assignees(request_id,employee_id,divisi) VALUES(?,?,?)',
+                                   (req_id, eid, emp['divisi'] if emp else ''))
+                db.commit()
+                db.execute('''INSERT INTO sc_presales_history(request_id,changed_by,changed_by_name,action,notes)
+                              VALUES(?,?,?,?,?)''',
+                           (req_id, session.get('user_id'), session.get('user_name',''),
+                            'created', f'Request {req_type} dibuat: {subject}'))
+                db.commit()
+                flash(f'Request {req_no} berhasil dibuat', 'success')
+                return redirect(url_for('sc_presales'))
+            except Exception as e:
+                flash(f'Error: {e}', 'danger')
+    return render_template('sc_presales_form.html', row=None, sel_assignees=[],
+                           calon_customers=calon_customers, employees=employees,
+                           sc_presales_statuses=SC_PRESALES_STATUSES)
+
+@app.route('/support/presales/<int:rid>/edit', methods=['GET','POST'])
+@login_required
+def sc_presales_edit(rid):
+    if not sc_require('sc_manage_presales'): return redirect(url_for('sc_presales'))
+    db  = get_db()
+    row = db.execute('SELECT * FROM sc_presales_requests WHERE id=?', (rid,)).fetchone()
+    if not row: abort(404)
+    calon_customers = db.execute("SELECT id, name, code FROM sc_customers WHERE is_active=1 ORDER BY name").fetchall()
+    employees = db.execute("SELECT id, name, jabatan, divisi FROM employees WHERE is_active=1 ORDER BY divisi, name").fetchall()
+    sel_assignees = [r['employee_id'] for r in
+                     db.execute('SELECT employee_id FROM sc_presales_assignees WHERE request_id=?', (rid,)).fetchall()]
+    if request.method == 'POST':
+        new_status   = request.form.get('status', row['status'])
+        status_note  = request.form.get('status_note','').strip()
+        subject      = request.form.get('subject','').strip()
+        description  = request.form.get('description','').strip()
+        assignee_ids = request.form.getlist('assignee_ids')
+        old_status   = row['status']
+        db.execute('UPDATE sc_presales_requests SET status=?,status_note=?,subject=?,description=? WHERE id=?',
+                   (new_status, status_note, subject, description, rid))
+        db.commit()
+        # Sync assignees
+        old_ids = set(sel_assignees)
+        new_ids = set(int(i) for i in assignee_ids if i)
+        for eid in new_ids - old_ids:
+            emp = db.execute('SELECT divisi FROM employees WHERE id=?', (eid,)).fetchone()
+            db.execute('INSERT OR IGNORE INTO sc_presales_assignees(request_id,employee_id,divisi) VALUES(?,?,?)',
+                       (rid, eid, emp['divisi'] if emp else ''))
+        for eid in old_ids - new_ids:
+            db.execute('DELETE FROM sc_presales_assignees WHERE request_id=? AND employee_id=?', (rid, eid))
+        db.commit()
+        note_parts = []
+        if old_status != new_status: note_parts.append(f'Status: {old_status} → {new_status}')
+        if status_note: note_parts.append(status_note)
+        db.execute('''INSERT INTO sc_presales_history(request_id,changed_by,changed_by_name,action,notes)
+                      VALUES(?,?,?,?,?)''',
+                   (rid, session.get('user_id'), session.get('user_name',''),
+                    'status_change' if old_status != new_status else 'update',
+                    '; '.join(note_parts) or 'Diperbarui'))
+        db.commit()
+        flash('Request diperbarui', 'success')
+        return redirect(url_for('sc_presales_detail', rid=rid))
+    return render_template('sc_presales_form.html', row=row, sel_assignees=sel_assignees,
+                           calon_customers=calon_customers, employees=employees,
+                           sc_presales_statuses=SC_PRESALES_STATUSES)
+
+@app.route('/support/presales/<int:rid>')
+@login_required
+def sc_presales_detail(rid):
+    if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    db  = get_db()
+    row = db.execute('''SELECT r.*, cu.name as customer_name, cu.customer_type
+                        FROM sc_presales_requests r
+                        JOIN sc_customers cu ON cu.id=r.customer_id
+                        WHERE r.id=?''', (rid,)).fetchone()
+    if not row: abort(404)
+    history   = db.execute('SELECT * FROM sc_presales_history WHERE request_id=? ORDER BY id DESC', (rid,)).fetchall()
+    assignees = db.execute('''SELECT e.name, e.jabatan, e.divisi, pa.role_note
+                              FROM sc_presales_assignees pa
+                              JOIN employees e ON e.id=pa.employee_id
+                              WHERE pa.request_id=? ORDER BY e.divisi, e.name''', (rid,)).fetchall()
+    return render_template('sc_presales_detail.html', row=row, history=history, assignees=assignees,
+                           sc_presales_statuses=SC_PRESALES_STATUSES)
+
+@app.route('/support/presales/<int:rid>/delete', methods=['POST'])
+@login_required
+def sc_presales_delete(rid):
+    if not sc_require('sc_manage_presales'): return redirect(url_for('sc_presales'))
+    db = get_db()
+    db.execute('DELETE FROM sc_presales_requests WHERE id=?', (rid,))
+    db.commit()
+    flash('Request dihapus', 'warning')
+    return redirect(url_for('sc_presales'))
 
 # ─── SupportCore: Reports ──────────────────────────────────────────────────────
 

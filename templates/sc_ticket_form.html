@@ -238,22 +238,44 @@
   {# ── Kolom kanan ── #}
   <div class="col-lg-4">
 
-    {# Assignee #}
+    {# Assignee - Multiple, grouped by divisi #}
     <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
-        <i class="bi bi-person-check me-1"></i>Assignee
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted d-flex justify-content-between">
+        <span><i class="bi bi-people me-1"></i>Assignee</span>
+        <span class="badge bg-primary" id="assigneeBadge">{{ sel_assignees|length }}</span>
       </div>
-      <div class="card-body">
-        <label class="form-label fw-semibold small">Ditugaskan Kepada</label>
-        <select name="assignee_id" class="form-select form-select-sm">
-          <option value="">— Belum ditugaskan —</option>
-          {% for e in employees %}
-          <option value="{{ e.id }}" {{ 'selected' if row and row.assignee_id == e.id }}>
-            {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
-          </option>
-          {% endfor %}
-        </select>
-        <div class="form-text">Assignee akan mendapat notifikasi Telegram saat ditugaskan.</div>
+      <div class="card-body p-0" style="max-height:300px;overflow-y:auto">
+        {% set ns = namespace(cur_div='') %}
+        {% for e in employees %}
+          {% if e.divisi != ns.cur_div %}
+            {% if ns.cur_div != '' %}</ul>{% endif %}
+            {% set ns.cur_div = e.divisi %}
+            <div class="px-3 pt-2 pb-1 text-muted fw-bold" style="font-size:.7rem;background:#f8f9fa;letter-spacing:.03em;text-transform:uppercase">
+              {{ e.divisi or 'Lainnya' }}
+            </div>
+            <ul class="list-unstyled mb-0">
+          {% endif %}
+          <li class="px-3 py-1 border-bottom">
+            <div class="form-check form-check-sm">
+              <input class="form-check-input assignee-cb" type="checkbox"
+                     name="assignee_ids" value="{{ e.id }}"
+                     id="asgn_{{ e.id }}"
+                     {{ 'checked' if e.id in sel_assignees }}
+                     onchange="updateBadge()">
+              <label class="form-check-label small" for="asgn_{{ e.id }}">
+                <span class="fw-semibold">{{ e.name }}</span>
+                {% if e.jabatan %}<span class="text-muted"> — {{ e.jabatan }}</span>{% endif %}
+              </label>
+            </div>
+          </li>
+        {% endfor %}
+        {% if employees %}</ul>{% endif %}
+        {% if not employees %}
+        <div class="text-muted small text-center py-3">Tidak ada karyawan aktif.</div>
+        {% endif %}
+      </div>
+      <div class="card-footer py-1 small text-muted">
+        Assignee mendapat notifikasi Telegram saat dipilih.
       </div>
     </div>
 
@@ -342,6 +364,11 @@ function filterContracts(cid) {
 function onCustomerChange(cid) {
   loadCustomerPic(cid);
   filterContracts(cid);
+}
+
+function updateBadge() {
+  const cnt = document.querySelectorAll('.assignee-cb:checked').length;
+  document.getElementById('assigneeBadge').textContent = cnt;
 }
 
 function onModuleChange(sel) {

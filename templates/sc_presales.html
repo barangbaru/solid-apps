@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% block title %}Presales & POC — SupportCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Presales & POC</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-person-plus text-primary me-2"></i>Presales & POC</h5>
+    <div class="text-muted small mt-1">Request technical untuk calon customer — Presales awal & Proof of Concept</div>
+  </div>
+  <a href="/support/presales/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle me-1"></i>Buat Request
+  </a>
+</div>
+
+{# Filter #}
+<form method="get" class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label fw-semibold small mb-1">Tipe</label>
+        <select name="type" class="form-select form-select-sm">
+          <option value="">Semua Tipe</option>
+          <option value="presales" {{ 'selected' if type_filter=='presales' }}>Presales Awal</option>
+          <option value="poc"      {{ 'selected' if type_filter=='poc' }}>POC</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold small mb-1">Status</label>
+        <select name="status" class="form-select form-select-sm">
+          <option value="">Semua Status</option>
+          {% for val, label, color in sc_presales_statuses %}
+          <option value="{{ val }}" {{ 'selected' if status_filter==val }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Filter</button>
+        <a href="/support/presales" class="btn btn-outline-secondary btn-sm ms-1">Reset</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.84rem">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3" style="width:120px">No. Request</th>
+          <th style="width:70px">Tipe</th>
+          <th>Customer (Calon)</th>
+          <th>Subjek</th>
+          <th>Assignee</th>
+          <th style="width:100px">Status</th>
+          <th style="width:110px">Dibuat</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set type_colors = {'presales': ('primary','Presales Awal'), 'poc': ('warning','POC')} %}
+        {% set tcol, tlabel = type_colors.get(r.request_type, ('secondary', r.request_type)) %}
+        <tr>
+          <td class="ps-3">
+            <a href="/support/presales/{{ r.id }}" class="fw-semibold text-decoration-none">
+              {{ r.req_no }}
+            </a>
+          </td>
+          <td>
+            <span class="badge bg-{{ tcol }} bg-opacity-15 text-{{ tcol }} border border-{{ tcol }}" style="font-size:.7rem">
+              {{ tlabel }}
+            </span>
+          </td>
+          <td>
+            <div class="fw-semibold">{{ r.customer_name }}</div>
+            {% if r.customer_type == 'calon' %}
+            <span class="badge bg-warning-subtle text-warning border border-warning" style="font-size:.65rem">Calon</span>
+            {% endif %}
+          </td>
+          <td>{{ r.subject }}</td>
+          <td>
+            {% set asgns = assignees_map.get(r.id, []) %}
+            {% if asgns %}
+            <div class="d-flex flex-wrap gap-1">
+              {% for a in asgns[:3] %}
+              <span class="badge bg-light border text-dark" style="font-size:.7rem">{{ a.name }}</span>
+              {% endfor %}
+              {% if asgns|length > 3 %}
+              <span class="badge bg-secondary" style="font-size:.7rem">+{{ asgns|length - 3 }}</span>
+              {% endif %}
+            </div>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% for val, label, color in sc_presales_statuses %}
+              {% if r.status == val %}
+              <span class="badge bg-{{ color }}" style="font-size:.72rem">{{ label }}</span>
+              {% endif %}
+            {% endfor %}
+          </td>
+          <td class="text-muted">{{ r.created_at[:10] if r.created_at else '—' }}</td>
+          <td class="text-end pe-3">
+            <a href="/support/presales/{{ r.id }}" class="btn btn-sm btn-outline-primary" title="Detail">
+              <i class="bi bi-eye"></i>
+            </a>
+            <a href="/support/presales/{{ r.id }}/edit" class="btn btn-sm btn-outline-secondary" title="Edit">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form action="/support/presales/{{ r.id }}/delete" method="post" class="d-inline"
+                  onsubmit="return confirm('Hapus request {{ r.req_no }}?')">
+              <button class="btn btn-sm btn-outline-danger" title="Hapus"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-5">
+          <i class="bi bi-person-plus opacity-25" style="font-size:2rem"></i>
+          <div class="mt-2">Belum ada request. <a href="/support/presales/add">Buat request baru</a>.</div>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
