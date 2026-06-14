@@ -692,12 +692,14 @@ def init_db():
             db.execute('INSERT OR IGNORE INTO divisions(name, sort_order) VALUES(?,?)', (name, i))
     # Seed superapp apps registry
     _apps = [
-        ('evaluasi', 'TalentCore', 'Penilaian & review kinerja karyawan tim IT',
+        ('evaluasi', 'TalentCore', 'Penilaian & review kinerja karyawan',
          'clipboard2-check', '#4da8da', '#e8f4fd', '/', 1, 0, 0, ''),
         ('aset', 'AssetCore', 'Pencatatan & tracking aset perusahaan',
          'box-seam', '#6f42c1', '#f0ecff', '/aset/', 1, 1, 1, ''),
-        ('support', 'SupportCore', 'Monitoring annual technical support & SLA project',
+        ('support', 'SupportCore', 'Monitoring technical support, SLA & presales',
          'headset', '#0d9488', '#e6faf8', '/support/', 1, 0, 2, ''),
+        ('booking', 'BookingCore', 'Pemesanan & penjadwalan ruangan, kendaraan & aset',
+         'calendar2-check', '#d97706', '#fff8e1', '/booking/', 1, 1, 3, ''),
     ]
     for slug, name, desc, icon, color, bg, url, active, soon, sort, perm in _apps:
         db.execute('''INSERT INTO superapp_apps
