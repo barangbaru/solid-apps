@@ -319,7 +319,7 @@ DEFAULT_SETTINGS = {
     'telegram_default_chat_id': '',
     'reminder_days': '30,14,7,1',
     'reminder_enabled': '1',
-    'app_name': 'Evaluasi Kinerja Tim IT',
+    'app_name': 'TalentCore',
     'notification_emails': '',
     'notification_telegram_ids': '',
     'openwa_url': '',
@@ -389,9 +389,9 @@ def init_db():
             db.execute('INSERT OR IGNORE INTO divisions(name, sort_order) VALUES(?,?)', (name, i))
     # Seed superapp apps registry
     _apps = [
-        ('evaluasi', 'Evaluasi Kinerja', 'Penilaian & review kinerja karyawan tim IT',
+        ('evaluasi', 'TalentCore', 'Penilaian & review kinerja karyawan tim IT',
          'clipboard2-check', '#4da8da', '#e8f4fd', '/', 1, 0, 0, ''),
-        ('aset', 'Manajemen Aset', 'Pencatatan & tracking aset perusahaan',
+        ('aset', 'AssetCore', 'Pencatatan & tracking aset perusahaan',
          'box-seam', '#6f42c1', '#f0ecff', '/aset/', 1, 1, 1, ''),
     ]
     for slug, name, desc, icon, color, bg, url, active, soon, sort, perm in _apps:
@@ -539,7 +539,7 @@ MFA_CHALLENGE_TTL = 900  # 15 menit
 def generate_totp_secret():
     return pyotp.random_base32()
 
-def get_totp_uri(secret, username, issuer='Evaluasi Kinerja'):
+def get_totp_uri(secret, username, issuer='TalentCore'):
     return pyotp.totp.TOTP(secret).provisioning_uri(name=username, issuer_name=issuer)
 
 def verify_totp(secret, code):
@@ -1256,7 +1256,7 @@ def _send_reset_notifications(user, reset_link, settings, db=None):
         }
 
     display_name = user['full_name'] or user['username']
-    subject  = 'Reset Password — Aplikasi Evaluasi Kinerja'
+    subject  = 'Reset Password — Aplikasi TalentCore'
     body_html = f'''
 <p>Halo <b>{display_name}</b>,</p>
 <p>Anda (atau seseorang) meminta reset password untuk akun <b>{user['username']}</b>.</p>
@@ -1264,7 +1264,7 @@ def _send_reset_notifications(user, reset_link, settings, db=None):
    text-decoration:none;font-weight:bold">Klik di sini untuk reset password</a></p>
 <p>Link ini hanya berlaku <b>1 jam</b> dan <b>langsung kadaluarsa setelah dibuka satu kali</b>.</p>
 <p>Jika bukan Anda yang meminta, abaikan email ini.</p>
-<hr><p style="color:#888;font-size:12px">Aplikasi Evaluasi Kinerja Tim IT</p>
+<hr><p style="color:#888;font-size:12px">Aplikasi TalentCore</p>
 '''
 
     # Email
@@ -2173,7 +2173,7 @@ def test_email():
     if not to_email:
         return jsonify({'ok': False, 'msg': 'Masukkan alamat email tujuan test'})
     ok, err = send_email(settings_data, to_email,
-                         'Test Email — Evaluasi Kinerja',
+                         'Test Email — TalentCore',
                          '<h3>Test berhasil!</h3><p>Konfigurasi email sudah benar.</p>')
     return jsonify({'ok': ok, 'msg': 'Email berhasil dikirim' if ok else str(err)})
 
@@ -2202,7 +2202,7 @@ def test_whatsapp():
     if not wa_url or not phone:
         return jsonify({'ok': False, 'msg': 'URL OpenWA dan nomor HP harus diisi'})
     ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone,
-                            '✅ *Test berhasil!*\n\nKonfigurasi OpenWA WhatsApp sudah terhubung dengan Evaluasi Kinerja.')
+                            '✅ *Test berhasil!*\n\nKonfigurasi OpenWA WhatsApp sudah terhubung dengan TalentCore.')
     chat_id = normalize_phone_wa(phone)
     return jsonify({'ok': ok, 'chat_id': chat_id,
                     'msg': f'Pesan terkirim ke {chat_id}' if ok else str(err)})
@@ -2448,11 +2448,11 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
     results  = []
 
     if emp['email']:
-        subject   = f'[Self-Assessment] Evaluasi Kinerja {emp["name"]} — Periode {periode}'
+        subject   = f'TalentCore Self-Assessment {emp["name"]} — Periode {periode}'
         html_body = f"""
-<h3 style="color:#1e2a3a">Self-Assessment Evaluasi Kinerja</h3>
+<h3 style="color:#1e2a3a">TalentCore Self-Assessment</h3>
 <p>Yth. <strong>{emp['name']}</strong>,</p>
-<p>Anda diminta mengisi <b>penilaian diri (self-assessment)</b> untuk evaluasi kinerja
+<p>Anda diminta mengisi <b>penilaian diri (self-assessment)</b> untuk TalentCore
    periode <strong>{periode}</strong>.</p>
 <p>Silakan klik tombol di bawah untuk mengisi form:</p>
 <p style="margin:20px 0">
@@ -2477,9 +2477,9 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
     tg_id     = normalize_telegram_id(emp['telegram_id'] or '')
     if bot_token and tg_id:
         tg_msg = (
-            f"📝 <b>Self-Assessment Evaluasi Kinerja</b>\n\n"
+            f"📝 <b>TalentCore Self-Assessment</b>\n\n"
             f"Yth. <b>{emp['name']}</b>,\n\n"
-            f"Anda diminta mengisi penilaian diri (self-assessment) untuk evaluasi kinerja "
+            f"Anda diminta mengisi penilaian diri (self-assessment) untuk TalentCore "
             f"periode <b>{periode}</b>.\n\n"
             f"Silakan buka link berikut:\n<a href=\"{link}\">{link}</a>\n\n"
             f"<i>Mohon segera mengisi sebelum batas waktu.</i>"
@@ -2502,9 +2502,9 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
     if wa_enabled and wa_url and emp_phone:
         wa_chat_id = normalize_phone_wa(emp_phone)
         wa_msg = (
-            f"📝 *Self-Assessment Evaluasi Kinerja*\n\n"
+            f"📝 *TalentCore Self-Assessment*\n\n"
             f"Yth. *{emp['name']}*,\n\n"
-            f"Anda diminta mengisi penilaian diri (self-assessment) untuk evaluasi kinerja "
+            f"Anda diminta mengisi penilaian diri (self-assessment) untuk TalentCore "
             f"periode *{periode}*.\n\n"
             f"Silakan buka link berikut:\n{link}\n\n"
             f"_Mohon segera mengisi sebelum batas waktu._"
@@ -3180,7 +3180,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     print("=" * 55)
-    print(" Aplikasi Evaluasi Kinerja Tim IT")
+    print(" Aplikasi TalentCore")
     print(f" Buka browser: http://127.0.0.1:{port}")
     print("=" * 55)
     app.run(debug=debug, host='0.0.0.0', port=port)
