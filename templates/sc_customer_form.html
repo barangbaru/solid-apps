@@ -3,81 +3,186 @@
 {% block page_title %}<span class="breadcrumb-page">{{ 'Edit Customer' if row else 'Tambah Customer' }}</span>{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-<div class="col-lg-7">
-<div class="card border-0 shadow-sm">
-  <div class="card-header py-2 fw-bold">
-    <i class="bi bi-building text-primary me-1"></i>
-    {{ 'Edit Customer' if row else 'Tambah Customer Baru' }}
-  </div>
-  <div class="card-body p-4">
-    <form method="post">
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label fw-semibold small">Kode <span class="text-danger">*</span></label>
-          <input type="text" name="code" class="form-control form-control-sm text-uppercase"
-                 value="{{ row.code if row else '' }}"
-                 placeholder="CUST001" maxlength="20"
-                 {{ 'readonly' if row else 'required' }}
-                 style="{{ 'background:#f8f9fa' if row else '' }}">
-          {% if row %}<div class="form-text">Kode tidak dapat diubah.</div>{% endif %}
-        </div>
-        <div class="col-md-8">
-          <label class="form-label fw-semibold small">Nama Customer <span class="text-danger">*</span></label>
-          <input type="text" name="name" class="form-control form-control-sm"
-                 value="{{ row.name if row else '' }}" placeholder="PT. Nama Perusahaan" required>
-        </div>
-        <div class="col-12">
-          <label class="form-label fw-semibold small">Alamat</label>
-          <textarea name="address" class="form-control form-control-sm" rows="2"
-                    placeholder="Jl. ....">{{ row.address if row else '' }}</textarea>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label fw-semibold small">Contact Person</label>
-          <input type="text" name="contact_person" class="form-control form-control-sm"
-                 value="{{ row.contact_person if row else '' }}" placeholder="Nama PIC">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label fw-semibold small">No. Telepon</label>
-          <div class="input-group input-group-sm">
-            <span class="input-group-text"><i class="bi bi-telephone"></i></span>
-            <input type="text" name="phone" class="form-control"
-                   value="{{ row.phone if row else '' }}" placeholder="08xxxxxxxxxx">
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="fw-bold mb-0">
+    <i class="bi bi-building text-primary me-2"></i>{{ 'Edit Customer' if row else 'Tambah Customer Baru' }}
+  </h5>
+  <a href="/support/customers" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Kembali
+  </a>
+</div>
+
+<form method="post">
+<div class="row g-3">
+
+  {# ── Kolom kiri: info customer ── #}
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-info-circle me-1"></i>Informasi Customer
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Kode <span class="text-danger">*</span></label>
+            <input type="text" name="code" class="form-control form-control-sm text-uppercase"
+                   value="{{ row.code if row else '' }}" placeholder="CUST001" maxlength="20"
+                   {{ 'readonly style=background:#f8f9fa' if row else 'required' }}>
+            {% if row %}<div class="form-text">Kode tidak dapat diubah.</div>{% endif %}
           </div>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label fw-semibold small">Email</label>
-          <div class="input-group input-group-sm">
-            <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-            <input type="email" name="email" class="form-control"
-                   value="{{ row.email if row else '' }}" placeholder="pic@perusahaan.com">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold small">Nama Customer <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control form-control-sm"
+                   value="{{ row.name if row else '' }}" placeholder="PT. Nama Perusahaan" required>
           </div>
-        </div>
-        {% if row %}
-        <div class="col-md-6 d-flex align-items-end pb-1">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
-                   {{ 'checked' if row.is_active else '' }}>
-            <label class="form-check-label fw-semibold small" for="isActive">Customer Aktif</label>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Alamat</label>
+            <textarea name="address" class="form-control form-control-sm" rows="2"
+                      placeholder="Jl. ...">{{ row.address if row else '' }}</textarea>
           </div>
-        </div>
-        {% endif %}
-        <div class="col-12">
-          <label class="form-label fw-semibold small">Catatan</label>
-          <textarea name="notes" class="form-control form-control-sm" rows="2"
-                    placeholder="Catatan tambahan...">{{ row.notes if row else '' }}</textarea>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Contact Person</label>
+            <input type="text" name="contact_person" class="form-control form-control-sm"
+                   value="{{ row.contact_person if row else '' }}" placeholder="Nama PIC customer">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">No. Telepon</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-telephone"></i></span>
+              <input type="text" name="phone" class="form-control"
+                     value="{{ row.phone if row else '' }}" placeholder="08xxxxxxxxxx">
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Email</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+              <input type="email" name="email" class="form-control"
+                     value="{{ row.email if row else '' }}" placeholder="pic@perusahaan.com">
+            </div>
+          </div>
+          {% if row %}
+          <div class="col-md-6 d-flex align-items-end pb-1">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
+                     {{ 'checked' if row.is_active else '' }}>
+              <label class="form-check-label fw-semibold small" for="isActive">Customer Aktif</label>
+            </div>
+          </div>
+          {% endif %}
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Catatan</label>
+            <textarea name="notes" class="form-control form-control-sm" rows="2"
+                      placeholder="Catatan tambahan...">{{ row.notes if row else '' }}</textarea>
+          </div>
         </div>
       </div>
-      <hr class="my-3">
-      <div class="d-flex gap-2">
-        <a href="/support/customers" class="btn btn-secondary btn-sm">Batal</a>
-        <button type="submit" class="btn btn-primary btn-sm">
-          <i class="bi bi-save me-1"></i>{{ 'Update' if row else 'Simpan' }}
+    </div>
+  </div>
+
+  {# ── Kolom kanan: PIC Internal ── #}
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-person-badge me-1"></i>PIC Internal (Tim IT)
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info py-2 small mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          PIC ini akan otomatis ditampilkan di form Kontrak dan Tiket saat customer ini dipilih.
+        </div>
+
+        {# PIC Helpdesk Utama #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-headset text-primary me-1"></i>PIC Helpdesk Utama
+          </label>
+          {% if helpdesk %}
+          <select name="pic_helpdesk_id" class="form-select form-select-sm">
+            <option value="">— Tidak ditentukan —</option>
+            {% for e in helpdesk %}
+            <option value="{{ e.id }}" {{ 'selected' if row and row.pic_helpdesk_id == e.id }}>
+              {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <div class="text-muted small fst-italic">Tidak ada karyawan divisi Helpdesk Support.</div>
+          <input type="hidden" name="pic_helpdesk_id" value="">
+          {% endif %}
+        </div>
+
+        {# PIC Helpdesk Backup #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-headset text-secondary me-1"></i>PIC Helpdesk Backup
+          </label>
+          {% if helpdesk %}
+          <select name="pic_helpdesk_backup_id" class="form-select form-select-sm">
+            <option value="">— Tidak ditentukan —</option>
+            {% for e in helpdesk %}
+            <option value="{{ e.id }}" {{ 'selected' if row and row.pic_helpdesk_backup_id == e.id }}>
+              {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <input type="hidden" name="pic_helpdesk_backup_id" value="">
+          {% endif %}
+        </div>
+
+        {# PIC Implementor #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-tools text-warning me-1"></i>PIC Implementor
+          </label>
+          {% if implementor %}
+          <select name="pic_implementor_id" class="form-select form-select-sm">
+            <option value="">— Tidak ditentukan —</option>
+            {% for e in implementor %}
+            <option value="{{ e.id }}" {{ 'selected' if row and row.pic_implementor_id == e.id }}>
+              {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <div class="text-muted small fst-italic">Tidak ada karyawan divisi Implementor/BPS.</div>
+          <input type="hidden" name="pic_implementor_id" value="">
+          {% endif %}
+        </div>
+
+        {# PIC Co-Leader #}
+        <div class="mb-0">
+          <label class="form-label fw-semibold small">
+            <i class="bi bi-person-workspace text-success me-1"></i>PIC Co-Leader
+          </label>
+          {% if coleader %}
+          <select name="pic_coleader_id" class="form-select form-select-sm">
+            <option value="">— Tidak ditentukan —</option>
+            {% for e in coleader %}
+            <option value="{{ e.id }}" {{ 'selected' if row and row.pic_coleader_id == e.id }}>
+              {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <div class="text-muted small fst-italic">Tidak ada karyawan level Co-Leader.</div>
+          <input type="hidden" name="pic_coleader_id" value="">
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-body d-grid gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save me-1"></i>{{ 'Simpan Perubahan' if row else 'Tambah Customer' }}
         </button>
+        <a href="/support/customers" class="btn btn-outline-secondary btn-sm">Batal</a>
       </div>
-    </form>
+    </div>
   </div>
+
 </div>
-</div>
-</div>
+</form>
 {% endblock %}

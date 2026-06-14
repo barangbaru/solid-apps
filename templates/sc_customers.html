@@ -8,9 +8,17 @@
     <h5 class="fw-bold mb-0"><i class="bi bi-building text-primary me-2"></i>Master Customer</h5>
     <div class="text-muted small mt-1">Daftar customer pemegang kontrak technical support</div>
   </div>
-  <a href="/support/customers/add" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-circle me-1"></i>Tambah Customer
-  </a>
+  <div class="d-flex align-items-center gap-2">
+    {# Legenda warna #}
+    <div class="d-flex gap-2 small text-muted me-2">
+      <span><span class="badge" style="background:#16a34a">●</span> Berkontrak</span>
+      <span><span class="badge" style="background:#ea580c">●</span> Habis &lt;3 bln</span>
+      <span><span class="badge" style="background:#dc2626">●</span> Non-kontrak</span>
+    </div>
+    <a href="/support/customers/add" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-circle me-1"></i>Tambah Customer
+    </a>
+  </div>
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -18,9 +26,11 @@
     <table class="table table-hover table-sm mb-0 align-middle">
       <thead class="table-light">
         <tr>
-          <th class="ps-3" style="width:100px">Kode</th>
+          <th class="ps-3" style="width:6px"></th>
+          <th style="width:100px">Kode</th>
           <th>Nama Customer</th>
           <th>Contact Person</th>
+          <th>PIC Internal</th>
           <th>Kontak</th>
           <th class="text-center">Status</th>
           <th></th>
@@ -28,24 +38,61 @@
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr class="{{ '' if r.is_active else 'table-secondary text-muted' }}">
-          <td class="ps-3">
+        {% set cstatus = contract_status.get(r.id, 'none') %}
+        {% set row_colors = {
+          'active':   ('#f0fdf4', '#16a34a'),
+          'expiring': ('#fff7ed', '#ea580c'),
+          'none':     ('#fef2f2', '#dc2626'),
+        } %}
+        {% set row_bg, indicator_color = row_colors.get(cstatus, ('#fff','#aaa')) %}
+        <tr style="background:{{ row_bg if r.is_active else '#f8f9fa' }}">
+          <td style="width:4px;padding:0">
+            <div style="width:4px;height:100%;min-height:48px;background:{{ indicator_color if r.is_active else '#adb5bd' }};border-radius:0 2px 2px 0"></div>
+          </td>
+          <td>
             <span class="badge bg-light border text-dark fw-semibold" style="font-size:.75rem">{{ r.code }}</span>
           </td>
           <td>
             <div class="fw-semibold">{{ r.name }}</div>
-            {% if r.address %}<div class="text-muted small">{{ r.address }}</div>{% endif %}
+            {% if r.address %}<div class="text-muted" style="font-size:.75rem">{{ r.address }}</div>{% endif %}
           </td>
           <td class="small">{{ r.contact_person or '—' }}</td>
+          <td class="small">
+            {% set has_pic = r.pic_helpdesk_id or r.pic_implementor_id or r.pic_coleader_id %}
+            {% if has_pic %}
+            <div class="d-flex flex-column gap-1">
+              {% if r.pic_helpdesk_id %}
+              <span><i class="bi bi-headset text-primary" style="font-size:.7rem"></i>
+                <a href="/support/customers/{{ r.id }}/edit" class="text-decoration-none text-dark small" style="font-size:.78rem">
+                  {%- set hd = namespace(name='') -%}
+                  {%- for e in [] -%}{%- endfor -%}
+                  PIC HD
+                </a>
+              </span>
+              {% endif %}
+            </div>
+            <a href="/support/customers/{{ r.id }}/edit" class="text-muted" style="font-size:.75rem">
+              <i class="bi bi-person-badge me-1"></i>Lihat PIC
+            </a>
+            {% else %}
+            <span class="text-muted" style="font-size:.75rem">—</span>
+            {% endif %}
+          </td>
           <td class="small">
             {% if r.phone %}<div><i class="bi bi-telephone me-1 text-success"></i>{{ r.phone }}</div>{% endif %}
             {% if r.email %}<div><i class="bi bi-envelope me-1 text-primary"></i>{{ r.email }}</div>{% endif %}
             {% if not r.phone and not r.email %}—{% endif %}
           </td>
           <td class="text-center">
-            <span class="badge {{ 'bg-success' if r.is_active else 'bg-secondary' }}">
-              {{ 'Aktif' if r.is_active else 'Nonaktif' }}
-            </span>
+            {% if not r.is_active %}
+            <span class="badge bg-secondary">Nonaktif</span>
+            {% elif cstatus == 'active' %}
+            <span class="badge" style="background:#16a34a"><i class="bi bi-check-circle me-1"></i>Berkontrak</span>
+            {% elif cstatus == 'expiring' %}
+            <span class="badge" style="background:#ea580c"><i class="bi bi-exclamation-triangle me-1"></i>Habis &lt;3 bln</span>
+            {% else %}
+            <span class="badge" style="background:#dc2626"><i class="bi bi-x-circle me-1"></i>Non-kontrak</span>
+            {% endif %}
           </td>
           <td class="text-end pe-3">
             <a href="/support/customers/{{ r.id }}/edit" class="btn btn-sm btn-outline-secondary">
@@ -61,7 +108,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">
+        <tr><td colspan="8" class="text-center text-muted py-4">
           <i class="bi bi-building" style="font-size:2rem;opacity:.3"></i>
           <div class="mt-2">Belum ada customer. <a href="/support/customers/add">Tambah sekarang</a>.</div>
         </td></tr>

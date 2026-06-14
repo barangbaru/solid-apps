@@ -402,8 +402,12 @@ MIGRATIONS = [
     ('users',       'telegram_id',       "TEXT DEFAULT ''"),
     ('employees',   'salary',            "TEXT DEFAULT ''"),
     ('employee_salary', 'increase_date', "TEXT DEFAULT ''"),
-    ('roles',           'app_slug',      "TEXT DEFAULT 'evaluasi'"),
-    ('sc_contracts',    'pic_helpdesk_id', 'INTEGER DEFAULT NULL'),
+    ('roles',              'app_slug',               "TEXT DEFAULT 'evaluasi'"),
+    ('sc_contracts',       'pic_helpdesk_id',         'INTEGER DEFAULT NULL'),
+    ('sc_customers',       'pic_helpdesk_id',         'INTEGER DEFAULT NULL'),
+    ('sc_customers',       'pic_helpdesk_backup_id',  'INTEGER DEFAULT NULL'),
+    ('sc_customers',       'pic_implementor_id',      'INTEGER DEFAULT NULL'),
+    ('sc_customers',       'pic_coleader_id',         'INTEGER DEFAULT NULL'),
 ]
 
 DEFAULT_SETTINGS = {
@@ -2640,15 +2644,37 @@ def sc_index():
 @login_required
 def sc_customers():
     if not sc_require('sc_view'): return redirect(url_for('sc_index'))
+    from datetime import date as _date, timedelta
+    db    = get_db()
+    today = _date.today().isoformat()
+    soon  = (_date.today() + timedelta(days=90)).isoformat()
+    rows  = db.execute('SELECT * FROM sc_customers ORDER BY name').fetchall()
+    # Contract status per customer: green / orange / red
+    contract_status = {}
+    for r in rows:
+        ctr = db.execute('''SELECT end_date FROM sc_contracts
+                            WHERE customer_id=? AND status='active'
+                            ORDER BY end_date DESC LIMIT 1''', (r['id'],)).fetchone()
+        if not ctr:
+            contract_status[r['id']] = 'none'       # merah
+        elif ctr['end_date'] <= soon:
+            contract_status[r['id']] = 'expiring'   # orange
+        else:
+            contract_status[r['id']] = 'active'     # hijau
+    return render_template('sc_customers.html', rows=rows, contract_status=contract_status)
+
+@app.route('/support/api/customer-pics/<int:cid>')
+@login_required
+def sc_api_customer_pics(cid):
     db = get_db()
-    rows = db.execute('SELECT * FROM sc_customers ORDER BY name').fetchall()
-    return render_template('sc_customers.html', rows=rows)
+    return jsonify(_sc_customer_pic_info(db, cid))
 
 @app.route('/support/customers/add', methods=['GET', 'POST'])
 @login_required
 def sc_customer_add():
     if not sc_require('sc_manage_customers'): return redirect(url_for('sc_customers'))
     db = get_db()
+    helpdesk, implementor, coleader = _sc_pic_employees(db)
     if request.method == 'POST':
         code = request.form.get('code', '').strip().upper()
         name = request.form.get('name', '').strip()
@@ -2657,18 +2683,27 @@ def sc_customer_add():
         else:
             try:
                 db.execute(
-                    'INSERT INTO sc_customers(code,name,address,contact_person,phone,email,notes) VALUES(?,?,?,?,?,?,?)',
-                    (code, name, request.form.get('address','').strip(),
+                    '''INSERT INTO sc_customers
+                       (code,name,address,contact_person,phone,email,notes,
+                        pic_helpdesk_id,pic_helpdesk_backup_id,pic_implementor_id,pic_coleader_id)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                    (code, name,
+                     request.form.get('address','').strip(),
                      request.form.get('contact_person','').strip(),
                      request.form.get('phone','').strip(),
                      request.form.get('email','').strip(),
-                     request.form.get('notes','').strip()))
+                     request.form.get('notes','').strip(),
+                     request.form.get('pic_helpdesk_id') or None,
+                     request.form.get('pic_helpdesk_backup_id') or None,
+                     request.form.get('pic_implementor_id') or None,
+                     request.form.get('pic_coleader_id') or None))
                 db.commit()
                 flash(f'Customer "{name}" ditambahkan', 'success')
                 return redirect(url_for('sc_customers'))
             except Exception:
                 flash('Kode customer sudah ada', 'danger')
-    return render_template('sc_customer_form.html', row=None)
+    return render_template('sc_customer_form.html', row=None,
+                           helpdesk=helpdesk, implementor=implementor, coleader=coleader)
 
 @app.route('/support/customers/<int:cid>/edit', methods=['GET', 'POST'])
 @login_required
@@ -2679,21 +2714,31 @@ def sc_customer_edit(cid):
     if not row:
         flash('Customer tidak ditemukan', 'danger')
         return redirect(url_for('sc_customers'))
+    helpdesk, implementor, coleader = _sc_pic_employees(db)
     if request.method == 'POST':
-        name = request.form.get('name', '').strip()
+        name      = request.form.get('name', '').strip()
         is_active = 1 if request.form.get('is_active') else 0
-        db.execute('''UPDATE sc_customers SET name=?,address=?,contact_person=?,phone=?,email=?,notes=?,is_active=?
+        db.execute('''UPDATE sc_customers
+                      SET name=?,address=?,contact_person=?,phone=?,email=?,notes=?,is_active=?,
+                          pic_helpdesk_id=?,pic_helpdesk_backup_id=?,pic_implementor_id=?,pic_coleader_id=?
                       WHERE id=?''',
-                   (name, request.form.get('address','').strip(),
+                   (name,
+                    request.form.get('address','').strip(),
                     request.form.get('contact_person','').strip(),
                     request.form.get('phone','').strip(),
                     request.form.get('email','').strip(),
                     request.form.get('notes','').strip(),
-                    is_active, cid))
+                    is_active,
+                    request.form.get('pic_helpdesk_id') or None,
+                    request.form.get('pic_helpdesk_backup_id') or None,
+                    request.form.get('pic_implementor_id') or None,
+                    request.form.get('pic_coleader_id') or None,
+                    cid))
         db.commit()
         flash('Customer diperbarui', 'success')
         return redirect(url_for('sc_customers'))
-    return render_template('sc_customer_form.html', row=row)
+    return render_template('sc_customer_form.html', row=row,
+                           helpdesk=helpdesk, implementor=implementor, coleader=coleader)
 
 @app.route('/support/customers/<int:cid>/delete', methods=['POST'])
 @login_required
@@ -2958,6 +3003,29 @@ def sc_contracts():
         contracts.append(d)
     return render_template('sc_contracts.html', contracts=contracts, customers=customers,
                            filter_customer=customer_id, filter_status=status_f, today=today)
+
+def _sc_pic_employees(db):
+    """Return (helpdesk, implementor, coleader) employee lists for PIC dropdowns."""
+    helpdesk   = db.execute("SELECT id,name,jabatan FROM employees WHERE is_active=1 AND LOWER(divisi) LIKE '%helpdesk%' ORDER BY name").fetchall()
+    implementor= db.execute("SELECT id,name,jabatan FROM employees WHERE is_active=1 AND LOWER(divisi) LIKE '%implementor%' ORDER BY name").fetchall()
+    coleader   = db.execute("SELECT id,name,jabatan FROM employees WHERE is_active=1 AND LOWER(level) LIKE '%co-leader%' ORDER BY name").fetchall()
+    return helpdesk, implementor, coleader
+
+def _sc_customer_pic_info(db, customer_id):
+    """Return dict of PIC names for a customer (for AJAX & template display)."""
+    c = db.execute('SELECT pic_helpdesk_id,pic_helpdesk_backup_id,pic_implementor_id,pic_coleader_id FROM sc_customers WHERE id=?', (customer_id,)).fetchone()
+    if not c:
+        return {}
+    def emp_name(eid):
+        if not eid: return None
+        r = db.execute('SELECT name, jabatan FROM employees WHERE id=?', (eid,)).fetchone()
+        return f"{r['name']} ({r['jabatan']})" if r else None
+    return {
+        'pic_helpdesk':        emp_name(c['pic_helpdesk_id']),
+        'pic_helpdesk_backup': emp_name(c['pic_helpdesk_backup_id']),
+        'pic_implementor':     emp_name(c['pic_implementor_id']),
+        'pic_coleader':        emp_name(c['pic_coleader_id']),
+    }
 
 def _sc_contract_lookups(db):
     """Data lookup yang dibutuhkan form kontrak."""
