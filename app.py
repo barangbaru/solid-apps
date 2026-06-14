@@ -340,6 +340,14 @@ CREATE TABLE IF NOT EXISTS sc_contract_services (
     FOREIGN KEY(contract_id) REFERENCES sc_contracts(id) ON DELETE CASCADE,
     FOREIGN KEY(service_id) REFERENCES sc_services(id)
 );
+CREATE TABLE IF NOT EXISTS sc_contract_support_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER NOT NULL,
+    support_type_id INTEGER NOT NULL,
+    UNIQUE(contract_id, support_type_id),
+    FOREIGN KEY(contract_id) REFERENCES sc_contracts(id) ON DELETE CASCADE,
+    FOREIGN KEY(support_type_id) REFERENCES sc_support_types(id)
+);
 CREATE TABLE IF NOT EXISTS sc_tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_no TEXT NOT NULL UNIQUE,
@@ -395,6 +403,7 @@ MIGRATIONS = [
     ('employees',   'salary',            "TEXT DEFAULT ''"),
     ('employee_salary', 'increase_date', "TEXT DEFAULT ''"),
     ('roles',           'app_slug',      "TEXT DEFAULT 'evaluasi'"),
+    ('sc_contracts',    'pic_helpdesk_id', 'INTEGER DEFAULT NULL'),
 ]
 
 DEFAULT_SETTINGS = {
@@ -2950,13 +2959,22 @@ def sc_contracts():
     return render_template('sc_contracts.html', contracts=contracts, customers=customers,
                            filter_customer=customer_id, filter_status=status_f, today=today)
 
+def _sc_contract_lookups(db):
+    """Data lookup yang dibutuhkan form kontrak."""
+    customers     = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
+    services      = db.execute('SELECT id, name FROM sc_services WHERE is_active=1 ORDER BY name').fetchall()
+    support_types = db.execute('SELECT id, code, name FROM sc_support_types WHERE is_active=1 ORDER BY code').fetchall()
+    helpdesk_emps = db.execute(
+        "SELECT id, name, jabatan FROM employees WHERE is_active=1 AND LOWER(divisi) LIKE '%helpdesk%' ORDER BY name"
+    ).fetchall()
+    return customers, services, support_types, helpdesk_emps
+
 @app.route('/support/contracts/add', methods=['GET','POST'])
 @login_required
 def sc_contract_add():
     if not sc_require('sc_manage_contracts'): return redirect(url_for('sc_contracts'))
     db = get_db()
-    customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
-    services  = db.execute('SELECT id, name FROM sc_services WHERE is_active=1 ORDER BY name').fetchall()
+    customers, services, support_types, helpdesk_emps = _sc_contract_lookups(db)
     if request.method == 'POST':
         code      = request.form['code'].strip()
         cid       = request.form['customer_id']
@@ -2967,56 +2985,72 @@ def sc_contract_add():
         val       = float(request.form.get('contract_value') or 0)
         status    = request.form.get('status','active')
         notes     = request.form.get('notes','').strip()
+        pic_id    = request.form.get('pic_helpdesk_id') or None
         svc_ids   = request.form.getlist('service_ids')
+        type_ids  = request.form.getlist('support_type_ids')
         try:
             db.execute('''INSERT INTO sc_contracts(code,customer_id,title,description,start_date,end_date,
-                          contract_value,status,notes,created_by)
-                          VALUES(?,?,?,?,?,?,?,?,?,?)''',
-                       (code, cid, title, desc, sd, ed, val, status, notes, session.get('user_id')))
+                          contract_value,status,notes,pic_helpdesk_id,created_by)
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                       (code, cid, title, desc, sd, ed, val, status, notes, pic_id, session.get('user_id')))
             ctr_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
             for sid in svc_ids:
                 db.execute('INSERT OR IGNORE INTO sc_contract_services(contract_id,service_id) VALUES(?,?)', (ctr_id, sid))
+            for tid in type_ids:
+                db.execute('INSERT OR IGNORE INTO sc_contract_support_types(contract_id,support_type_id) VALUES(?,?)', (ctr_id, tid))
             db.commit()
             flash('Kontrak berhasil ditambahkan', 'success')
             return redirect(url_for('sc_contracts'))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
-    return render_template('sc_contract_form.html', row=None, customers=customers, services=services, sel_services=[])
+    return render_template('sc_contract_form.html', row=None,
+                           customers=customers, services=services,
+                           support_types=support_types, helpdesk_emps=helpdesk_emps,
+                           sel_services=[], sel_types=[], sel_pic=None)
 
 @app.route('/support/contracts/<int:cid>/edit', methods=['GET','POST'])
 @login_required
 def sc_contract_edit(cid):
     if not sc_require('sc_manage_contracts'): return redirect(url_for('sc_contracts'))
-    db = get_db()
+    db  = get_db()
     row = db.execute('SELECT * FROM sc_contracts WHERE id=?', (cid,)).fetchone()
     if not row: abort(404)
-    customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
-    services  = db.execute('SELECT id, name FROM sc_services WHERE is_active=1 ORDER BY name').fetchall()
-    sel_services = [r['service_id'] for r in db.execute('SELECT service_id FROM sc_contract_services WHERE contract_id=?', (cid,)).fetchall()]
+    customers, services, support_types, helpdesk_emps = _sc_contract_lookups(db)
+    sel_services = [r['service_id']      for r in db.execute('SELECT service_id FROM sc_contract_services WHERE contract_id=?',      (cid,)).fetchall()]
+    sel_types    = [r['support_type_id'] for r in db.execute('SELECT support_type_id FROM sc_contract_support_types WHERE contract_id=?', (cid,)).fetchall()]
     if request.method == 'POST':
-        code   = request.form['code'].strip()
-        custid = request.form['customer_id']
-        title  = request.form['title'].strip()
-        desc   = request.form.get('description','').strip()
-        sd     = request.form['start_date']
-        ed     = request.form['end_date']
-        val    = float(request.form.get('contract_value') or 0)
-        status = request.form.get('status','active')
-        notes  = request.form.get('notes','').strip()
-        svc_ids = request.form.getlist('service_ids')
+        code     = request.form['code'].strip()
+        custid   = request.form['customer_id']
+        title    = request.form['title'].strip()
+        desc     = request.form.get('description','').strip()
+        sd       = request.form['start_date']
+        ed       = request.form['end_date']
+        val      = float(request.form.get('contract_value') or 0)
+        status   = request.form.get('status','active')
+        notes    = request.form.get('notes','').strip()
+        pic_id   = request.form.get('pic_helpdesk_id') or None
+        svc_ids  = request.form.getlist('service_ids')
+        type_ids = request.form.getlist('support_type_ids')
         try:
             db.execute('''UPDATE sc_contracts SET code=?,customer_id=?,title=?,description=?,start_date=?,
-                          end_date=?,contract_value=?,status=?,notes=? WHERE id=?''',
-                       (code, custid, title, desc, sd, ed, val, status, notes, cid))
+                          end_date=?,contract_value=?,status=?,notes=?,pic_helpdesk_id=? WHERE id=?''',
+                       (code, custid, title, desc, sd, ed, val, status, notes, pic_id, cid))
             db.execute('DELETE FROM sc_contract_services WHERE contract_id=?', (cid,))
+            db.execute('DELETE FROM sc_contract_support_types WHERE contract_id=?', (cid,))
             for sid in svc_ids:
                 db.execute('INSERT OR IGNORE INTO sc_contract_services(contract_id,service_id) VALUES(?,?)', (cid, sid))
+            for tid in type_ids:
+                db.execute('INSERT OR IGNORE INTO sc_contract_support_types(contract_id,support_type_id) VALUES(?,?)', (cid, tid))
             db.commit()
             flash('Kontrak diperbarui', 'success')
             return redirect(url_for('sc_contracts'))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
-    return render_template('sc_contract_form.html', row=row, customers=customers, services=services, sel_services=sel_services)
+    return render_template('sc_contract_form.html', row=row,
+                           customers=customers, services=services,
+                           support_types=support_types, helpdesk_emps=helpdesk_emps,
+                           sel_services=sel_services, sel_types=sel_types,
+                           sel_pic=row['pic_helpdesk_id'])
 
 @app.route('/support/contracts/<int:cid>')
 @login_required

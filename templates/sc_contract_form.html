@@ -15,83 +15,201 @@
   </a>
 </div>
 
-<div class="card border-0 shadow-sm">
-  <div class="card-body">
-    <form method="post">
-      <div class="row g-3">
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Kode Kontrak <span class="text-danger">*</span></label>
-          <input type="text" name="code" class="form-control" required
-                 value="{{ row.code if row else '' }}" placeholder="CTR-2024-001">
-        </div>
-        <div class="col-md-9">
-          <label class="form-label fw-semibold">Judul Kontrak <span class="text-danger">*</span></label>
-          <input type="text" name="title" class="form-control" required
-                 value="{{ row.title if row else '' }}" placeholder="Annual Technical Support ...">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Customer <span class="text-danger">*</span></label>
-          <select name="customer_id" class="form-select" required>
-            <option value="">— Pilih Customer —</option>
-            {% for c in customers %}
-            <option value="{{ c.id }}" {{ 'selected' if row and row.customer_id == c.id }}>{{ c.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Status</label>
-          <select name="status" class="form-select">
-            <option value="active"     {{ 'selected' if row and row.status=='active' }}>Aktif</option>
-            <option value="draft"      {{ 'selected' if row and row.status=='draft' }}>Draft</option>
-            <option value="terminated" {{ 'selected' if row and row.status=='terminated' }}>Terminated</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Nilai Kontrak (Rp)</label>
-          <input type="number" name="contract_value" class="form-control" min="0" step="1000"
-                 value="{{ row.contract_value if row else '' }}" placeholder="0">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Tanggal Mulai <span class="text-danger">*</span></label>
-          <input type="date" name="start_date" class="form-control" required
-                 value="{{ row.start_date if row else '' }}">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label fw-semibold">Tanggal Selesai <span class="text-danger">*</span></label>
-          <input type="date" name="end_date" class="form-control" required
-                 value="{{ row.end_date if row else '' }}">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Deskripsi</label>
-          <textarea name="description" class="form-control" rows="3">{{ row.description if row else '' }}</textarea>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label fw-semibold">Catatan</label>
-          <textarea name="notes" class="form-control" rows="3">{{ row.notes if row else '' }}</textarea>
-        </div>
-        <div class="col-12">
-          <label class="form-label fw-semibold">Layanan/Jasa yang Dicakup</label>
-          <div class="row g-2">
-            {% for s in services %}
-            <div class="col-md-4 col-lg-3">
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" name="service_ids" value="{{ s.id }}"
-                       id="svc_{{ s.id }}"
-                       {{ 'checked' if s.id in sel_services }}>
-                <label class="form-check-label small" for="svc_{{ s.id }}">{{ s.name }}</label>
-              </div>
-            </div>
-            {% endfor %}
+<form method="post">
+<div class="row g-3">
+
+  {# ── Kolom kiri: info utama ── #}
+  <div class="col-lg-8">
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-info-circle me-1"></i>Informasi Kontrak
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">Kode Kontrak <span class="text-danger">*</span></label>
+            <input type="text" name="code" class="form-control form-control-sm text-uppercase" required
+                   value="{{ row.code if row else '' }}" placeholder="CTR-2026-001">
+          </div>
+          <div class="col-md-9">
+            <label class="form-label fw-semibold small">Judul Kontrak <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control form-control-sm" required
+                   value="{{ row.title if row else '' }}" placeholder="Annual Technical Support ...">
+          </div>
+          <div class="col-md-7">
+            <label class="form-label fw-semibold small">Customer <span class="text-danger">*</span></label>
+            <select name="customer_id" class="form-select form-select-sm" required>
+              <option value="">— Pilih Customer —</option>
+              {% for c in customers %}
+              <option value="{{ c.id }}" {{ 'selected' if row and row.customer_id == c.id }}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label fw-semibold small">Status</label>
+            <select name="status" class="form-select form-select-sm">
+              <option value="active"     {{ 'selected' if row and row.status=='active' or not row }}>Aktif</option>
+              <option value="draft"      {{ 'selected' if row and row.status=='draft' }}>Draft</option>
+              <option value="terminated" {{ 'selected' if row and row.status=='terminated' }}>Terminated</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Tanggal Mulai <span class="text-danger">*</span></label>
+            <input type="date" name="start_date" class="form-control form-control-sm" required
+                   value="{{ row.start_date if row else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Tanggal Selesai <span class="text-danger">*</span></label>
+            <input type="date" name="end_date" class="form-control form-control-sm" required
+                   value="{{ row.end_date if row else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Nilai Kontrak (Rp)</label>
+            <input type="number" name="contract_value" class="form-control form-control-sm" min="0" step="1000"
+                   value="{{ row.contract_value if row else '' }}" placeholder="0">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Deskripsi</label>
+            <textarea name="description" class="form-control form-control-sm" rows="3"
+                      placeholder="Lingkup pekerjaan...">{{ row.description if row else '' }}</textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Catatan Internal</label>
+            <textarea name="notes" class="form-control form-control-sm" rows="3"
+                      placeholder="Catatan tambahan...">{{ row.notes if row else '' }}</textarea>
           </div>
         </div>
-        <div class="col-12 mt-2">
-          <button type="submit" class="btn btn-primary">
-            <i class="bi bi-save me-1"></i>{{ 'Simpan Perubahan' if row else 'Tambah Kontrak' }}
-          </button>
-          <a href="/support/contracts" class="btn btn-outline-secondary ms-2">Batal</a>
-        </div>
       </div>
-    </form>
+    </div>
+
+    {# ── Tipe Support yang Dicakup ── #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-tools me-1"></i>Tipe Support yang Dicakup
+      </div>
+      <div class="card-body">
+        {% if support_types %}
+        <div class="row g-2">
+          {% for st in support_types %}
+          {% set colors = {
+            'CORRECTIVE': ('danger',  'bandaid'),
+            'PREVENTIVE': ('success', 'shield-check'),
+            'ONSITE':     ('primary', 'geo-alt'),
+          } %}
+          {% set col, ico = colors.get(st.code, ('secondary', 'tools')) %}
+          <div class="col-md-4 col-sm-6">
+            <label class="d-flex align-items-center gap-2 p-2 rounded border type-item
+                          {{ 'border-' + col + ' bg-' + col + ' bg-opacity-10' if st.id in sel_types else '' }}"
+                   style="cursor:pointer;border-radius:8px !important"
+                   for="stype_{{ st.id }}">
+              <input class="form-check-input m-0 flex-shrink-0" type="checkbox"
+                     name="support_type_ids" value="{{ st.id }}"
+                     id="stype_{{ st.id }}"
+                     {{ 'checked' if st.id in sel_types }}
+                     onchange="toggleLabel(this,'{{ col }}')">
+              <div>
+                <span class="badge bg-{{ col }} {{ 'text-dark' if col == 'warning' else '' }} me-1" style="font-size:.65rem">
+                  <i class="bi bi-{{ ico }}"></i>
+                </span>
+                <span class="fw-semibold small">{{ st.name }}</span>
+              </div>
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">
+          <i class="bi bi-info-circle me-1"></i>
+          Belum ada tipe support. <a href="/support/support-types/add">Tambah di Master Tipe Support</a>.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Layanan/Jasa yang Dicakup ── #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-wrench-adjustable me-1"></i>Layanan/Jasa yang Dicakup
+      </div>
+      <div class="card-body">
+        {% if services %}
+        <div class="row g-2">
+          {% for s in services %}
+          <div class="col-md-4 col-sm-6">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="service_ids" value="{{ s.id }}"
+                     id="svc_{{ s.id }}" {{ 'checked' if s.id in sel_services }}>
+              <label class="form-check-label small" for="svc_{{ s.id }}">{{ s.name }}</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">
+          <i class="bi bi-info-circle me-1"></i>
+          Belum ada layanan. <a href="/support/services/add">Tambah di Master Layanan</a>.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  {# ── Kolom kanan: PIC & aksi ── #}
+  <div class="col-lg-4">
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-person-badge me-1"></i>PIC Helpdesk
+      </div>
+      <div class="card-body">
+        <label class="form-label fw-semibold small">Penanggung Jawab</label>
+        {% if helpdesk_emps %}
+        <select name="pic_helpdesk_id" class="form-select form-select-sm">
+          <option value="">— Tidak ada / Belum ditentukan —</option>
+          {% for e in helpdesk_emps %}
+          <option value="{{ e.id }}" {{ 'selected' if sel_pic == e.id }}>
+            {{ e.name }}{% if e.jabatan %} — {{ e.jabatan }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="form-text">
+          Diambil dari karyawan divisi Helpdesk Support.
+        </div>
+        {% else %}
+        <div class="alert alert-warning py-2 small mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Tidak ada karyawan di divisi <strong>Helpdesk Support</strong>.
+          <a href="/karyawan" class="alert-link">Tambah karyawan</a> atau sesuaikan nama divisi.
+        </div>
+        <input type="hidden" name="pic_helpdesk_id" value="">
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-body d-grid gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save me-1"></i>{{ 'Simpan Perubahan' if row else 'Tambah Kontrak' }}
+        </button>
+        <a href="/support/contracts" class="btn btn-outline-secondary btn-sm">Batal</a>
+      </div>
+    </div>
+
   </div>
 </div>
+</form>
+
+<script>
+function toggleLabel(cb, color) {
+  const label = cb.closest('label');
+  if (!label) return;
+  if (cb.checked) {
+    label.classList.add('border-' + color, 'bg-' + color, 'bg-opacity-10');
+  } else {
+    label.classList.remove('border-' + color, 'bg-' + color, 'bg-opacity-10');
+  }
+}
+</script>
 {% endblock %}
