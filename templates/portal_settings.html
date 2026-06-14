@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}Akses Aplikasi — super-us{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Akses Aplikasi</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-shield-lock text-primary me-2"></i>Pengaturan Akses Aplikasi</h5>
+    <div class="text-muted small mt-1">Atur aplikasi apa yang dapat diakses oleh setiap user.</div>
+  </div>
+</div>
+
+<form method="post">
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover mb-0 align-middle" style="min-width:600px">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:220px" class="py-3 ps-3">User</th>
+            {% for app in apps %}
+            <th class="text-center py-3" style="min-width:160px">
+              <div class="d-flex flex-column align-items-center gap-1">
+                <span class="d-flex align-items-center justify-content-center rounded-2"
+                      style="width:30px;height:30px;background:{{ app.bg_color }}">
+                  <i class="bi bi-{{ app.icon }}" style="color:{{ app.color }};font-size:.9rem"></i>
+                </span>
+                <span style="font-size:.78rem">{{ app.name }}</span>
+              </div>
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr class="{{ 'table-warning' if u.role == 'superadmin' else '' }}">
+            <td class="ps-3 py-2">
+              <div class="fw-semibold" style="font-size:.88rem">{{ u.username }}</div>
+              <div class="text-muted" style="font-size:.76rem">{{ u.full_name or '—' }}</div>
+              <span class="badge {{ 'bg-warning text-dark' if u.role == 'superadmin' else 'bg-primary' }}"
+                    style="font-size:.65rem">{{ u.role | upper }}</span>
+            </td>
+            {% for app in apps %}
+            {% set acc = access_map.get((u.id, app.slug)) %}
+            <td class="text-center py-2">
+              {% if u.role == 'superadmin' %}
+                <span class="badge bg-success" title="Superadmin selalu punya akses penuh">
+                  <i class="bi bi-check-circle-fill me-1"></i>Full Access
+                </span>
+              {% else %}
+              <div class="d-flex flex-column align-items-center gap-2">
+                <div class="form-check form-switch mb-0 d-flex justify-content-center">
+                  <input class="form-check-input" type="checkbox" role="switch"
+                         name="access_{{ u.id }}_{{ app.slug }}"
+                         id="acc_{{ u.id }}_{{ app.slug }}"
+                         {{ 'checked' if acc and acc.active else '' }}
+                         onchange="toggleRole(this, 'role_row_{{ u.id }}_{{ app.slug }}')">
+                </div>
+                <div id="role_row_{{ u.id }}_{{ app.slug }}"
+                     style="{{ 'display:none' if not (acc and acc.active) else '' }}">
+                  <select name="role_{{ u.id }}_{{ app.slug }}"
+                          class="form-select form-select-sm"
+                          style="font-size:.75rem;width:110px">
+                    {% set cur_role = acc.role if acc else 'user' %}
+                    <option value="admin"      {{ 'selected' if cur_role == 'admin' }}>Admin</option>
+                    <option value="user"       {{ 'selected' if cur_role == 'user' }}>User</option>
+                    <option value="viewer"     {{ 'selected' if cur_role == 'viewer' }}>Viewer</option>
+                  </select>
+                </div>
+              </div>
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 mt-3">
+  <button type="submit" class="btn btn-primary">
+    <i class="bi bi-save me-1"></i> Simpan Pengaturan
+  </button>
+  <a href="/portal" class="btn btn-secondary">Batal</a>
+</div>
+</form>
+
+<div class="alert alert-info small mt-3 py-2">
+  <i class="bi bi-info-circle me-1"></i>
+  <strong>Superadmin</strong> selalu memiliki akses penuh ke semua aplikasi dan tidak dapat dibatasi.
+  Role yang dipilih menentukan hak akses user di dalam aplikasi tersebut.
+</div>
+
+<script>
+function toggleRole(checkbox, rowId) {
+  const row = document.getElementById(rowId);
+  if (row) row.style.display = checkbox.checked ? '' : 'none';
+}
+</script>
+{% endblock %}

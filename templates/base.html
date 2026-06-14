@@ -322,6 +322,26 @@
     </div>
   </a>
 
+  {% if current_app_slug == 'portal' %}
+  {# ── Portal sidebar ── #}
+  <div class="sidebar-section">Portal</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/portal" class="{{ 'active' if request.path == '/portal' }}">
+        <i class="bi bi-grid-3x3-gap nav-icon"></i> Semua Aplikasi
+      </a>
+    </li>
+    {% if current_user.role == 'superadmin' %}
+    <li>
+      <a href="/portal/settings" class="{{ 'active' if request.path == '/portal/settings' }}">
+        <i class="bi bi-shield-lock nav-icon"></i> Akses Aplikasi
+      </a>
+    </li>
+    {% endif %}
+  </ul>
+
+  {% else %}
+  {# ── App sidebar: Evaluasi Kinerja ── #}
   <!-- Current app indicator -->
   <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
     <div style="width:6px;height:6px;border-radius:50%;background:#4da8da;flex-shrink:0"></div>
@@ -400,6 +420,7 @@
     </li>
     {% endif %}
   </ul>
+  {% endif %}
 
   <!-- User footer -->
   <div class="sidebar-footer">

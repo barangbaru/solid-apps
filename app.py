@@ -266,6 +266,16 @@ CREATE TABLE IF NOT EXISTS superapp_apps (
     sort_order INTEGER DEFAULT 0,
     required_permission TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS user_app_access (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    app_slug TEXT NOT NULL,
+    app_role TEXT DEFAULT 'user',
+    is_active INTEGER DEFAULT 1,
+    granted_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(user_id, app_slug),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 MIGRATIONS = [
@@ -407,6 +417,11 @@ def init_db():
     for rname, perms in SYSTEM_ROLE_DEFAULTS.items():
         for perm in perms:
             db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
+    # Pastikan semua user existing punya akses ke evaluasi (default)
+    db.execute('''
+        INSERT OR IGNORE INTO user_app_access(user_id, app_slug, app_role, is_active)
+        SELECT id, 'evaluasi', role, 1 FROM users
+    ''')
     db.commit()
     db.close()
 
@@ -699,8 +714,8 @@ def inject_globals():
         'level_choices':   LEVEL_CHOICES,
         'user_perms':      user_perms,
         'ALL_PERMISSIONS': ALL_PERMISSIONS,
-        'portal_apps':     portal_apps,
-        'current_app_slug': 'evaluasi',
+        'portal_apps':      portal_apps,
+        'current_app_slug': 'portal' if request.path.startswith('/portal') else 'evaluasi',
     }
 
 # ─── Force MFA setup for all logged-in users ───────────────────────────────────
@@ -709,7 +724,7 @@ def inject_globals():
 def enforce_mfa_setup():
     if 'user_id' not in session:
         return
-    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'portal', 'static'}
+    exempt = {'login', 'login_mfa', 'logout', 'mfa_setup', 'mfa_challenge', 'portal', 'portal_settings', 'static'}
     if request.endpoint in exempt or (request.endpoint or '').startswith('static'):
         return
     try:
@@ -1491,8 +1506,52 @@ def profile():
 @login_required
 def portal():
     db   = get_db()
-    apps = db.execute('SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order, name').fetchall()
+    role = session.get('user_role', '')
+    uid  = session.get('user_id')
+    if role == 'superadmin':
+        apps = db.execute('SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order, name').fetchall()
+    else:
+        apps = db.execute('''
+            SELECT a.* FROM superapp_apps a
+            JOIN user_app_access ua ON ua.app_slug=a.slug AND ua.user_id=? AND ua.is_active=1
+            WHERE a.is_active=1 ORDER BY a.sort_order, a.name
+        ''', (uid,)).fetchall()
     return render_template('portal.html', apps=apps)
+
+@app.route('/portal/settings', methods=['GET', 'POST'])
+@login_required
+def portal_settings():
+    if session.get('user_role') != 'superadmin':
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db    = get_db()
+    users = db.execute('SELECT id, username, full_name, role FROM users WHERE is_active=1 ORDER BY username').fetchall()
+    apps  = db.execute('SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+
+    if request.method == 'POST':
+        # Hapus semua akses non-superadmin lalu rebuild dari form
+        db.execute("DELETE FROM user_app_access WHERE user_id IN (SELECT id FROM users WHERE role != 'superadmin')")
+        for u in users:
+            if u['role'] == 'superadmin':
+                continue
+            for a in apps:
+                key    = f"access_{u['id']}_{a['slug']}"
+                role_k = f"role_{u['id']}_{a['slug']}"
+                if request.form.get(key):
+                    app_role = request.form.get(role_k, 'user')
+                    db.execute('''INSERT OR REPLACE INTO user_app_access(user_id,app_slug,app_role,is_active)
+                                  VALUES(?,?,?,1)''', (u['id'], a['slug'], app_role))
+        db.commit()
+        flash('Pengaturan akses berhasil disimpan.', 'success')
+        return redirect(url_for('portal_settings'))
+
+    # Baca akses saat ini
+    access_map = {}
+    rows = db.execute('SELECT user_id, app_slug, app_role, is_active FROM user_app_access').fetchall()
+    for r in rows:
+        access_map[(r['user_id'], r['app_slug'])] = {'role': r['app_role'], 'active': r['is_active']}
+
+    return render_template('portal_settings.html', users=users, apps=apps, access_map=access_map)
 
 @app.route('/')
 @login_required
