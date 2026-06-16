@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+{% block title %}Detail Booking — BookingCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Detail Booking</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0">
+      <i class="bi bi-calendar2-event text-warning me-2"></i>{{ b.title }}
+    </h5>
+    <div class="text-muted small mt-1">
+      <i class="bi bi-{{ b.res_icon }} me-1" style="color:{{ b.res_color }}"></i>{{ b.res_name }}
+      &nbsp;·&nbsp; {{ b.res_loc }}
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/booking/" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>Kembali
+    </a>
+    {% if b.status != 'cancelled' %}
+    <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancelModal">
+      <i class="bi bi-x-circle me-1"></i>Batalkan
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-body">
+        {% if b.status == 'cancelled' %}
+        <div class="alert alert-danger py-2 small mb-3">
+          <i class="bi bi-x-circle-fill me-2"></i>
+          Booking ini telah <strong>dibatalkan</strong>
+          {% if b.cancelled_at %} pada {{ b.cancelled_at[:16] }}{% endif %}.
+        </div>
+        {% endif %}
+
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Tanggal & Waktu</div>
+            <div class="fw-semibold">{{ b.start_dt[:10] }}</div>
+            <div class="text-muted">{{ b.start_dt[11:16] }} – {{ b.end_dt[11:16] }}</div>
+          </div>
+          <div class="col-sm-6">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Resource</div>
+            <div class="fw-semibold d-flex align-items-center gap-2">
+              <span class="d-inline-flex align-items-center justify-content-center rounded-2"
+                    style="width:28px;height:28px;background:{{ b.res_color }}22">
+                <i class="bi bi-{{ b.res_icon }}" style="color:{{ b.res_color }}"></i>
+              </span>
+              {{ b.res_name }}
+            </div>
+            <div class="text-muted small">{{ b.res_loc }}
+              {% if b.res_cap %} · Kapasitas {{ b.res_cap }} orang{% endif %}
+            </div>
+          </div>
+
+          {% if b.purpose %}
+          <div class="col-12">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Agenda / Keperluan</div>
+            <div>{{ b.purpose }}</div>
+          </div>
+          {% endif %}
+
+          {% if b.destination %}
+          <div class="col-sm-6">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Tujuan / Destinasi</div>
+            <div><i class="bi bi-geo-alt me-1 text-warning"></i>{{ b.destination }}</div>
+          </div>
+          {% endif %}
+
+          {% if b.attendee_count %}
+          <div class="col-sm-6">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Jumlah Peserta</div>
+            <div><i class="bi bi-people me-1 text-warning"></i>{{ b.attendee_count }} orang</div>
+          </div>
+          {% endif %}
+
+          {% if b.attendees %}
+          <div class="col-12">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Daftar Peserta</div>
+            <div class="small">{{ b.attendees }}</div>
+          </div>
+          {% endif %}
+
+          {% if b.notes %}
+          <div class="col-12">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Catatan</div>
+            <div class="small text-muted">{{ b.notes }}</div>
+          </div>
+          {% endif %}
+
+          <div class="col-sm-6">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Dipesan Oleh</div>
+            <div><i class="bi bi-person me-1 text-warning"></i>{{ b.booker_name or b.booker_username }}</div>
+            <div class="text-muted small">{{ b.created_at[:16] }}</div>
+          </div>
+
+          {% if b.is_recurring %}
+          <div class="col-sm-6">
+            <div class="text-muted small fw-semibold text-uppercase mb-1">Recurring</div>
+            <span class="badge bg-info text-dark">
+              <i class="bi bi-arrow-repeat me-1"></i>{{ b.recurring_type | capitalize }}
+            </span>
+            {% if b.recurring_days %}
+            <div class="text-muted small mt-1">Hari: {{ b.recurring_days }}</div>
+            {% endif %}
+            {% if b.recurring_until %}
+            <div class="text-muted small">Hingga: {{ b.recurring_until }}</div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if children %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold py-3">
+        <i class="bi bi-arrow-repeat me-2 text-info"></i>Jadwal Recurring ({{ children|length }} sesi)
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3">Tanggal</th>
+                <th>Waktu</th>
+                <th class="text-center">Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in children %}
+              <tr>
+                <td class="ps-3 small">{{ c.start_dt[:10] }}</td>
+                <td class="small">{{ c.start_dt[11:16] }} – {{ c.end_dt[11:16] }}</td>
+                <td class="text-center">
+                  <span class="badge {{ 'bg-success' if c.status=='confirmed' else 'bg-danger' }}" style="font-size:.65rem">
+                    {{ c.status }}
+                  </span>
+                </td>
+                <td class="text-end pe-3">
+                  <a href="/booking/{{ c.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2">
+                    <i class="bi bi-eye"></i>
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold py-3">
+        <i class="bi bi-info-circle me-2 text-warning"></i>Status Booking
+      </div>
+      <div class="card-body">
+        <div class="text-center py-2">
+          {% if b.status == 'confirmed' %}
+          <div class="mb-2">
+            <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-success"
+                  style="width:56px;height:56px">
+              <i class="bi bi-check-lg text-white" style="font-size:1.6rem"></i>
+            </span>
+          </div>
+          <div class="fw-bold text-success">Terkonfirmasi</div>
+          <div class="text-muted small mt-1">Booking aktif dan terjadwal</div>
+          {% else %}
+          <div class="mb-2">
+            <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger"
+                  style="width:56px;height:56px">
+              <i class="bi bi-x-lg text-white" style="font-size:1.6rem"></i>
+            </span>
+          </div>
+          <div class="fw-bold text-danger">Dibatalkan</div>
+          {% if b.cancelled_at %}<div class="text-muted small mt-1">{{ b.cancelled_at[:16] }}</div>{% endif %}
+          {% endif %}
+        </div>
+
+        {% if b.is_recurring and b.parent_id %}
+        <hr class="my-3">
+        <div class="small text-muted text-center">
+          <i class="bi bi-link me-1"></i>Bagian dari sesi recurring
+          <a href="/booking/{{ b.parent_id }}" class="d-block mt-1">Lihat Induk Booking</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Cancel Modal #}
+{% if b.status != 'cancelled' %}
+<div class="modal fade" id="cancelModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h6 class="modal-title fw-bold"><i class="bi bi-x-circle text-danger me-2"></i>Batalkan Booking</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="/booking/{{ b.id }}/cancel" method="post">
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Yakin ingin membatalkan booking <strong>{{ b.title }}</strong> pada {{ b.start_dt[:16] }}?
+          </p>
+          {% if b.is_recurring and not b.parent_id and children %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="cancel_children" value="1" id="cancelChildren">
+            <label class="form-check-label small" for="cancelChildren">
+              Batalkan juga {{ children|length }} sesi recurring berikutnya
+            </label>
+          </div>
+          {% endif %}
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Kembali</button>
+          <button type="submit" class="btn btn-danger btn-sm">
+            <i class="bi bi-x-circle me-1"></i>Ya, Batalkan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

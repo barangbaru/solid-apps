@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+{% block title %}BookingCore — super-us{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">BookingCore</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-calendar2-check text-warning me-2"></i>Booking
+      {% if selected_resource %}
+      — {{ resources|selectattr('id','equalto',selected_resource)|map(attribute='name')|first }}
+      {% endif %}
+    </h5>
+    <div class="text-muted small mt-1">Jadwal pemesanan ruangan & kendaraan</div>
+  </div>
+  <a href="/booking/new{% if selected_resource %}?resource={{ selected_resource }}{% endif %}" class="btn btn-warning btn-sm text-white">
+    <i class="bi bi-plus-circle me-1"></i>Buat Booking
+  </a>
+</div>
+
+{# Resource filter pills #}
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <a href="/booking/{% if view != 'list' %}?view={{ view }}{% endif %}"
+     class="btn btn-sm {{ 'btn-warning text-white' if not selected_resource else 'btn-outline-secondary' }}">
+    <i class="bi bi-grid me-1"></i>Semua
+  </a>
+  {% for r in resources %}
+  <a href="/booking/?resource={{ r.id }}{% if view != 'list' %}&view={{ view }}{% endif %}"
+     class="btn btn-sm {{ 'btn-warning text-white' if selected_resource == r.id else 'btn-outline-secondary' }}">
+    <i class="bi bi-{{ r.icon }} me-1"></i>{{ r.name }}
+  </a>
+  {% endfor %}
+</div>
+
+{# View toggle #}
+<div class="d-flex gap-2 mb-3">
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=list"
+     class="btn btn-sm {{ 'btn-dark' if view == 'list' else 'btn-outline-secondary' }}">
+    <i class="bi bi-list-ul me-1"></i>List
+  </a>
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=week&date={{ ref_date }}"
+     class="btn btn-sm {{ 'btn-dark' if view == 'week' else 'btn-outline-secondary' }}">
+    <i class="bi bi-calendar-week me-1"></i>Minggu Ini
+  </a>
+</div>
+
+{% if view == 'week' %}
+{# Week nav #}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=week&date={{ prev_week }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-chevron-left"></i>
+  </a>
+  <span class="fw-semibold small">{{ week_dates[0].strftime('%d %b') }} – {{ week_dates[6].strftime('%d %b %Y') }}</span>
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=week&date={{ next_week }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-chevron-right"></i>
+  </a>
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=week&date={{ today }}" class="btn btn-sm btn-outline-warning ms-2">Hari ini</a>
+</div>
+
+{# Week grid #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="table-responsive">
+    <table class="table table-bordered mb-0 align-middle" style="min-width:700px">
+      <thead class="table-light">
+        <tr>
+          {% for d in week_dates %}
+          <th class="text-center py-2" style="font-size:.8rem;{% if d == today %}background:#fff3cd{% endif %}">
+            <div class="fw-bold">{{ d.strftime('%a') }}</div>
+            <div class="text-muted">{{ d.strftime('%d/%m') }}</div>
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for d in week_dates %}
+          <td class="p-1 align-top" style="min-height:80px;vertical-align:top;{% if d == today %}background:#fffdf0{% endif %}">
+            {% for b in bookings if b.start_dt[:10] == d.isoformat() %}
+            <a href="/booking/{{ b.id }}" class="d-block text-decoration-none rounded p-1 mb-1"
+               style="background:{{ b.res_color }}22;border-left:3px solid {{ b.res_color }};font-size:.72rem">
+              <div class="fw-semibold" style="color:{{ b.res_color }}">{{ b.start_dt[11:16] }}–{{ b.end_dt[11:16] }}</div>
+              <div class="text-dark">{{ b.title[:20] }}{% if b.title|length > 20 %}…{% endif %}</div>
+              {% if not selected_resource %}<div class="text-muted">{{ b.res_name }}</div>{% endif %}
+            </a>
+            {% else %}
+            {% endfor %}
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# List view #}
+{% if bookings %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">Judul</th>
+          {% if not selected_resource %}<th>Resource</th>{% endif %}
+          <th>Waktu</th>
+          <th>Peserta</th>
+          <th>Pemesan</th>
+          <th class="text-center">Recurring</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bookings %}
+        <tr>
+          <td class="ps-3 fw-semibold">
+            <a href="/booking/{{ b.id }}" class="text-decoration-none text-dark">{{ b.title }}</a>
+            {% if b.purpose %}<div class="text-muted small">{{ b.purpose[:50] }}</div>{% endif %}
+          </td>
+          {% if not selected_resource %}
+          <td>
+            <span class="badge d-inline-flex align-items-center gap-1"
+                  style="background:{{ b.res_color }}22;color:{{ b.res_color }};border:1px solid {{ b.res_color }}44;font-size:.72rem">
+              <i class="bi bi-{{ b.res_icon }}"></i> {{ b.res_name }}
+            </span>
+          </td>
+          {% endif %}
+          <td class="small">
+            <div><i class="bi bi-calendar3 me-1 text-muted"></i>{{ b.start_dt[:10] }}</div>
+            <div class="text-muted"><i class="bi bi-clock me-1"></i>{{ b.start_dt[11:16] }} – {{ b.end_dt[11:16] }}</div>
+          </td>
+          <td class="small text-muted">
+            {% if b.attendee_count %}{{ b.attendee_count }} orang{% endif %}
+          </td>
+          <td class="small">{{ b.booker_name }}</td>
+          <td class="text-center">
+            {% if b.is_recurring and not b.parent_id %}
+            <span class="badge bg-info text-dark" style="font-size:.65rem"><i class="bi bi-arrow-repeat me-1"></i>{{ b.recurring_type }}</span>
+            {% elif b.parent_id %}
+            <span class="badge bg-light text-muted border" style="font-size:.65rem">sub</span>
+            {% endif %}
+          </td>
+          <td class="text-end pe-3">
+            <a href="/booking/{{ b.id }}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-calendar-x" style="font-size:2.5rem;opacity:.3"></i>
+  <div class="mt-2">Belum ada booking{% if selected_resource %} untuk resource ini{% endif %}.</div>
+  <a href="/booking/new" class="btn btn-warning btn-sm text-white mt-3">
+    <i class="bi bi-plus-circle me-1"></i>Buat Booking Pertama
+  </a>
+</div>
+{% endif %}
+{% endblock %}

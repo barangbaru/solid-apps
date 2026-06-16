@@ -502,6 +502,42 @@ CREATE TABLE IF NOT EXISTS sc_tickets (
     FOREIGN KEY(support_type_id) REFERENCES sc_support_types(id),
     FOREIGN KEY(sla_category_id) REFERENCES sc_sla_categories(id)
 );
+CREATE TABLE IF NOT EXISTS bk_resources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    type TEXT DEFAULT 'room',
+    subtype TEXT DEFAULT '',
+    capacity INTEGER DEFAULT 0,
+    description TEXT DEFAULT '',
+    location TEXT DEFAULT '',
+    color TEXT DEFAULT '#d97706',
+    icon TEXT DEFAULT 'door-open',
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS bk_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    purpose TEXT DEFAULT '',
+    booked_by INTEGER NOT NULL,
+    attendees TEXT DEFAULT '',
+    attendee_count INTEGER DEFAULT 0,
+    start_dt TEXT NOT NULL,
+    end_dt TEXT NOT NULL,
+    status TEXT DEFAULT 'confirmed',
+    notes TEXT DEFAULT '',
+    is_recurring INTEGER DEFAULT 0,
+    recurring_type TEXT DEFAULT '',
+    recurring_days TEXT DEFAULT '',
+    recurring_until TEXT DEFAULT '',
+    parent_id INTEGER DEFAULT NULL,
+    destination TEXT DEFAULT '',
+    cancelled_at TEXT DEFAULT '',
+    cancelled_by INTEGER DEFAULT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 MIGRATIONS = [
@@ -699,7 +735,7 @@ def init_db():
         ('support', 'SupportCore', 'Monitoring technical support, SLA & presales',
          'headset', '#0d9488', '#e6faf8', '/support/', 1, 0, 2, ''),
         ('booking', 'BookingCore', 'Pemesanan & penjadwalan ruangan, kendaraan & aset',
-         'calendar2-check', '#d97706', '#fff8e1', '/booking/', 1, 1, 3, ''),
+         'calendar2-check', '#d97706', '#fff8e1', '/booking/', 1, 0, 3, ''),
     ]
     for slug, name, desc, icon, color, bg, url, active, soon, sort, perm in _apps:
         db.execute('''INSERT INTO superapp_apps
@@ -738,6 +774,18 @@ def init_db():
         INSERT OR IGNORE INTO user_app_access(user_id, app_slug, app_role, is_active)
         SELECT id, 'evaluasi', role, 1 FROM users
     ''')
+    db.commit()
+    # Seed booking resources
+    _resources = [
+        ('Big Meeting Room', 'room', 'meeting', 20, 'Ruang rapat utama kapasitas besar', 'Lantai 3', '#0d6efd', 'people-fill', 1),
+        ('Small Meeting Room A', 'room', 'meeting', 8, 'Ruang rapat kecil A', 'Lantai 2', '#6f42c1', 'door-open', 2),
+        ('Small Meeting Room B', 'room', 'meeting', 8, 'Ruang rapat kecil B', 'Lantai 2', '#20c997', 'door-open', 3),
+        ('Lounge Room', 'room', 'lounge', 15, 'Area lounge untuk diskusi santai', 'Lantai 1', '#fd7e14', 'cup-hot-fill', 4),
+        ('Mobil Operasional', 'vehicle', 'car', 6, 'Kendaraan operasional perusahaan', 'Parkir Basement', '#d97706', 'car-front-fill', 5),
+    ]
+    for name, rtype, subtype, cap, desc, loc, color, icon, sort in _resources:
+        db.execute('''INSERT OR IGNORE INTO bk_resources(name,type,subtype,capacity,description,location,color,icon,sort_order)
+            VALUES(?,?,?,?,?,?,?,?,?)''', (name, rtype, subtype, cap, desc, loc, color, icon, sort))
     db.commit()
     db.close()
 
@@ -1049,6 +1097,8 @@ def auto_set_active_app():
         session['active_app'] = 'support'
     elif path.startswith('/portal'):
         session['active_app'] = 'portal'
+    elif path.startswith('/booking'):
+        session['active_app'] = 'booking'
     else:
         session['active_app'] = 'evaluasi'
 
@@ -5608,6 +5658,217 @@ def portal_audit_clear():
         db.commit()
         flash('Log berhasil dihapus', 'success')
     return redirect(url_for('portal_audit', tab=tab))
+
+# ─── BookingCore ───────────────────────────────────────────────────────────────
+
+def _bk_require_access():
+    if not session.get('user_id'):
+        return redirect(url_for('login'))
+    acc = get_db().execute(
+        'SELECT app_role FROM user_app_access WHERE user_id=? AND app_slug=? AND is_active=1',
+        (session['user_id'], 'booking')
+    ).fetchone()
+    if session.get('user_role') == 'superadmin' or acc:
+        return None
+    flash('Anda tidak memiliki akses ke BookingCore.', 'danger')
+    return redirect(url_for('portal'))
+
+def _bk_generate_recurring(base, resource_id, title, purpose, booked_by, attendees,
+                             attendee_count, notes, rec_type, rec_days, rec_until,
+                             destination, start_dt, end_dt):
+    from datetime import datetime, timedelta
+    db = get_db()
+    dt_start = datetime.strptime(start_dt, '%Y-%m-%d %H:%M')
+    dt_end   = datetime.strptime(end_dt,   '%Y-%m-%d %H:%M')
+    until    = datetime.strptime(rec_until, '%Y-%m-%d')
+    delta    = dt_end - dt_start
+    days_map = {'sen':0,'sel':1,'rab':2,'kam':3,'jum':4,'sab':5,'min':6}
+    chosen   = [days_map[d] for d in (rec_days.split(',') if rec_days else []) if d in days_map]
+
+    cur = dt_start + timedelta(days=1)
+    count = 0
+    while cur.date() <= until.date() and count < 365:
+        if rec_type == 'weekly' and chosen:
+            if cur.weekday() not in chosen:
+                cur += timedelta(days=1)
+                continue
+        elif rec_type == 'daily':
+            pass
+        elif rec_type == 'weekly' and not chosen:
+            if cur.weekday() != dt_start.weekday():
+                cur += timedelta(days=1)
+                continue
+        s = cur.strftime('%Y-%m-%d %H:%M')
+        e = (cur + delta).strftime('%Y-%m-%d %H:%M')
+        db.execute('''INSERT INTO bk_bookings(resource_id,title,purpose,booked_by,attendees,
+            attendee_count,start_dt,end_dt,status,notes,is_recurring,recurring_type,
+            recurring_days,recurring_until,parent_id,destination)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (resource_id,title,purpose,booked_by,attendees,attendee_count,
+             s,e,'confirmed',notes,1,rec_type,rec_days,rec_until,base,destination))
+        cur += timedelta(days=1)
+        count += 1
+    db.commit()
+
+
+@app.route('/booking/')
+@app.route('/booking')
+def booking_index():
+    g = _bk_require_access()
+    if g: return g
+    db = get_db()
+    resources = db.execute('SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order').fetchall()
+    resource_id = request.args.get('resource', type=int)
+    view = request.args.get('view', 'list')
+    date_str = request.args.get('date', '')
+
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    if date_str:
+        try: ref_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except: ref_date = today
+    else:
+        ref_date = today
+
+    week_start = ref_date - timedelta(days=ref_date.weekday())
+    week_dates = [week_start + timedelta(days=i) for i in range(7)]
+
+    q = 'SELECT b.*,r.name res_name,r.type res_type,r.color res_color,r.icon res_icon,u.full_name booker_name FROM bk_bookings b JOIN bk_resources r ON r.id=b.resource_id JOIN users u ON u.id=b.booked_by WHERE b.status!=? '
+    params = ['cancelled']
+    if resource_id:
+        q += ' AND b.resource_id=?'
+        params.append(resource_id)
+    if view == 'week':
+        q += ' AND date(b.start_dt)>=? AND date(b.start_dt)<=?'
+        params += [week_start.isoformat(), (week_start + timedelta(days=6)).isoformat()]
+    else:
+        q += ' AND date(b.start_dt)>=?'
+        params.append(today.isoformat())
+    q += ' ORDER BY b.start_dt'
+    bookings = db.execute(q, params).fetchall()
+
+    return render_template('booking_index.html',
+        resources=resources, bookings=bookings,
+        selected_resource=resource_id, view=view,
+        ref_date=ref_date, today=today,
+        week_dates=week_dates,
+        prev_week=(week_start - timedelta(days=7)).isoformat(),
+        next_week=(week_start + timedelta(days=7)).isoformat())
+
+
+@app.route('/booking/new', methods=['GET','POST'])
+def booking_new():
+    g = _bk_require_access()
+    if g: return g
+    db = get_db()
+    resources = db.execute('SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order').fetchall()
+
+    if request.method == 'POST':
+        resource_id    = int(request.form['resource_id'])
+        title          = request.form['title'].strip()
+        purpose        = request.form.get('purpose','').strip()
+        attendees      = request.form.get('attendees','').strip()
+        attendee_count = int(request.form.get('attendee_count') or 0)
+        notes          = request.form.get('notes','').strip()
+        destination    = request.form.get('destination','').strip()
+        start_dt       = request.form['start_dt']
+        end_dt         = request.form['end_dt']
+        is_recurring   = 1 if request.form.get('is_recurring') else 0
+        rec_type       = request.form.get('recurring_type','')
+        rec_days       = ','.join(request.form.getlist('recurring_days'))
+        rec_until      = request.form.get('recurring_until','')
+
+        if not title or not start_dt or not end_dt:
+            flash('Judul, waktu mulai dan selesai wajib diisi.', 'danger')
+        elif start_dt >= end_dt:
+            flash('Waktu selesai harus setelah waktu mulai.', 'danger')
+        else:
+            # check conflict
+            conflict = db.execute('''SELECT id FROM bk_bookings
+                WHERE resource_id=? AND status!='cancelled'
+                AND start_dt < ? AND end_dt > ?''',
+                (resource_id, end_dt, start_dt)).fetchone()
+            if conflict:
+                flash('Waktu yang dipilih bertabrakan dengan booking lain.', 'danger')
+            else:
+                db.execute('''INSERT INTO bk_bookings(resource_id,title,purpose,booked_by,attendees,
+                    attendee_count,start_dt,end_dt,status,notes,is_recurring,recurring_type,
+                    recurring_days,recurring_until,destination)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    (resource_id,title,purpose,session['user_id'],attendees,attendee_count,
+                     start_dt,end_dt,'confirmed',notes,is_recurring,rec_type,rec_days,rec_until,destination))
+                db.commit()
+                parent_id = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+                if is_recurring and rec_until:
+                    _bk_generate_recurring(parent_id, resource_id, title, purpose,
+                        session['user_id'], attendees, attendee_count, notes,
+                        rec_type, rec_days, rec_until, destination, start_dt, end_dt)
+
+                flash('Booking berhasil dibuat!', 'success')
+                return redirect(url_for('booking_detail', bid=parent_id))
+
+    pre_resource = request.args.get('resource', type=int)
+    return render_template('booking_form.html', resources=resources, pre_resource=pre_resource)
+
+
+@app.route('/booking/<int:bid>')
+def booking_detail(bid):
+    g = _bk_require_access()
+    if g: return g
+    db = get_db()
+    b = db.execute('''SELECT b.*,r.name res_name,r.type res_type,r.color res_color,r.icon res_icon,
+        r.capacity res_cap,r.location res_loc,u.full_name booker_name,u.username booker_username
+        FROM bk_bookings b JOIN bk_resources r ON r.id=b.resource_id
+        JOIN users u ON u.id=b.booked_by WHERE b.id=?''', (bid,)).fetchone()
+    if not b:
+        flash('Booking tidak ditemukan.', 'danger')
+        return redirect(url_for('booking_index'))
+    children = []
+    if b['is_recurring'] and not b['parent_id']:
+        children = db.execute('''SELECT * FROM bk_bookings WHERE parent_id=? AND status!='cancelled'
+            ORDER BY start_dt LIMIT 50''', (bid,)).fetchall()
+    return render_template('booking_detail.html', b=b, children=children)
+
+
+@app.route('/booking/<int:bid>/cancel', methods=['POST'])
+def booking_cancel(bid):
+    g = _bk_require_access()
+    if g: return g
+    db = get_db()
+    b = db.execute('SELECT * FROM bk_bookings WHERE id=?', (bid,)).fetchone()
+    if not b:
+        flash('Booking tidak ditemukan.', 'danger')
+        return redirect(url_for('booking_index'))
+    cancel_children = request.form.get('cancel_children') == '1'
+    from datetime import datetime
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    db.execute('UPDATE bk_bookings SET status=?,cancelled_at=?,cancelled_by=? WHERE id=?',
+               ('cancelled', now, session['user_id'], bid))
+    if cancel_children and b['is_recurring'] and not b['parent_id']:
+        db.execute('UPDATE bk_bookings SET status=?,cancelled_at=?,cancelled_by=? WHERE parent_id=? AND status!=?',
+                   ('cancelled', now, session['user_id'], bid, 'cancelled'))
+    db.commit()
+    flash('Booking berhasil dibatalkan.', 'success')
+    return redirect(url_for('booking_index'))
+
+
+@app.route('/booking/api/slots')
+def booking_api_slots():
+    g = _bk_require_access()
+    if g: return ('', 403)
+    resource_id = request.args.get('resource', type=int)
+    date_str    = request.args.get('date', '')
+    if not resource_id or not date_str:
+        return app.response_class('[]', mimetype='application/json')
+    db = get_db()
+    bookings = db.execute('''SELECT id,title,start_dt,end_dt,status FROM bk_bookings
+        WHERE resource_id=? AND date(start_dt)=? AND status!='cancelled'
+        ORDER BY start_dt''', (resource_id, date_str)).fetchall()
+    import json
+    data = [dict(id=r['id'],title=r['title'],start=r['start_dt'],end=r['end_dt']) for r in bookings]
+    return app.response_class(json.dumps(data), mimetype='application/json')
+
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 

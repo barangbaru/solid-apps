@@ -506,6 +506,58 @@
     </li>
     {% endif %}
   </ul>
+  {% elif session.get('active_app') == 'booking' %}
+  {# ── App sidebar: BookingCore ── #}
+  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
+    <div style="width:6px;height:6px;border-radius:50%;background:#d97706;flex-shrink:0"></div>
+    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
+      BookingCore
+    </span>
+  </div>
+  <div class="sidebar-section">Booking</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/booking/" class="{{ 'active' if request.path in ['/booking/','/booking'] and not request.args.get('resource') }}">
+        <i class="bi bi-calendar2-check nav-icon"></i> Semua Booking
+      </a>
+    </li>
+    <li>
+      <a href="/booking/new" class="{{ 'active' if '/booking/new' in request.path }}">
+        <i class="bi bi-plus-circle nav-icon"></i> Buat Booking
+      </a>
+    </li>
+  </ul>
+  <div class="sidebar-section">Ruangan</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/booking/?resource=1" class="{{ 'active' if request.args.get('resource')=='1' }}">
+        <i class="bi bi-people-fill nav-icon"></i> Big Meeting Room
+      </a>
+    </li>
+    <li>
+      <a href="/booking/?resource=2" class="{{ 'active' if request.args.get('resource')=='2' }}">
+        <i class="bi bi-door-open nav-icon"></i> Small Room A
+      </a>
+    </li>
+    <li>
+      <a href="/booking/?resource=3" class="{{ 'active' if request.args.get('resource')=='3' }}">
+        <i class="bi bi-door-open nav-icon"></i> Small Room B
+      </a>
+    </li>
+    <li>
+      <a href="/booking/?resource=4" class="{{ 'active' if request.args.get('resource')=='4' }}">
+        <i class="bi bi-cup-hot-fill nav-icon"></i> Lounge Room
+      </a>
+    </li>
+  </ul>
+  <div class="sidebar-section">Kendaraan</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/booking/?resource=5" class="{{ 'active' if request.args.get('resource')=='5' }}">
+        <i class="bi bi-car-front-fill nav-icon"></i> Mobil Operasional
+      </a>
+    </li>
+  </ul>
   {% endif %}
 
   <!-- User footer -->

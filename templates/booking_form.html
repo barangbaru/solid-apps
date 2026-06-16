@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+{% block title %}Buat Booking — BookingCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Buat Booking</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-plus-circle text-warning me-2"></i>Buat Booking Baru</h5>
+    <div class="text-muted small mt-1">Isi form berikut untuk memesan ruangan atau kendaraan</div>
+  </div>
+  <a href="/booking/" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-left me-1"></i>Kembali
+  </a>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <form method="post" id="bookingForm">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-semibold py-3">
+          <i class="bi bi-info-circle me-2 text-warning"></i>Informasi Booking
+        </div>
+        <div class="card-body">
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Resource <span class="text-danger">*</span></label>
+            <div class="row g-2" id="resourceCards">
+              {% for r in resources %}
+              <div class="col-sm-6">
+                <input type="radio" name="resource_id" id="res_{{ r.id }}" value="{{ r.id }}"
+                       class="d-none res-radio"
+                       {{ 'checked' if pre_resource == r.id or (loop.first and not pre_resource) }}
+                       onchange="onResourceChange({{ r.id }}, '{{ r.type }}')">
+                <label for="res_{{ r.id }}" class="resource-card d-flex align-items-center gap-3 p-3 rounded-3 border cursor-pointer w-100"
+                       style="cursor:pointer;transition:all .15s">
+                  <div class="d-flex align-items-center justify-content-center rounded-2 flex-shrink-0"
+                       style="width:40px;height:40px;background:{{ r.color }}22">
+                    <i class="bi bi-{{ r.icon }}" style="color:{{ r.color }};font-size:1.2rem"></i>
+                  </div>
+                  <div class="flex-grow-1">
+                    <div class="fw-semibold" style="font-size:.88rem">{{ r.name }}</div>
+                    <div class="text-muted" style="font-size:.75rem">
+                      {{ r.location }}
+                      {% if r.capacity %} · Kapasitas {{ r.capacity }} orang{% endif %}
+                    </div>
+                  </div>
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Judul / Keperluan <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control" required
+                   placeholder="Contoh: Rapat Tim IT, Perjalanan Dinas Jakarta">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Deskripsi / Agenda</label>
+            <textarea name="purpose" class="form-control" rows="2"
+                      placeholder="Agenda meeting, tujuan perjalanan, dll."></textarea>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Waktu Mulai <span class="text-danger">*</span></label>
+              <input type="datetime-local" name="start_dt" id="startDt" class="form-control" required
+                     onchange="updateEndMin()">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Waktu Selesai <span class="text-danger">*</span></label>
+              <input type="datetime-local" name="end_dt" id="endDt" class="form-control" required>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-semibold py-3">
+          <i class="bi bi-people me-2 text-warning"></i>Peserta
+        </div>
+        <div class="card-body">
+          <div class="mb-3" id="attendeeCountWrap">
+            <label class="form-label fw-semibold">Jumlah Peserta</label>
+            <input type="number" name="attendee_count" class="form-control" min="1"
+                   placeholder="Jumlah orang">
+          </div>
+          <div class="mb-3" id="attendeesWrap">
+            <label class="form-label fw-semibold">Daftar Peserta</label>
+            <textarea name="attendees" class="form-control" rows="2"
+                      placeholder="Nama-nama peserta (opsional)"></textarea>
+          </div>
+          <div class="mb-0" id="destinationWrap" style="display:none">
+            <label class="form-label fw-semibold">Tujuan / Destinasi</label>
+            <input type="text" name="destination" class="form-control"
+                   placeholder="Contoh: Kantor Jakarta, Bandara Soetta">
+          </div>
+          <div class="mb-0">
+            <label class="form-label fw-semibold">Catatan Tambahan</label>
+            <textarea name="notes" class="form-control" rows="2"
+                      placeholder="Kebutuhan khusus, request lainnya"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3" id="recurringCard">
+        <div class="card-header bg-transparent py-3 d-flex align-items-center justify-content-between">
+          <span class="fw-semibold"><i class="bi bi-arrow-repeat me-2 text-warning"></i>Recurring</span>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="isRecurring" name="is_recurring"
+                   onchange="toggleRecurring(this.checked)" role="switch">
+            <label class="form-check-label small text-muted" for="isRecurring">Aktifkan</label>
+          </div>
+        </div>
+        <div class="card-body" id="recurringBody" style="display:none">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Tipe Pengulangan</label>
+              <select name="recurring_type" class="form-select" onchange="onRecTypeChange(this.value)">
+                <option value="daily">Setiap Hari</option>
+                <option value="weekly" selected>Setiap Minggu (hari terpilih)</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Ulangi Hingga</label>
+              <input type="date" name="recurring_until" class="form-control" id="recUntil">
+            </div>
+          </div>
+          <div class="mt-3" id="weeklyDays">
+            <label class="form-label fw-semibold">Hari</label>
+            <div class="d-flex gap-2 flex-wrap">
+              {% for code,label in [('sen','Sen'),('sel','Sel'),('rab','Rab'),('kam','Kam'),('jum','Jum'),('sab','Sab'),('min','Min')] %}
+              <div>
+                <input type="checkbox" name="recurring_days" value="{{ code }}" id="day_{{ code }}" class="d-none day-check">
+                <label for="day_{{ code }}" class="btn btn-sm btn-outline-secondary day-label">{{ label }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-warning text-white fw-semibold px-4">
+          <i class="bi bi-check-circle me-2"></i>Buat Booking
+        </button>
+        <a href="/booking/" class="btn btn-outline-secondary">Batal</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold py-3">
+        <i class="bi bi-clock-history me-2 text-warning"></i>Jadwal Hari Ini
+      </div>
+      <div class="card-body p-0" id="todaySlots">
+        <div class="text-center py-4 text-muted small">
+          <i class="bi bi-arrow-left-circle me-1"></i>Pilih resource untuk melihat jadwal
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.resource-card { background: #fff; }
+.resource-card:hover { border-color: #d97706 !important; background: #fffdf5 !important; }
+.res-radio:checked + .resource-card {
+  border-color: #d97706 !important;
+  background: #fff8e1 !important;
+  box-shadow: 0 0 0 2px #d9770644;
+}
+.day-check:checked + .day-label {
+  background: #d97706;
+  color: #fff;
+  border-color: #d97706;
+}
+</style>
+
+<script>
+function onResourceChange(id, type) {
+  document.getElementById('destinationWrap').style.display = type === 'vehicle' ? '' : 'none';
+  fetchSlots(id);
+}
+
+function updateEndMin() {
+  const s = document.getElementById('startDt').value;
+  if (s) document.getElementById('endDt').min = s;
+}
+
+function toggleRecurring(on) {
+  document.getElementById('recurringBody').style.display = on ? '' : 'none';
+}
+
+function onRecTypeChange(val) {
+  document.getElementById('weeklyDays').style.display = val === 'weekly' ? '' : 'none';
+}
+
+function fetchSlots(resId) {
+  const today = new Date().toISOString().slice(0,10);
+  fetch('/booking/api/slots?resource=' + resId + '&date=' + today)
+    .then(r => r.json()).then(data => {
+      const el = document.getElementById('todaySlots');
+      if (!data.length) {
+        el.innerHTML = '<div class="text-center py-4 text-muted small"><i class="bi bi-calendar-check me-1"></i>Tidak ada booking hari ini</div>';
+        return;
+      }
+      el.innerHTML = '<ul class="list-group list-group-flush">' +
+        data.map(b => `<li class="list-group-item px-3 py-2 small">
+          <div class="fw-semibold">${b.title}</div>
+          <div class="text-muted">${b.start.slice(11,16)} – ${b.end.slice(11,16)}</div>
+        </li>`).join('') + '</ul>';
+    }).catch(() => {});
+}
+
+// Init on load
+window.addEventListener('DOMContentLoaded', () => {
+  const checked = document.querySelector('.res-radio:checked');
+  if (checked) {
+    const type = checked.id === 'res_5' ? 'vehicle' : 'room';
+    onResourceChange(parseInt(checked.value), type);
+  }
+  // Set min date to today
+  const now = new Date();
+  const local = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' +
+    String(now.getDate()).padStart(2,'0') + 'T' + String(now.getHours()).padStart(2,'0') + ':00';
+  document.getElementById('startDt').min = local;
+
+  // Recurring until min = tomorrow
+  const tom = new Date(); tom.setDate(tom.getDate()+1);
+  document.getElementById('recUntil').min = tom.toISOString().slice(0,10);
+});
+</script>
+{% endblock %}
