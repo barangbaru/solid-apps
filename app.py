@@ -1106,6 +1106,54 @@ def inject_globals():
 
 # ─── Auto-set active_app dari URL path ────────────────────────────────────────
 
+_SCANNER_PATHS = (
+    '/wp-', '/wordpress', '/wp-login', '/wp-admin', '/xmlrpc',
+    '/.env', '/.git', '/.htaccess', '/.htpasswd', '/config',
+    '/admin/config', '/phpmyadmin', '/pma', '/mysql', '/myadmin',
+    '/manager/', '/administrator', '/shell', '/cmd', '/eval',
+    '/cgi-bin', '/cgi/', '/api/v1/version', '/actuator', '/debug',
+    '/vendor/', '/composer', '/package.json', '/package-lock',
+    '/node_modules', '/proc/', '/etc/', '/usr/', '/var/log',
+    '/.aws', '/.ssh', '/id_rsa', '/credentials',
+    '/setup.php', '/install.php', '/update.php', '/upgrade.php',
+    '/backup', '/dump', '/db.sql', '/database.sql',
+)
+_SCANNER_EXTENSIONS = (
+    '.php', '.asp', '.aspx', '.jsp', '.cgi', '.pl', '.rb',
+    '.bak', '.sql', '.tar', '.gz', '.zip', '.rar', '.7z',
+    '.log', '.cfg', '.conf', '.ini', '.yaml', '.yml', '.toml',
+    '.pem', '.key', '.crt', '.p12', '.pfx',
+)
+
+@app.before_request
+def block_scanner():
+    path = request.path.lower()
+    if request.path.startswith('/static/'):
+        return None
+    if any(path.startswith(p) for p in _SCANNER_PATHS):
+        return ('', 404)
+    if any(path.endswith(ext) for ext in _SCANNER_EXTENSIONS):
+        return ('', 404)
+    if '../' in path or '%2e%2e' in path.lower():
+        return ('', 404)
+
+
+@app.before_request
+def add_security_headers():
+    pass  # headers ditambahkan via after_request
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options']  = 'nosniff'
+    response.headers['X-Frame-Options']          = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection']         = '1; mode=block'
+    response.headers['Referrer-Policy']           = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy']        = 'geolocation=(), microphone=(), camera=()'
+    response.headers['Server']                    = 'super-us'
+    return response
+
+
 @app.before_request
 def auto_set_active_app():
     path = request.path
@@ -2625,7 +2673,7 @@ def portal_system_settings():
     db = get_db()
     if request.method == 'POST':
         for k in PORTAL_SYSTEM_KEYS:
-            if k in ('smtp_ssl', 'openwa_enabled', 'google_oauth_enabled'):
+            if k in ('smtp_ssl', 'openwa_enabled', 'google_oauth_enabled', 'recaptcha_enabled'):
                 v = '1' if request.form.get(k) else '0'
             else:
                 v = request.form.get(k, '').strip()
