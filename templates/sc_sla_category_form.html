@@ -4,19 +4,20 @@
 
 {% block content %}
 <div class="row justify-content-center">
-<div class="col-lg-6">
+<div class="col-lg-7">
 <div class="card border-0 shadow-sm">
-  <div class="card-header py-2 fw-bold">
-    <i class="bi bi-speedometer2 text-primary me-1"></i>
+  <div class="card-header py-3 fw-bold">
+    <i class="bi bi-speedometer2 text-primary me-2"></i>
     {{ 'Edit Kategori SLA' if row else 'Tambah Kategori SLA Baru' }}
   </div>
   <div class="card-body p-4">
     <form method="post">
-      <div class="row g-3">
+
+      <div class="row g-3 mb-3">
         <div class="col-md-4">
           <label class="form-label fw-semibold small">Kode <span class="text-danger">*</span></label>
-          <input type="text" name="code" class="form-control form-control-sm text-uppercase"
-                 value="{{ row.code if row else '' }}" placeholder="SLA-P1" maxlength="20"
+          <input type="text" name="code" class="form-control form-control-sm text-uppercase font-monospace"
+                 value="{{ row.code if row else '' }}" placeholder="COR-P1" maxlength="20"
                  {{ 'readonly' if row else 'required' }}
                  style="{{ 'background:#f8f9fa' if row else '' }}">
           {% if row %}<div class="form-text">Kode tidak dapat diubah.</div>{% endif %}
@@ -24,65 +25,117 @@
         <div class="col-md-8">
           <label class="form-label fw-semibold small">Nama Kategori <span class="text-danger">*</span></label>
           <input type="text" name="name" class="form-control form-control-sm"
-                 value="{{ row.name if row else '' }}" placeholder="Priority 1 — Critical" required>
+                 value="{{ row.name if row else '' }}" placeholder="Corrective P1 — Critical" required>
         </div>
-
-        <div class="col-12">
-          <label class="form-label fw-semibold small">Prioritas <span class="text-danger">*</span></label>
-          <div class="d-flex gap-2 flex-wrap">
-            {% for p, cls in [('Critical','danger'),('High','warning'),('Medium','primary'),('Low','secondary')] %}
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="priority" id="p{{ p }}" value="{{ p }}"
-                     {{ 'checked' if (row and row.priority == p) or (not row and p == 'Medium') }}>
-              <label class="form-check-label" for="p{{ p }}">
-                <span class="badge bg-{{ cls }} {{ 'text-dark' if p == 'High' else '' }}">{{ p }}</span>
-              </label>
-            </div>
-            {% endfor %}
-          </div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="form-label fw-semibold small">
-            <i class="bi bi-clock text-warning me-1"></i>Response Time
-          </label>
-          <div class="input-group input-group-sm">
-            <input type="number" name="response_time_hours" class="form-control"
-                   value="{{ row.response_time_hours if row else '4' }}"
-                   min="0.25" step="0.25" placeholder="4">
-            <span class="input-group-text">jam</span>
-          </div>
-          <div class="form-text">Waktu maksimal untuk merespons tiket. Gunakan 0.5 untuk 30 menit.</div>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label fw-semibold small">
-            <i class="bi bi-check-circle text-success me-1"></i>Resolution Time
-          </label>
-          <div class="input-group input-group-sm">
-            <input type="number" name="resolution_time_hours" class="form-control"
-                   value="{{ row.resolution_time_hours if row else '24' }}"
-                   min="1" step="1" placeholder="24">
-            <span class="input-group-text">jam</span>
-          </div>
-          <div class="form-text">Waktu maksimal untuk menyelesaikan tiket. 24 = 1 hari kerja.</div>
-        </div>
-
-        <div class="col-12">
-          <label class="form-label fw-semibold small">Deskripsi</label>
-          <textarea name="description" class="form-control form-control-sm" rows="2"
-                    placeholder="Ketentuan SLA untuk kategori ini...">{{ row.description if row else '' }}</textarea>
-        </div>
-
-        {% if row %}
-        <div class="col-12">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
-                   {{ 'checked' if row.is_active else '' }}>
-            <label class="form-check-label fw-semibold small" for="isActive">Kategori Aktif</label>
-          </div>
-        </div>
-        {% endif %}
       </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold small">Tipe Maintenance <span class="text-danger">*</span></label>
+        <div class="d-flex gap-3 flex-wrap">
+          {% for mval, mlabel, mcls, micon in [
+            ('corrective','Corrective','danger','bug'),
+            ('preventive','Preventive','warning','shield-check'),
+            ('onsite','Onsite','info','geo-alt-fill'),
+          ] %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="maintenance_type"
+                   id="mt_{{ mval }}" value="{{ mval }}"
+                   onchange="onMTypeChange(this.value)"
+                   {{ 'checked' if (row and row.maintenance_type == mval) or (not row and mval == 'corrective') }}>
+            <label class="form-check-label" for="mt_{{ mval }}">
+              <span class="badge bg-{{ mcls }} {{ 'text-dark' if mcls == 'warning' else '' }}">
+                <i class="bi bi-{{ micon }} me-1"></i>{{ mlabel }}
+              </span>
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold small">Prioritas <span class="text-danger">*</span></label>
+        <div class="d-flex gap-3 flex-wrap">
+          {% for p, cls in [('Critical','danger'),('High','warning'),('Medium','primary'),('Low','secondary')] %}
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="priority" id="p{{ p }}" value="{{ p }}"
+                   {{ 'checked' if (row and row.priority == p) or (not row and p == 'Medium') }}>
+            <label class="form-check-label" for="p{{ p }}">
+              <span class="badge bg-{{ cls }} {{ 'text-dark' if p == 'High' else '' }}">{{ p }}</span>
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card bg-light border-0 p-3 mb-3">
+        <div class="small fw-semibold text-muted mb-3 text-uppercase" style="letter-spacing:.04em">
+          <i class="bi bi-clock me-1"></i>Target Waktu SLA
+        </div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">
+              <i class="bi bi-bell text-warning me-1"></i>Response Time <span class="text-danger">*</span>
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="number" name="response_time_hours" class="form-control"
+                     value="{{ row.response_time_hours if row else '4' }}"
+                     min="0.25" step="0.25" placeholder="4" required>
+              <span class="input-group-text">jam</span>
+            </div>
+            <div class="form-text">Waktu mulai merespons tiket. Min 0.25 (15 menit).</div>
+          </div>
+
+          <div class="col-md-4" id="workaroundField">
+            <label class="form-label fw-semibold small">
+              <i class="bi bi-tools text-primary me-1"></i>Workaround Time
+              <span class="badge bg-primary bg-opacity-10 text-primary border border-primary ms-1" style="font-size:.6rem">Corrective</span>
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="number" name="workaround_time_hours" class="form-control"
+                     value="{{ row.workaround_time_hours if row and row.workaround_time_hours else '' }}"
+                     min="1" step="1" placeholder="Opsional">
+              <span class="input-group-text">jam</span>
+            </div>
+            <div class="form-text">Solusi sementara agar sistem bisa beroperasi kembali.</div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">
+              <i class="bi bi-check-circle text-success me-1"></i>Solusi Final <span class="text-danger">*</span>
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="number" name="resolution_time_hours" class="form-control"
+                     value="{{ row.resolution_time_hours if row else '24' }}"
+                     min="1" step="1" placeholder="24" required>
+              <span class="input-group-text">jam</span>
+            </div>
+            <div class="form-text">Penyelesaian permanen. 24 = 1 hari kerja, 72 = 3 hari.</div>
+          </div>
+        </div>
+
+        <div class="alert alert-info py-2 small mt-3 mb-0">
+          <i class="bi bi-info-circle me-1"></i>
+          <strong>Corrective:</strong> Workaround = solusi sementara (sistem beroperasi kembali), Solusi Final = root cause diperbaiki permanen.
+          <strong class="ms-2">Preventive/Onsite:</strong> Hanya Solusi Final yang berlaku.
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold small">Deskripsi & Ketentuan SLA</label>
+        <textarea name="description" class="form-control form-control-sm" rows="3"
+                  placeholder="Kriteria masalah, kondisi berlaku, pengecualian...">{{ row.description if row else '' }}</textarea>
+      </div>
+
+      {% if row %}
+      <div class="mb-3">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
+                 {{ 'checked' if row.is_active else '' }}>
+          <label class="form-check-label fw-semibold small" for="isActive">Kategori Aktif</label>
+        </div>
+      </div>
+      {% endif %}
+
       <hr class="my-3">
       <div class="d-flex gap-2">
         <a href="/support/sla-categories" class="btn btn-secondary btn-sm">Batal</a>
@@ -95,4 +148,18 @@
 </div>
 </div>
 </div>
+
+<script>
+function onMTypeChange(val) {
+  const wf = document.getElementById('workaroundField');
+  wf.style.opacity = val === 'corrective' ? '1' : '0.4';
+  wf.querySelector('input').disabled = val !== 'corrective';
+  if (val !== 'corrective') wf.querySelector('input').value = '';
+}
+// Init on load
+document.addEventListener('DOMContentLoaded', () => {
+  const checked = document.querySelector('input[name=maintenance_type]:checked');
+  if (checked) onMTypeChange(checked.value);
+});
+</script>
 {% endblock %}
