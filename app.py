@@ -641,7 +641,7 @@ DEFAULT_SETTINGS = {
     'app_url': '',  # URL publik aplikasi mis. https://evaluasi.perusahaan.com (kosong = auto-detect)
 }
 
-LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
+LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
 
 # Permissions per-app. Portal-level (manage_users, manage_roles) dikelola via superadmin.
 APP_PERMISSIONS = {
@@ -722,7 +722,6 @@ def init_db():
         print("=" * 55)
     # Migrate old level name
     db.execute("UPDATE employees SET level='Leader' WHERE level='Team Lead'")
-    db.execute("UPDATE employees SET level='Leader' WHERE level='Co-Leader'")
     # Seed divisions
     if db.execute('SELECT COUNT(*) FROM divisions').fetchone()[0] == 0:
         for i, name in enumerate(ALL_DIVISIONS.keys()):
