@@ -4642,7 +4642,9 @@ def sc_reports():
     if not sc_require('sc_view_reports'): return redirect(url_for('sc_index'))
     db = get_db()
     from datetime import date as _date
-    year        = request.args.get('year',        str(_date.today().year))
+    today       = _date.today()
+    date_from   = request.args.get('date_from', today.replace(day=1).strftime('%Y-%m-%d'))
+    date_to     = request.args.get('date_to',   today.strftime('%Y-%m-%d'))
     cust_f      = request.args.get('customer_id', '')
     creator_f   = request.args.get('created_by',  '')
     pic_f       = request.args.get('pic_id',      '')
@@ -4654,8 +4656,8 @@ def sc_reports():
                 LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
                 LEFT JOIN employees cr ON cr.id=t.created_by
                 LEFT JOIN employees as_e ON as_e.id=t.assigned_to
-                WHERE strftime('%Y', t.reported_at)=?'''
-    params = [year]
+                WHERE date(t.reported_at) BETWEEN ? AND ?'''
+    params = [date_from, date_to]
     if cust_f:
         q_base += ' AND t.customer_id=?'; params.append(cust_f)
     if creator_f:
@@ -4691,6 +4693,7 @@ def sc_reports():
         if 'corrective' in tn: monthly[mo]['corrective'] += 1
         elif 'preventive' in tn: monthly[mo]['preventive'] += 1
         elif 'onsite' in tn: monthly[mo]['onsite'] += 1
+    filter_year = date_from[:4]  # kept for template compat in card title
 
     # Avg response & resolution time
     resp_times, res_times = [], []
@@ -4710,16 +4713,15 @@ def sc_reports():
     top_customers = sorted(cust_count.items(), key=lambda x: -x[1])[:10]
 
     customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
-    years     = db.execute("SELECT DISTINCT strftime('%Y', reported_at) as yr FROM sc_tickets ORDER BY yr DESC").fetchall()
-    # Daftar karyawan aktif untuk filter creator, PIC, assignee
     employees = db.execute('SELECT id, name, divisi FROM employees WHERE is_active=1 ORDER BY name').fetchall()
 
     return render_template('sc_reports.html', monthly=monthly, avg_resp=avg_resp,
                            avg_res=avg_res, top_customers=top_customers,
-                           customers=customers, years=years, employees=employees,
-                           filter_year=year, filter_customer=cust_f,
-                           filter_creator=creator_f, filter_pic=pic_f,
-                           filter_assignee=assignee_f,
+                           customers=customers, employees=employees,
+                           filter_date_from=date_from, filter_date_to=date_to,
+                           filter_year=filter_year,
+                           filter_customer=cust_f, filter_creator=creator_f,
+                           filter_pic=pic_f, filter_assignee=assignee_f,
                            total_tickets=len(tickets))
 
 # ─── Settings ─────────────────────────────────────────────────────────────────
