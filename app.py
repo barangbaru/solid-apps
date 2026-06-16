@@ -4642,19 +4642,42 @@ def sc_reports():
     if not sc_require('sc_view_reports'): return redirect(url_for('sc_index'))
     db = get_db()
     from datetime import date as _date
-    year    = request.args.get('year', str(_date.today().year))
-    cust_f  = request.args.get('customer_id','')
+    year        = request.args.get('year',        str(_date.today().year))
+    cust_f      = request.args.get('customer_id', '')
+    creator_f   = request.args.get('created_by',  '')
+    pic_f       = request.args.get('pic_id',      '')
+    assignee_f  = request.args.get('assignee_id', '')
+
     q_base = '''FROM sc_tickets t
                 JOIN sc_customers cu ON cu.id=t.customer_id
                 JOIN sc_support_types st ON st.id=t.support_type_id
                 LEFT JOIN sc_sla_categories sc ON sc.id=t.sla_category_id
+                LEFT JOIN employees cr ON cr.id=t.created_by
+                LEFT JOIN employees as_e ON as_e.id=t.assigned_to
                 WHERE strftime('%Y', t.reported_at)=?'''
     params = [year]
     if cust_f:
         q_base += ' AND t.customer_id=?'; params.append(cust_f)
-    tickets = db.execute('SELECT t.*, cu.name as customer_name, st.name as type_name, '
-                         'sc.response_time_hours, sc.resolution_time_hours ' + q_base
-                         + ' ORDER BY t.reported_at', params).fetchall()
+    if creator_f:
+        q_base += ' AND t.created_by=?'; params.append(creator_f)
+    if pic_f:
+        # filter tiket yang customernya memiliki PIC = pic_f
+        q_base += (' AND cu.id IN ('
+                   'SELECT id FROM sc_customers WHERE '
+                   'pic_helpdesk_id=? OR pic_helpdesk_backup_id=? OR '
+                   'pic_implementor_id=? OR pic_coleader_id=? OR pic_sales_id=?)')
+        params.extend([pic_f]*5)
+    if assignee_f:
+        q_base += (' AND (t.assigned_to=? OR t.id IN ('
+                   'SELECT ticket_id FROM sc_ticket_assignees WHERE employee_id=?))')
+        params.extend([assignee_f, assignee_f])
+
+    tickets = db.execute(
+        'SELECT t.*, cu.name as customer_name, st.name as type_name, '
+        'sc.response_time_hours, sc.resolution_time_hours, '
+        'cr.name as creator_name, as_e.name as assignee_name ' + q_base
+        + ' ORDER BY t.reported_at', params).fetchall()
+
     # Monthly summary
     monthly = {}
     for t in tickets:
@@ -4668,9 +4691,9 @@ def sc_reports():
         if 'corrective' in tn: monthly[mo]['corrective'] += 1
         elif 'preventive' in tn: monthly[mo]['preventive'] += 1
         elif 'onsite' in tn: monthly[mo]['onsite'] += 1
+
     # Avg response & resolution time
-    resp_times = []
-    res_times  = []
+    resp_times, res_times = [], []
     for t in tickets:
         _, rh = calc_sla(t['reported_at'], t['responded_at'], 999)
         if rh is not None: resp_times.append(rh)
@@ -4678,18 +4701,25 @@ def sc_reports():
         if reh is not None: res_times.append(reh)
     avg_resp = round(sum(resp_times)/len(resp_times), 1) if resp_times else None
     avg_res  = round(sum(res_times)/len(res_times), 1)  if res_times  else None
+
     # Top customers
     cust_count = {}
     for t in tickets:
         cn = t['customer_name']
         cust_count[cn] = cust_count.get(cn, 0) + 1
     top_customers = sorted(cust_count.items(), key=lambda x: -x[1])[:10]
+
     customers = db.execute('SELECT id, name FROM sc_customers WHERE is_active=1 ORDER BY name').fetchall()
-    years = db.execute("SELECT DISTINCT strftime('%Y', reported_at) as yr FROM sc_tickets ORDER BY yr DESC").fetchall()
+    years     = db.execute("SELECT DISTINCT strftime('%Y', reported_at) as yr FROM sc_tickets ORDER BY yr DESC").fetchall()
+    # Daftar karyawan aktif untuk filter creator, PIC, assignee
+    employees = db.execute('SELECT id, name, divisi FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+
     return render_template('sc_reports.html', monthly=monthly, avg_resp=avg_resp,
                            avg_res=avg_res, top_customers=top_customers,
-                           customers=customers, years=years,
+                           customers=customers, years=years, employees=employees,
                            filter_year=year, filter_customer=cust_f,
+                           filter_creator=creator_f, filter_pic=pic_f,
+                           filter_assignee=assignee_f,
                            total_tickets=len(tickets))
 
 # ─── Settings ─────────────────────────────────────────────────────────────────

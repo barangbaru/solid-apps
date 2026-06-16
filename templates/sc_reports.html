@@ -8,44 +8,110 @@
     <h5 class="fw-bold mb-0"><i class="bi bi-bar-chart-line text-primary me-2"></i>Laporan & Analitik</h5>
     <div class="text-muted small mt-1">Ringkasan tiket support per tahun</div>
   </div>
-  <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">
+  <button class="btn btn-sm btn-outline-secondary d-print-none" onclick="window.print()">
     <i class="bi bi-printer me-1"></i>Print / Export PDF
   </button>
 </div>
 
-{# Filter #}
+{# ── Filter ─────────────────────────────────────────────────────────────── #}
 <div class="card border-0 shadow-sm mb-3 d-print-none">
-  <div class="card-body py-2">
+  <div class="card-body py-3">
     <form method="get" class="row g-2 align-items-end">
-      <div class="col-auto">
-        <label class="form-label small mb-1">Tahun</label>
+
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1 fw-semibold">Tahun</label>
         <select name="year" class="form-select form-select-sm">
           {% for y in years %}
           <option value="{{ y.yr }}" {{ 'selected' if filter_year == y.yr }}>{{ y.yr }}</option>
           {% endfor %}
-          {% if not years %}
-          <option value="{{ filter_year }}" selected>{{ filter_year }}</option>
-          {% endif %}
+          {% if not years %}<option value="{{ filter_year }}" selected>{{ filter_year }}</option>{% endif %}
         </select>
       </div>
-      <div class="col-auto">
-        <label class="form-label small mb-1">Customer</label>
-        <select name="customer_id" class="form-select form-select-sm" style="min-width:180px">
+
+      <div class="col-sm-6 col-md-3">
+        <label class="form-label small mb-1 fw-semibold">
+          <i class="bi bi-building me-1 text-primary"></i>Customer
+        </label>
+        <select name="customer_id" class="form-select form-select-sm">
           <option value="">Semua Customer</option>
           {% for c in customers %}
           <option value="{{ c.id }}" {{ 'selected' if filter_customer == c.id|string }}>{{ c.name }}</option>
           {% endfor %}
         </select>
       </div>
+
+      <div class="col-sm-6 col-md-3">
+        <label class="form-label small mb-1 fw-semibold">
+          <i class="bi bi-person-plus me-1 text-success"></i>Pembuat Tiket
+        </label>
+        <select name="created_by" class="form-select form-select-sm">
+          <option value="">Semua Pembuat</option>
+          {% for e in employees %}
+          <option value="{{ e.id }}" {{ 'selected' if filter_creator == e.id|string }}>{{ e.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1 fw-semibold">
+          <i class="bi bi-person-badge me-1 text-warning"></i>PIC Internal
+          <span class="text-muted fw-normal" style="font-size:.7rem">(by customer)</span>
+        </label>
+        <select name="pic_id" class="form-select form-select-sm">
+          <option value="">Semua PIC</option>
+          {% for e in employees %}
+          <option value="{{ e.id }}" {{ 'selected' if filter_pic == e.id|string }}>{{ e.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-sm-6 col-md-2">
+        <label class="form-label small mb-1 fw-semibold">
+          <i class="bi bi-person-check me-1 text-info"></i>Assignee
+        </label>
+        <select name="assignee_id" class="form-select form-select-sm">
+          <option value="">Semua Assignee</option>
+          {% for e in employees %}
+          <option value="{{ e.id }}" {{ 'selected' if filter_assignee == e.id|string }}>{{ e.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
       <div class="col-auto">
-        <button type="submit" class="btn btn-sm btn-secondary">Tampilkan</button>
+        <button type="submit" class="btn btn-sm btn-primary">
+          <i class="bi bi-funnel me-1"></i>Tampilkan
+        </button>
         <a href="/support/reports" class="btn btn-sm btn-outline-secondary ms-1">Reset</a>
       </div>
+
     </form>
+
+    {# Active filter chips #}
+    {% set active_filters = [] %}
+    {% if filter_customer %}
+      {% for c in customers %}{% if filter_customer == c.id|string %}{% set _ = active_filters.append('Customer: ' ~ c.name) %}{% endif %}{% endfor %}
+    {% endif %}
+    {% if filter_creator %}
+      {% for e in employees %}{% if filter_creator == e.id|string %}{% set _ = active_filters.append('Pembuat: ' ~ e.name) %}{% endif %}{% endfor %}
+    {% endif %}
+    {% if filter_pic %}
+      {% for e in employees %}{% if filter_pic == e.id|string %}{% set _ = active_filters.append('PIC: ' ~ e.name) %}{% endif %}{% endfor %}
+    {% endif %}
+    {% if filter_assignee %}
+      {% for e in employees %}{% if filter_assignee == e.id|string %}{% set _ = active_filters.append('Assignee: ' ~ e.name) %}{% endif %}{% endfor %}
+    {% endif %}
+    {% if active_filters %}
+    <div class="mt-2 d-flex flex-wrap gap-1 align-items-center">
+      <span class="small text-muted">Filter aktif:</span>
+      {% for f in active_filters %}
+      <span class="badge bg-primary bg-opacity-10 text-primary border border-primary">{{ f }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 </div>
 
-{# Summary Cards #}
+{# ── Summary Cards ───────────────────────────────────────────────────────── #}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="card border-0 shadow-sm text-center">
@@ -58,7 +124,9 @@
   <div class="col-6 col-md-3">
     <div class="card border-0 shadow-sm text-center">
       <div class="card-body py-3">
-        <div class="fs-2 fw-bold text-info">{{ avg_resp if avg_resp is not none else '—' }}{% if avg_resp is not none %}<small class="fs-6">j</small>{% endif %}</div>
+        <div class="fs-2 fw-bold text-info">
+          {{ avg_resp if avg_resp is not none else '—' }}{% if avg_resp is not none %}<small class="fs-6">j</small>{% endif %}
+        </div>
         <div class="small text-muted">Rata-rata Respons</div>
       </div>
     </div>
@@ -66,7 +134,9 @@
   <div class="col-6 col-md-3">
     <div class="card border-0 shadow-sm text-center">
       <div class="card-body py-3">
-        <div class="fs-2 fw-bold text-success">{{ avg_res if avg_res is not none else '—' }}{% if avg_res is not none %}<small class="fs-6">j</small>{% endif %}</div>
+        <div class="fs-2 fw-bold text-success">
+          {{ avg_res if avg_res is not none else '—' }}{% if avg_res is not none %}<small class="fs-6">j</small>{% endif %}
+        </div>
         <div class="small text-muted">Rata-rata Resolusi</div>
       </div>
     </div>
@@ -81,9 +151,12 @@
   </div>
 </div>
 
-{# Monthly Summary Table #}
+{# ── Monthly Table ───────────────────────────────────────────────────────── #}
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-transparent fw-semibold">Ringkasan Tiket per Bulan — {{ filter_year }}</div>
+  <div class="card-header bg-transparent fw-semibold">
+    Ringkasan Tiket per Bulan — {{ filter_year }}
+    {% if active_filters %}<span class="badge bg-secondary ms-2">Filter aktif</span>{% endif %}
+  </div>
   <div class="card-body p-0">
     <table class="table table-hover table-sm mb-0 align-middle">
       <thead class="table-light">
@@ -109,14 +182,14 @@
           <td class="text-center">{{ s.onsite or '—' }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">Tidak ada data untuk tahun {{ filter_year }}</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">Tidak ada data untuk filter yang dipilih.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
 
-{# Top Customers #}
+{# ── Top Customers ───────────────────────────────────────────────────────── #}
 {% if top_customers %}
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent fw-semibold">Top Customer by Jumlah Tiket</div>
