@@ -3270,8 +3270,11 @@ def karyawan():
         FROM employees e JOIN users u ON u.id = e.user_id
         WHERE e.is_active=1
     ''').fetchall()}
+    evaluasi_roles = db.execute(
+        "SELECT name FROM roles WHERE app_slug='evaluasi' OR app_slug='' ORDER BY is_system DESC, name"
+    ).fetchall()
     return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, today=today,
-                           emp_user_map=emp_user_map)
+                           emp_user_map=emp_user_map, evaluasi_roles=evaluasi_roles)
 
 @app.route('/contracts')
 @login_required

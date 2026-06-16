@@ -420,8 +420,9 @@
           <div class="mb-0">
             <label class="form-label small fw-semibold">Role</label>
             <select name="role" id="promoteRole" class="form-select form-select-sm">
-              <option value="admin">Admin</option>
-              <option value="superadmin">Superadmin</option>
+              {% for r in evaluasi_roles %}
+              <option value="{{ r.name }}">{{ r.name }}</option>
+              {% endfor %}
             </select>
           </div>
         </div>
