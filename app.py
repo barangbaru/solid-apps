@@ -641,7 +641,7 @@ DEFAULT_SETTINGS = {
     'app_url': '',  # URL publik aplikasi mis. https://evaluasi.perusahaan.com (kosong = auto-detect)
 }
 
-LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director']
+LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
 
 # Permissions per-app. Portal-level (manage_users, manage_roles) dikelola via superadmin.
 APP_PERMISSIONS = {
