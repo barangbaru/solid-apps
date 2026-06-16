@@ -754,9 +754,11 @@ def init_db():
                 required_permission=excluded.required_permission''',
             (slug, name, desc, icon, color, bg, url, active, soon, sort, perm))
     db.commit()
-    # Seed system roles
+    # Seed system roles sebagai global (app_slug='')
     for rname, rdesc, rsys in [('superadmin','Super Administrator',1),('admin','Administrator',1),('viewer','Viewer Read-Only',1)]:
-        db.execute('INSERT OR IGNORE INTO roles(name,description,is_system) VALUES(?,?,?)', (rname, rdesc, rsys))
+        db.execute('INSERT OR IGNORE INTO roles(name,description,is_system,app_slug) VALUES(?,?,?,?)', (rname, rdesc, rsys, ''))
+    # Migrate existing system roles agar global
+    db.execute("UPDATE roles SET app_slug='' WHERE is_system=1 AND (app_slug='evaluasi' OR app_slug IS NULL)")
     for rname, perms in SYSTEM_ROLE_DEFAULTS.items():
         for perm in perms:
             db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
@@ -2245,11 +2247,13 @@ def portal_settings():
     for r in rows:
         access_map[(r['user_id'], r['app_slug'])] = {'role': r['app_role'], 'active': r['is_active']}
 
-    # Roles per app_slug dari tabel roles
-    all_roles = db.execute("SELECT name, description, app_slug FROM roles ORDER BY app_slug, name").fetchall()
+    # Roles per app — include global roles (app_slug='') untuk setiap app
+    all_roles    = db.execute("SELECT name, description, app_slug FROM roles ORDER BY is_system DESC, name").fetchall()
+    global_roles = [r for r in all_roles if r['app_slug'] == '']
     roles_by_app = {}
-    for r in all_roles:
-        roles_by_app.setdefault(r['app_slug'], []).append(r)
+    for a in apps:
+        app_specific = [r for r in all_roles if r['app_slug'] == a['slug']]
+        roles_by_app[a['slug']] = app_specific if app_specific else global_roles
 
     return render_template('portal_settings.html', users=users, apps=apps,
                            access_map=access_map, roles_by_app=roles_by_app)
@@ -2647,7 +2651,7 @@ def portal_roles():
         return redirect(url_for('portal_roles', app=active_app))
 
     apps_list     = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
-    roles         = db.execute('SELECT * FROM roles WHERE app_slug=? ORDER BY is_system DESC, name',
+    roles         = db.execute("SELECT * FROM roles WHERE app_slug=? OR app_slug='' ORDER BY is_system DESC, name",
                                (active_app,)).fetchall()
     perms_by_role = {r['name']: get_role_permissions(db, r['name']) for r in roles}
     app_perms     = APP_PERMISSIONS.get(active_app, {})
@@ -5356,7 +5360,7 @@ def admin_roles():
             desc = request.form.get('description', '').strip()
             if name:
                 try:
-                    db.execute('INSERT INTO roles(name,description,is_system) VALUES(?,?,0)', (name, desc))
+                    db.execute('INSERT INTO roles(name,description,is_system,app_slug) VALUES(?,?,0,?)', (name, desc, 'evaluasi'))
                     db.commit()
                     flash(f'Role "{name}" ditambahkan', 'success')
                 except Exception:
@@ -5372,7 +5376,7 @@ def admin_roles():
                 db.commit()
                 flash(f'Role "{rname}" dihapus', 'warning')
         return redirect(url_for('admin_roles'))
-    roles = db.execute('SELECT * FROM roles ORDER BY is_system DESC, name').fetchall()
+    roles = db.execute("SELECT * FROM roles WHERE app_slug='evaluasi' OR app_slug='' ORDER BY is_system DESC, name").fetchall()
     perms_by_role = {}
     for r in roles:
         perms_by_role[r['name']] = get_role_permissions(db, r['name'])
