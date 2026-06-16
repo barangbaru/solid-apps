@@ -276,6 +276,52 @@
       </div>
     </div>
 
+    {# ── reCAPTCHA ── #}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header py-3 fw-semibold">
+        <i class="bi bi-shield-check text-success me-2"></i>reCAPTCHA v3
+        <span class="badge bg-light text-muted border ms-2" style="font-size:.7rem">Anti-Bot Login</span>
+      </div>
+      <div class="card-body">
+        <div class="mb-3 d-flex align-items-center gap-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch"
+                   name="recaptcha_enabled" id="recaptchaEnabled"
+                   {{ 'checked' if cfg.get('recaptcha_enabled') == '1' }}>
+            <label class="form-check-label fw-semibold" for="recaptchaEnabled">Aktifkan reCAPTCHA</label>
+          </div>
+          <span class="text-muted small">Lindungi halaman login dari bot & brute-force</span>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Site Key (v3)</label>
+            <input type="text" name="recaptcha_site_key" class="form-control form-control-sm font-monospace"
+                   value="{{ cfg.get('recaptcha_site_key','') }}"
+                   placeholder="6Lc...">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold small">Secret Key (v3)</label>
+            <div class="input-group input-group-sm">
+              <input type="password" name="recaptcha_secret_key" id="rcSecret"
+                     class="form-control font-monospace"
+                     value="{{ cfg.get('recaptcha_secret_key','') }}"
+                     placeholder="6Lc...">
+              <button type="button" class="btn btn-outline-secondary"
+                      onclick="toggleVis('rcSecret',this)">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="alert alert-info py-2 small mt-3 mb-0">
+          <strong>Cara setup:</strong>
+          Buka <a href="https://www.google.com/recaptcha/admin/create" target="_blank" rel="noopener">Google reCAPTCHA Admin</a>
+          → pilih <strong>Score based (v3)</strong> → daftarkan domain → copy Site Key & Secret Key ke sini.
+          Score threshold: 0.5 (user dengan score di bawah 0.5 dianggap bot).
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Right: Actions -->

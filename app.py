@@ -1,5 +1,5 @@
 from flask import (Flask, render_template, request, redirect, url_for,
-                   flash, g, session, jsonify, Response)
+                   flash, g, session, jsonify, Response, abort)
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import sqlite3, os, smtplib, json, secrets, requests as req_lib, io, base64
@@ -1521,14 +1521,41 @@ def start_scheduler():
 
 # ─── Auth Routes ───────────────────────────────────────────────────────────────
 
+def _verify_recaptcha(token, secret_key):
+    """Verify reCAPTCHA v3 token, return score (0.0–1.0) or None on failure."""
+    try:
+        resp = req_lib.post('https://www.google.com/recaptcha/api/siteverify',
+                            data={'secret': secret_key, 'response': token}, timeout=5)
+        data = resp.json()
+        if data.get('success'):
+            return data.get('score', 0.0)
+    except Exception:
+        pass
+    return None
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if 'user_id' in session:
         return redirect(url_for('index'))
+    db = get_db()
+    cfg = get_settings(db)
+    recaptcha_enabled  = cfg.get('recaptcha_enabled') == '1'
+    recaptcha_site_key = cfg.get('recaptcha_site_key', '').strip()
+    recaptcha_secret   = cfg.get('recaptcha_secret_key', '').strip()
     if request.method == 'POST':
         username = request.form.get('username','').strip()
         password = request.form.get('password','')
-        db = get_db()
+        # reCAPTCHA v3 check
+        if recaptcha_enabled and recaptcha_secret:
+            rc_token = request.form.get('g-recaptcha-response', '')
+            score = _verify_recaptcha(rc_token, recaptcha_secret)
+            if score is None or score < 0.5:
+                flash('Verifikasi bot gagal. Coba lagi.', 'danger')
+                return render_template('login.html',
+                    google_oauth_enabled=(cfg.get('google_oauth_enabled') == '1' and bool(cfg.get('google_client_id') or GOOGLE_CLIENT_ID)),
+                    recaptcha_enabled=recaptcha_enabled,
+                    recaptcha_site_key=recaptcha_site_key)
         user = db.execute('SELECT * FROM users WHERE username=? AND is_active=1',
                           (username,)).fetchone()
         if user and check_password_hash(user['password_hash'], password):
@@ -1553,10 +1580,11 @@ def login():
                 _next = ''
             return redirect(_next or url_for('portal'))
         flash('Username atau password salah', 'danger')
-    db = get_db()
-    cfg = get_settings(db)
     google_on = (cfg.get('google_oauth_enabled') == '1' and bool(cfg.get('google_client_id') or GOOGLE_CLIENT_ID))
-    return render_template('login.html', google_oauth_enabled=google_on)
+    return render_template('login.html',
+        google_oauth_enabled=google_on,
+        recaptcha_enabled=recaptcha_enabled,
+        recaptcha_site_key=recaptcha_site_key)
 
 @app.route('/login/mfa', methods=['GET', 'POST'])
 def login_mfa():
@@ -1683,6 +1711,7 @@ def login_google_callback():
         user = db.execute("SELECT * FROM users WHERE LOWER(email)=? AND is_active=1",
                           (google_email,)).fetchone()
 
+    emp = None
     if not user:
         # Cek apakah ada karyawan dengan email yang sama dan sudah punya user manual
         emp = db.execute("SELECT * FROM employees WHERE LOWER(email)=? AND is_active=1",
@@ -2584,6 +2613,7 @@ PORTAL_SYSTEM_KEYS = [
     'telegram_bot_token', 'telegram_default_chat_id',
     'openwa_url', 'openwa_api_key', 'openwa_session_id', 'openwa_enabled',
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
+    'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
 ]
 
 @app.route('/portal/system-settings', methods=['GET', 'POST'])
@@ -4209,7 +4239,7 @@ def sc_ticket_status(tid):
                                      (tid, emp['id'])).fetchone()
     if not is_assignee and not sc_require('sc_manage_tickets'):
         return redirect(url_for('sc_ticket_detail', tid=tid))
-    _allowed_statuses = ('open','in_progress','pending','resolved','closed')
+    _allowed_statuses = tuple(s for s, *_ in SC_TICKET_STATUSES)
     new_status  = request.form.get('new_status','')
     if new_status not in _allowed_statuses:
         flash('Status tidak valid.', 'danger')
@@ -4658,7 +4688,6 @@ def eval_project(eval_id):
         return redirect(url_for('index'))
     if request.method == 'POST':
         try:
-            db.execute('BEGIN')
             db.execute('DELETE FROM project_entries WHERE eval_id=?', (eval_id,))
             for t in ['history','top_task','improvement']:
                 names    = request.form.getlist(f'{t}_project_name')
