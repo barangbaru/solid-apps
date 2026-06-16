@@ -590,6 +590,8 @@ MIGRATIONS = [
     ('sc_tickets',         'media_lapor',             "TEXT DEFAULT ''"),
     ('sc_customers',       'customer_type',           "TEXT DEFAULT 'aktif'"),
     ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
+    ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
+    ('sc_sla_categories',  'maintenance_type',        "TEXT DEFAULT 'corrective'"),
 ]
 
 SC_TICKET_STATUSES = [
@@ -770,6 +772,66 @@ def init_db():
     ]:
         db.execute('INSERT OR IGNORE INTO sc_support_types(code,name,description) VALUES(?,?,?)',
                    (st_code, st_name, st_desc))
+    db.commit()
+    # Seed SLA Categories best practice (INSERT OR IGNORE — aman dijalankan ulang)
+    _sla_seed = [
+        # code, name, priority, response_h, workaround_h, resolution_h, mtype, description
+        # ── CORRECTIVE ──────────────────────────────────────────────────────────────────
+        ('COR-P1', 'Corrective P1 — Critical (System Down)',
+         'Critical', 1, 4, 24, 'corrective',
+         'Sistem tidak dapat diakses sama sekali / data corrupt. Berdampak ke seluruh user & operasional. '
+         'Workaround wajib dalam 4 jam, solusi final dalam 1 hari kerja. Eskalasi immediate ke manajemen.'),
+        ('COR-P2', 'Corrective P2 — High (Major Feature Broken)',
+         'High', 2, 8, 72, 'corrective',
+         'Fitur utama tidak berfungsi, operasional terganggu signifikan namun sistem masih bisa diakses sebagian. '
+         'Workaround dalam 8 jam, solusi final dalam 3 hari kerja.'),
+        ('COR-P3', 'Corrective P3 — Medium (Minor Feature Impaired)',
+         'Medium', 4, 24, 120, 'corrective',
+         'Fitur minor tidak berfungsi namun ada workaround manual yang dapat digunakan user. '
+         'Workaround dalam 1 hari kerja, solusi final dalam 5 hari kerja.'),
+        ('COR-P4', 'Corrective P4 — Low (Cosmetic / Minor Bug)',
+         'Low', 8, 48, 240, 'corrective',
+         'Bug minor / kosmetik, tidak mengganggu operasional. Antrian normal sesuai sprint. '
+         'Workaround dalam 2 hari kerja, solusi final dalam 10 hari kerja.'),
+        # ── PREVENTIVE ──────────────────────────────────────────────────────────────────
+        ('PREV-CRIT', 'Preventive — Emergency Security Patch (Zero-Day)',
+         'Critical', 2, None, 24, 'preventive',
+         'Patch darurat untuk kerentanan zero-day atau exploit aktif yang mengancam keamanan data. '
+         'Respons dalam 2 jam, patch diterapkan dalam 1 hari kerja meskipun di luar jam operasional.'),
+        ('PREV-PATCH', 'Preventive — Security Patch & Update (Terjadwal)',
+         'High', 8, None, 48, 'preventive',
+         'Patch keamanan rutin, update library, atau upgrade versi minor. Dilakukan terjadwal dengan persetujuan customer. '
+         'Konfirmasi jadwal dalam 8 jam, selesai dalam 2 hari kerja.'),
+        ('PREV-STD', 'Preventive — Pemeliharaan Rutin',
+         'Medium', 24, None, 72, 'preventive',
+         'Pemeliharaan terjadwal: optimasi database, pembersihan log, cek performa, backup verification, monitoring review. '
+         'Terjadwal bulanan/triwulan. Konfirmasi dalam 1 hari, selesai dalam 3 hari kerja.'),
+        ('PREV-OPT', 'Preventive — Optimasi & Refactor Minor',
+         'Low', 48, None, 168, 'preventive',
+         'Optimasi performa non-urgent, refactor kode minor, update dokumentasi teknis, atau peningkatan kecil. '
+         'Direncanakan dalam sprint berikutnya. Selesai dalam 7 hari kerja.'),
+        # ── ONSITE ──────────────────────────────────────────────────────────────────────
+        ('ONS-CRIT', 'Onsite — Critical Emergency',
+         'Critical', 2, None, 4, 'onsite',
+         'Kunjungan onsite darurat untuk gangguan kritikal infrastruktur / hardware yang tidak dapat diselesaikan remote sama sekali. '
+         'Tim berangkat dalam 2 jam, target selesai dalam 4 jam sejak tiba di lokasi.'),
+        ('ONS-URG', 'Onsite — Urgent',
+         'High', 4, None, 8, 'onsite',
+         'Kunjungan onsite urgen untuk masalah yang berdampak signifikan dan tidak dapat diselesaikan remote. '
+         'Tim onsite di lokasi dalam 4 jam, penyelesaian dalam 8 jam sejak tiba.'),
+        ('ONS-STD', 'Onsite — Standard',
+         'Medium', 8, None, 24, 'onsite',
+         'Kunjungan onsite terjadwal: training user, setup perangkat, instalasi, atau pendampingan rutin. '
+         'Konfirmasi jadwal dalam 8 jam, pelaksanaan selesai dalam 1 hari kerja.'),
+        ('ONS-PLAN', 'Onsite — Planned / Scheduled Visit',
+         'Low', 24, None, 72, 'onsite',
+         'Kunjungan onsite terencana: audit sistem, demo fitur baru, workshop, atau review berkala. '
+         'Penjadwalan dalam 1 hari kerja, pelaksanaan disesuaikan kalender customer, selesai dalam 3 hari kerja.'),
+    ]
+    for code, name, prio, resp, wta, reso, mtype, desc in _sla_seed:
+        db.execute('''INSERT OR IGNORE INTO sc_sla_categories
+            (code,name,priority,response_time_hours,workaround_time_hours,resolution_time_hours,maintenance_type,description)
+            VALUES(?,?,?,?,?,?,?,?)''', (code, name, prio, resp, wta, reso, mtype, desc))
     db.commit()
     # Pastikan semua user existing punya akses ke evaluasi (default)
     db.execute('''
@@ -3803,13 +3865,17 @@ def sc_sla_category_add():
             flash('Kode dan nama wajib diisi', 'danger')
         else:
             try:
+                wta_raw = request.form.get('workaround_time_hours','').strip()
                 db.execute('''INSERT INTO sc_sla_categories
-                              (code,name,priority,response_time_hours,resolution_time_hours,description)
-                              VALUES(?,?,?,?,?,?)''',
+                              (code,name,priority,response_time_hours,workaround_time_hours,
+                               resolution_time_hours,maintenance_type,description)
+                              VALUES(?,?,?,?,?,?,?,?)''',
                            (code, name,
                             request.form.get('priority','Medium'),
                             float(request.form.get('response_time_hours', 4) or 4),
+                            float(wta_raw) if wta_raw else None,
                             float(request.form.get('resolution_time_hours', 24) or 24),
+                            request.form.get('maintenance_type','corrective'),
                             request.form.get('description','').strip()))
                 db.commit()
                 flash(f'Kategori SLA "{name}" ditambahkan', 'success')
@@ -3829,13 +3895,17 @@ def sc_sla_category_edit(kid):
         return redirect(url_for('sc_sla_categories'))
     if request.method == 'POST':
         is_active = 1 if request.form.get('is_active') else 0
+        wta_raw = request.form.get('workaround_time_hours','').strip()
         db.execute('''UPDATE sc_sla_categories
-                      SET name=?,priority=?,response_time_hours=?,resolution_time_hours=?,description=?,is_active=?
+                      SET name=?,priority=?,response_time_hours=?,workaround_time_hours=?,
+                          resolution_time_hours=?,maintenance_type=?,description=?,is_active=?
                       WHERE id=?''',
                    (request.form.get('name','').strip(),
                     request.form.get('priority','Medium'),
                     float(request.form.get('response_time_hours', 4) or 4),
+                    float(wta_raw) if wta_raw else None,
                     float(request.form.get('resolution_time_hours', 24) or 24),
+                    request.form.get('maintenance_type','corrective'),
                     request.form.get('description','').strip(),
                     is_active, kid))
         db.commit()
