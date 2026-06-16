@@ -775,6 +775,28 @@ def init_db():
         SELECT id, 'evaluasi', role, 1 FROM users
     ''')
     db.commit()
+    # Database indexes untuk kolom yang sering di-WHERE/JOIN
+    _indexes = [
+        ('idx_employees_is_active',       'employees',              'is_active'),
+        ('idx_evaluations_employee_id',   'evaluations',            'employee_id'),
+        ('idx_evaluations_review_status', 'evaluations',            'review_status'),
+        ('idx_eval_tokens_eval_id',       'eval_tokens',            'eval_id'),
+        ('idx_reminder_logs_employee',    'reminder_logs',          'employee_id'),
+        ('idx_audit_created_at',          'audit_activity',         'created_at'),
+        ('idx_audit_app_slug',            'audit_activity',         'app_slug'),
+        ('idx_user_app_access_user',      'user_app_access',        'user_id, app_slug'),
+        ('idx_sc_tickets_customer',       'sc_tickets',             'customer_id'),
+        ('idx_sc_tickets_status',         'sc_tickets',             'status'),
+        ('idx_sc_tickets_reported_at',    'sc_tickets',             'reported_at'),
+        ('idx_sc_assignees_ticket',       'sc_ticket_assignees',    'ticket_id'),
+        ('idx_sc_presales_assignees',     'sc_presales_assignees',  'request_id'),
+        ('idx_bk_bookings_resource',      'bk_bookings',            'resource_id, start_dt'),
+        ('idx_bk_bookings_booked_by',     'bk_bookings',            'booked_by'),
+        ('idx_bk_bookings_parent',        'bk_bookings',            'parent_id'),
+    ]
+    for idx_name, tbl, cols in _indexes:
+        db.execute(f'CREATE INDEX IF NOT EXISTS {idx_name} ON {tbl}({cols})')
+    db.commit()
     # Seed booking resources
     _resources = [
         ('Big Meeting Room', 'room', 'meeting', 20, 'Ruang rapat utama kapasitas besar', 'Lantai 3', '#0d6efd', 'people-fill', 1),
@@ -2466,6 +2488,7 @@ def portal_user_send_reset(uid):
         settings = get_settings(db)
         token    = secrets.token_urlsafe(48)
         expires  = (datetime.now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+        db.execute('DELETE FROM password_reset_tokens WHERE user_id=?', (user['id'],))
         db.execute('INSERT INTO password_reset_tokens(user_id, token, expires_at) VALUES(?,?,?)',
                    (user['id'], token, expires))
         db.commit()
@@ -3401,7 +3424,7 @@ def _sc_sync_assignees(db, ticket_id, employee_ids):
 def _sc_notify_ticket(db, ticket_id, event='created'):
     """Send Telegram notification to customer group when ticket event occurs."""
     try:
-        bot_token = db.execute("SELECT value FROM settings WHERE key='telegram_bot_token'").fetchone()
+        bot_token = db.execute("SELECT value FROM app_settings WHERE key='telegram_bot_token'").fetchone()
         if not bot_token or not bot_token['value']:
             return
         t = db.execute('''SELECT t.*, cu.name as customer_name, cu.telegram_group_id,
@@ -3749,7 +3772,7 @@ def sc_sla_category_delete(kid):
 
 def generate_ticket_no(db):
     from datetime import datetime as _dt
-    year = _dt.now().year
+    year = datetime.now().year
     last = db.execute(
         "SELECT ticket_no FROM sc_tickets WHERE ticket_no LIKE ? ORDER BY id DESC LIMIT 1",
         (f'TKT-{year}-%',)
@@ -3764,9 +3787,9 @@ def calc_sla(reported_at_str, done_at_str, limit_hours):
     from datetime import datetime as _dt
     fmt = '%Y-%m-%d %H:%M:%S'
     try:
-        t0 = _dt.strptime(reported_at_str[:19], fmt)
+        t0 = datetime.strptime(reported_at_str[:19], fmt)
         if done_at_str:
-            t1 = _dt.strptime(done_at_str[:19], fmt)
+            t1 = datetime.strptime(done_at_str[:19], fmt)
             hours = (t1 - t0).total_seconds() / 3600
             return ('met' if hours <= limit_hours else 'violated'), round(hours, 1)
         return 'pending', None
@@ -4054,7 +4077,7 @@ def sc_ticket_add():
         media_lapor   = request.form.get('media_lapor','').strip()
         from datetime import datetime as _dt
         if not reported_at:
-            reported_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+            reported_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         try:
             cur = db.execute('''INSERT INTO sc_tickets(ticket_no,contract_id,customer_id,support_type_id,
                           sla_category_id,subject,description,reported_by,reported_at,notes,created_by,
@@ -4186,7 +4209,11 @@ def sc_ticket_status(tid):
                                      (tid, emp['id'])).fetchone()
     if not is_assignee and not sc_require('sc_manage_tickets'):
         return redirect(url_for('sc_ticket_detail', tid=tid))
+    _allowed_statuses = ('open','in_progress','pending','resolved','closed')
     new_status  = request.form.get('new_status','')
+    if new_status not in _allowed_statuses:
+        flash('Status tidak valid.', 'danger')
+        return redirect(url_for('sc_ticket_detail', tid=tid))
     status_note = request.form.get('status_note','').strip()
     mandays     = request.form.get('mandays','').strip() or None
     pct_done    = request.form.get('pct_done', row['pct_done'])
@@ -4195,7 +4222,7 @@ def sc_ticket_status(tid):
     due_date    = request.form.get('due_date','').strip() or row['due_date']
     work_start  = request.form.get('work_start_date','').strip() or row['work_start_date']
     from datetime import datetime as _dt
-    now = _dt.now().strftime('%Y-%m-%d %H:%M:%S')
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     updates = {'status': new_status, 'status_note': status_note,
                'mandays': mandays, 'pct_done': pct_done,
                'solution_type': solution_type, 'solution_note': solution_note,
@@ -4630,24 +4657,30 @@ def eval_project(eval_id):
         flash('Evaluasi tidak ditemukan', 'danger')
         return redirect(url_for('index'))
     if request.method == 'POST':
-        db.execute('DELETE FROM project_entries WHERE eval_id=?', (eval_id,))
-        for t in ['history','top_task','improvement']:
-            names    = request.form.getlist(f'{t}_project_name')
-            tasks    = request.form.getlist(f'{t}_detail_task')
-            statuses = request.form.getlist(f'{t}_status')
-            notes_l  = request.form.getlist(f'{t}_notes')
-            for i, name in enumerate(names):
-                if name.strip() or (i < len(tasks) and tasks[i].strip()):
-                    db.execute('''INSERT INTO project_entries
-                                  (eval_id,entry_type,project_name,detail_task,status,notes,sort_order)
-                                  VALUES(?,?,?,?,?,?,?)''',
-                               (eval_id, t, name.strip(),
-                                tasks[i] if i < len(tasks) else '',
-                                statuses[i] if i < len(statuses) else 'DONE',
-                                notes_l[i] if i < len(notes_l) else '', i))
-        pp_score = int(request.form.get('pp_score', 0))
-        db.execute('UPDATE evaluations SET pp_score=? WHERE id=?', (pp_score, eval_id))
-        db.commit()
+        try:
+            db.execute('BEGIN')
+            db.execute('DELETE FROM project_entries WHERE eval_id=?', (eval_id,))
+            for t in ['history','top_task','improvement']:
+                names    = request.form.getlist(f'{t}_project_name')
+                tasks    = request.form.getlist(f'{t}_detail_task')
+                statuses = request.form.getlist(f'{t}_status')
+                notes_l  = request.form.getlist(f'{t}_notes')
+                for i, name in enumerate(names):
+                    if name.strip() or (i < len(tasks) and tasks[i].strip()):
+                        db.execute('''INSERT INTO project_entries
+                                      (eval_id,entry_type,project_name,detail_task,status,notes,sort_order)
+                                      VALUES(?,?,?,?,?,?,?)''',
+                                   (eval_id, t, name.strip(),
+                                    tasks[i] if i < len(tasks) else '',
+                                    statuses[i] if i < len(statuses) else 'DONE',
+                                    notes_l[i] if i < len(notes_l) else '', i))
+            pp_score = int(request.form.get('pp_score', 0))
+            db.execute('UPDATE evaluations SET pp_score=? WHERE id=?', (pp_score, eval_id))
+            db.commit()
+        except Exception:
+            db.execute('ROLLBACK')
+            flash('Terjadi kesalahan saat menyimpan data project.', 'danger')
+            return redirect(url_for('eval_project', eval_id=eval_id))
         recalc(db, eval_id)
         if request.form.get('action') == 'next':
             return redirect(url_for('eval_hardskill', eval_id=eval_id))
@@ -5512,7 +5545,7 @@ def salary_add_year():
                 pass
     else:
         # Buat baris kosong untuk semua karyawan aktif
-        emps = db.execute("SELECT id FROM employees WHERE status='aktif'").fetchall()
+        emps = db.execute("SELECT id FROM employees WHERE is_active=1").fetchall()
         for e in emps:
             try:
                 db.execute('''
@@ -5714,8 +5747,8 @@ def _bk_generate_recurring(base, resource_id, title, purpose, booked_by, attende
 @app.route('/booking/')
 @app.route('/booking')
 def booking_index():
-    g = _bk_require_access()
-    if g: return g
+    redir = _bk_require_access()
+    if redir: return redir
     db = get_db()
     resources = db.execute('SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order').fetchall()
     resource_id = request.args.get('resource', type=int)
@@ -5758,8 +5791,8 @@ def booking_index():
 
 @app.route('/booking/new', methods=['GET','POST'])
 def booking_new():
-    g = _bk_require_access()
-    if g: return g
+    redir = _bk_require_access()
+    if redir: return redir
     db = get_db()
     resources = db.execute('SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order').fetchall()
 
@@ -5814,8 +5847,8 @@ def booking_new():
 
 @app.route('/booking/<int:bid>')
 def booking_detail(bid):
-    g = _bk_require_access()
-    if g: return g
+    redir = _bk_require_access()
+    if redir: return redir
     db = get_db()
     b = db.execute('''SELECT b.*,r.name res_name,r.type res_type,r.color res_color,r.icon res_icon,
         r.capacity res_cap,r.location res_loc,u.full_name booker_name,u.username booker_username
@@ -5833,13 +5866,18 @@ def booking_detail(bid):
 
 @app.route('/booking/<int:bid>/cancel', methods=['POST'])
 def booking_cancel(bid):
-    g = _bk_require_access()
-    if g: return g
+    redir = _bk_require_access()
+    if redir: return redir
     db = get_db()
     b = db.execute('SELECT * FROM bk_bookings WHERE id=?', (bid,)).fetchone()
     if not b:
         flash('Booking tidak ditemukan.', 'danger')
         return redirect(url_for('booking_index'))
+    is_owner = b['booked_by'] == session['user_id']
+    is_admin = session.get('user_role') in ('superadmin', 'admin')
+    if not is_owner and not is_admin:
+        flash('Hanya pemesan atau admin yang dapat membatalkan booking ini.', 'danger')
+        return redirect(url_for('booking_detail', bid=bid))
     cancel_children = request.form.get('cancel_children') == '1'
     from datetime import datetime
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -5855,8 +5893,8 @@ def booking_cancel(bid):
 
 @app.route('/booking/api/slots')
 def booking_api_slots():
-    g = _bk_require_access()
-    if g: return ('', 403)
+    redir = _bk_require_access()
+    if redir: return ('', 403)
     resource_id = request.args.get('resource', type=int)
     date_str    = request.args.get('date', '')
     if not resource_id or not date_str:
