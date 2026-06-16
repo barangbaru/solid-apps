@@ -183,9 +183,9 @@
           </p>
 
           {# Group employees by divisi for each role level #}
-          {% set coleader_levels = ['Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'Director'] %}
-          {% set leader_levels   = ['Leader', 'Manager', 'Senior Manager', 'Director'] %}
-          {% set manager_levels  = ['Manager', 'Senior Manager', 'Director'] %}
+          {% set coleader_levels = ['Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director'] %}
+          {% set leader_levels   = ['Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director'] %}
+          {% set manager_levels  = ['Manager', 'Senior Manager', 'General Manager', 'Director'] %}
 
           {# Build divisi groups #}
           {% set ns = namespace(cur_div='') %}
@@ -193,8 +193,8 @@
           <div class="row g-3">
             <div class="col-md-4">
               <label class="form-label fw-semibold small">
-                <i class="bi bi-person-fill-up text-secondary me-1"></i>Atasan Langsung / Co-Leader
-                <span class="badge bg-secondary fw-normal ms-1" style="font-size:.62rem">Co-Leader ke atas</span>
+                <i class="bi bi-person-fill-up text-secondary me-1"></i>Atasan Langsung / Manajerial
+                <span class="badge bg-secondary fw-normal ms-1" style="font-size:.62rem">Manajerial ke atas</span>
               </label>
               <select name="supervisor_id" class="form-select form-select-sm" id="selSupervisor">
                 <option value="">— Tidak ditentukan —</option>

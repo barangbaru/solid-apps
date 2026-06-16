@@ -641,7 +641,7 @@ DEFAULT_SETTINGS = {
     'app_url': '',  # URL publik aplikasi mis. https://evaluasi.perusahaan.com (kosong = auto-detect)
 }
 
-LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
+LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
 
 # Permissions per-app. Portal-level (manage_users, manage_roles) dikelola via superadmin.
 APP_PERMISSIONS = {
@@ -722,6 +722,7 @@ def init_db():
         print("=" * 55)
     # Migrate old level name
     db.execute("UPDATE employees SET level='Leader' WHERE level='Team Lead'")
+    db.execute("UPDATE employees SET level='Leader' WHERE level='Co-Leader'")
     # Seed divisions
     if db.execute('SELECT COUNT(*) FROM divisions').fetchone()[0] == 0:
         for i, name in enumerate(ALL_DIVISIONS.keys()):
@@ -1469,8 +1470,8 @@ def _send_contract_notification(db, emp, days_left, settings, triggered_by='auto
         if ok: sent += 1
         else:  failed += 1
 
-    # ── Chain: Co-Leader / Leader / Manager ──
-    col_role_map = [('supervisor_id', 'Co-Leader'), ('leader_id', 'Leader'), ('manager_id', 'Manager')]
+    # ── Chain: Manajerial / Leader / Manager ──
+    col_role_map = [('supervisor_id', 'Manajerial'), ('leader_id', 'Leader'), ('manager_id', 'Manager')]
     notified_chain_ids = set()
     for col, role_label in col_role_map:
         try:
@@ -3300,7 +3301,7 @@ def contract_remind_one(emp_id):
     if s == 0 and f == 0:
         flash('Tidak ada channel notifikasi yang dikonfigurasi (email / telegram / whatsapp)', 'warning')
     else:
-        flash(f'Reminder dikirim — {s} berhasil, {f} gagal (termasuk ke Co-Leader/Leader/Manager)', 'success' if f == 0 else 'warning')
+        flash(f'Reminder dikirim — {s} berhasil, {f} gagal (termasuk ke Manajerial/Leader/Manager)', 'success' if f == 0 else 'warning')
     return redirect(url_for('karyawan'))
 
 @app.route('/contracts/remind-all', methods=['POST'])

@@ -130,16 +130,20 @@
       <div class="card-body">
         <div class="d-flex flex-column gap-2">
           {% for status, label, desc in [
-            ('done',   'Master Data',          'Customer, Layanan, Tipe Support, Kategori SLA'),
-            ('soon',   'Manajemen Kontrak',    'Kontrak support tahunan per customer'),
-            ('soon',   'Tiket Support',        'Pencatatan & tracking tiket Corrective/Preventive/Onsite'),
-            ('soon',   'Monitoring SLA',       'Dashboard kepatuhan SLA per customer/kontrak'),
-            ('soon',   'Laporan & Analitik',   'Summary kunjungan, response time, resolusi'),
+            ('done',   'Master Data',          'Customer, Layanan, Tipe Support, Kategori SLA, Tim PIC'),
+            ('done',   'Manajemen Kontrak',    'Kontrak support tahunan per customer & reminder otomatis'),
+            ('done',   'Tiket Support',        'Pencatatan & tracking tiket Corrective/Preventive/Onsite + multi-assignee'),
+            ('done',   'Monitoring SLA',       'Dashboard kepatuhan SLA, trend bulanan, status per customer'),
+            ('done',   'Presales & POC',       'Request presales, demo, POC & tracking status'),
+            ('done',   'Laporan & Analitik',   'Summary kunjungan, response time, resolusi per customer/tipe'),
+            ('wip',    'Notifikasi Tiket',     'Notifikasi Telegram ke customer group saat tiket dibuat/diupdate'),
+            ('soon',   'Portal Customer',      'Akses mandiri customer untuk submit & pantau tiket sendiri'),
+            ('soon',   'Eskalasi Otomatis',    'Auto-eskalasi tiket overdue SLA ke manager via notifikasi'),
           ] %}
           <div class="d-flex align-items-start gap-2">
-            <span class="badge mt-1 {{ 'bg-success' if status == 'done' else 'bg-light text-muted border' }}"
+            <span class="badge mt-1 {{ 'bg-success' if status == 'done' else ('bg-warning text-dark' if status == 'wip' else 'bg-light text-muted border') }}"
                   style="font-size:.65rem;min-width:44px">
-              {{ '✓ Done' if status == 'done' else 'Soon' }}
+              {{ '✓ Done' if status == 'done' else ('⚙ WIP' if status == 'wip' else 'Soon') }}
             </span>
             <div>
               <div class="fw-semibold small">{{ label }}</div>
