@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — Request Software{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Request Software</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <div style="width:32px;height:32px;border-radius:8px;background:#ef4444;display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-inbox text-white"></i>
+    </div>
+    <h6 class="fw-bold mb-0">Request Software</h6>
+  </div>
+  <a href="/aset/requests/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Tambah Request</a>
+</div>
+
+<form method="get" class="d-flex gap-2 mb-3">
+  <select name="status" class="form-select form-select-sm" style="max-width:180px">
+    <option value="">Semua Status</option>
+    {% for s in ['Pending','Approved','Rejected','Installed'] %}
+    <option {{ 'selected' if s==status_filter }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-sm btn-outline-secondary">Filter</button>
+  {% if status_filter %}<a href="/aset/requests" class="btn btn-sm btn-link">Reset</a>{% endif %}
+</form>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr><th>Software</th><th>Versi</th><th>Pemohon</th><th>Divisi</th><th>Alasan</th><th>Tanggal</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in requests %}
+        <tr>
+          <td class="fw-semibold small">{{ r.software_name }}</td>
+          <td class="small text-muted">{{ r.version or '—' }}</td>
+          <td class="small">{{ r.emp_name or '—' }}</td>
+          <td class="small text-muted">{{ r.divisi or '—' }}</td>
+          <td class="small text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.reason }}">{{ r.reason or '—' }}</td>
+          <td class="small text-muted">{{ r.requested_at[:10] }}</td>
+          <td>
+            <span class="badge {{ 'bg-warning text-dark' if r.status=='Pending' else ('bg-success' if r.status=='Approved' else ('bg-info' if r.status=='Installed' else 'bg-danger')) }}">
+              {{ r.status }}
+            </span>
+          </td>
+          <td>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                    data-bs-toggle="modal" data-bs-target="#modalStatus"
+                    data-rid="{{ r.id }}" data-name="{{ r.software_name }}" data-status="{{ r.status }}" data-notes="{{ r.notes }}">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+            <form method="post" action="/aset/requests/{{ r.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus request ini?')">
+              <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Belum ada request.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal update status -->
+<div class="modal fade" id="modalStatus" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form method="post" id="formStatus">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold">Update Status</h6>
+          <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <div class="fw-semibold small" id="modalSoftwareName"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-semibold small">Status</label>
+            <select name="status" id="modalSelectStatus" class="form-select form-select-sm">
+              {% for s in ['Pending','Approved','Rejected','Installed'] %}
+              <option>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="form-label fw-semibold small">Catatan</label>
+            <textarea name="notes" id="modalNotes" rows="2" class="form-control form-control-sm"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="submit" class="btn btn-primary btn-sm">Simpan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('modalStatus').addEventListener('show.bs.modal', function(e) {
+  var btn = e.relatedTarget;
+  document.getElementById('formStatus').action = '/aset/requests/' + btn.dataset.rid + '/status';
+  document.getElementById('modalSoftwareName').textContent = btn.dataset.name;
+  document.getElementById('modalSelectStatus').value = btn.dataset.status;
+  document.getElementById('modalNotes').value = btn.dataset.notes;
+});
+</script>
+{% endblock %}

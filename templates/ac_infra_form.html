@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — {{ 'Edit' if item else 'Tambah' }} Infrastruktur{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if item else 'Tambah' }} Infrastruktur</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="/aset/infra" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h6 class="fw-bold mb-0">{{ 'Edit' if item else 'Tambah' }} Perangkat Infrastruktur</h6>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Tipe Device <span class="text-danger">*</span></label>
+          <input name="device_type" value="{{ item.device_type if item else '' }}" class="form-control form-control-sm"
+                 placeholder="Switch, Router, NAS, Server, UPS, CCTV…" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Brand</label>
+          <input name="brand" value="{{ item.brand if item else '' }}" class="form-control form-control-sm" placeholder="Cisco, TP-Link, Synology…">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Model</label>
+          <input name="model" value="{{ item.model if item else '' }}" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Nickname / Label</label>
+          <input name="nickname" value="{{ item.nickname if item else '' }}" class="form-control form-control-sm" placeholder="SW-LANTAI2, NAS-01…">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Serial Number</label>
+          <input name="serial_number" value="{{ item.serial_number if item else '' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">UPS Group</label>
+          <input name="ups_group" value="{{ item.ups_group if item else '' }}" class="form-control form-control-sm" placeholder="UPS-A, UPS-B…">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Lokasi</label>
+          <input name="location" value="{{ item.location if item else '' }}" class="form-control form-control-sm" placeholder="Server Room, Lantai 2…">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Status</label>
+          <select name="status" class="form-select form-select-sm">
+            {% for s in ['Aktif','Tidak Aktif','Rusak','Cadangan'] %}
+            <option {{ 'selected' if (item and item.status==s) or (not item and s=='Aktif') }}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-semibold small">Deskripsi</label>
+          <input name="description" value="{{ item.description if item else '' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Catatan Kondisi</label>
+          <textarea name="condition_notes" rows="2" class="form-control form-control-sm">{{ item.condition_notes if item else '' }}</textarea>
+        </div>
+      </div>
+      <div class="mt-3 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">Simpan</button>
+        <a href="/aset/infra" class="btn btn-outline-secondary btn-sm">Batal</a>
+        {% if item %}
+        <form method="post" action="/aset/infra/{{ item.id }}/delete" class="ms-auto" onsubmit="return confirm('Hapus perangkat ini?')">
+          <button class="btn btn-sm btn-outline-danger">Hapus</button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

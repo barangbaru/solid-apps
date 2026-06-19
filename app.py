@@ -538,6 +538,89 @@ CREATE TABLE IF NOT EXISTS bk_bookings (
     cancelled_by INTEGER DEFAULT NULL,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS ac_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+    device_type TEXT DEFAULT 'Laptop',
+    brand TEXT DEFAULT '',
+    os TEXT DEFAULT '',
+    os_license_type TEXT DEFAULT '',
+    processor TEXT DEFAULT '',
+    ram TEXT DEFAULT '',
+    disk TEXT DEFAULT '',
+    office_version TEXT DEFAULT '',
+    asset_tag TEXT DEFAULT '',
+    serial_number TEXT DEFAULT '',
+    purchase_date TEXT DEFAULT '',
+    condition TEXT DEFAULT 'Baik',
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS ac_asset_software (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_id INTEGER REFERENCES ac_assets(id) ON DELETE CASCADE,
+    software_name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ac_infrastructure (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_type TEXT NOT NULL,
+    brand TEXT DEFAULT '',
+    model TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    serial_number TEXT DEFAULT '',
+    nickname TEXT DEFAULT '',
+    ups_group TEXT DEFAULT '',
+    location TEXT DEFAULT '',
+    status TEXT DEFAULT 'Aktif',
+    condition_notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS ac_licenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    software_name TEXT NOT NULL,
+    license_key TEXT DEFAULT '',
+    license_type TEXT DEFAULT 'Perpetual',
+    version TEXT DEFAULT '',
+    year INTEGER DEFAULT NULL,
+    max_seats INTEGER DEFAULT 1,
+    is_active INTEGER DEFAULT 1,
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS ac_license_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    license_id INTEGER REFERENCES ac_licenses(id) ON DELETE CASCADE,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+    seat_number INTEGER DEFAULT 1,
+    assigned_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS ac_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    category TEXT DEFAULT 'SaaS',
+    billing_cycle TEXT DEFAULT 'Monthly',
+    start_date TEXT DEFAULT '',
+    end_date TEXT DEFAULT '',
+    username TEXT DEFAULT '',
+    password TEXT DEFAULT '',
+    access_url TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS ac_software_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+    software_name TEXT NOT NULL,
+    version TEXT DEFAULT '',
+    reason TEXT DEFAULT '',
+    status TEXT DEFAULT 'Pending',
+    requested_at TEXT DEFAULT (datetime('now','localtime')),
+    resolved_at TEXT DEFAULT '',
+    resolved_by TEXT DEFAULT '',
+    notes TEXT DEFAULT ''
+);
 """
 
 MIGRATIONS = [
@@ -659,7 +742,12 @@ APP_PERMISSIONS = {
         'manage_salary':      'Edit data gaji karyawan',
     },
     'aset': {
-        # Akan diisi saat AssetCore dikembangkan
+        'ac_view':            'Lihat data AssetCore',
+        'ac_manage_assets':   'Kelola inventaris laptop/PC',
+        'ac_manage_infra':    'Kelola inventaris infrastruktur',
+        'ac_manage_licenses': 'Kelola lisensi software',
+        'ac_manage_subs':     'Kelola subscription & ISP',
+        'ac_manage_requests': 'Kelola request software',
     },
     'support': {
         'sc_view':             'Lihat data SupportCore',
@@ -733,7 +821,7 @@ def init_db():
         ('evaluasi', 'TalentCore', 'Penilaian & review kinerja karyawan',
          'clipboard2-check', '#4da8da', '#e8f4fd', '/', 1, 0, 0, ''),
         ('aset', 'AssetCore', 'Pencatatan & tracking aset perusahaan',
-         'box-seam', '#6f42c1', '#f0ecff', '/aset/', 1, 1, 1, ''),
+         'box-seam', '#6f42c1', '#f0ecff', '/aset/', 1, 0, 1, 'ac_view'),
         ('support', 'SupportCore', 'Monitoring technical support, SLA & presales',
          'headset', '#0d9488', '#e6faf8', '/support/', 1, 0, 2, ''),
         ('booking', 'BookingCore', 'Pemesanan & penjadwalan ruangan, kendaraan & aset',
@@ -6093,6 +6181,316 @@ def booking_api_slots():
     data = [dict(id=r['id'],title=r['title'],start=r['start_dt'],end=r['end_dt']) for r in bookings]
     return app.response_class(json.dumps(data), mimetype='application/json')
 
+
+# ─── AssetCore ─────────────────────────────────────────────────────────────────
+
+def ac_require(perm):
+    db = get_db()
+    if not has_permission(session.get('user_role', ''), perm, db):
+        flash(f'Akses ditolak — permission "{perm}" diperlukan', 'danger')
+        return False
+    return True
+
+@app.route('/aset/')
+@login_required
+def ac_index():
+    db = get_db()
+    if not ac_require('ac_view'): return redirect(url_for('portal'))
+    from datetime import date as _date, timedelta
+    today = _date.today().isoformat()
+    limit30 = (_date.today() + timedelta(days=30)).isoformat()
+    stats = {
+        'assets':    db.execute('SELECT COUNT(*) FROM ac_assets').fetchone()[0],
+        'infra':     db.execute('SELECT COUNT(*) FROM ac_infrastructure').fetchone()[0],
+        'licenses':  db.execute('SELECT COUNT(*) FROM ac_licenses WHERE is_active=1').fetchone()[0],
+        'subs':      db.execute('SELECT COUNT(*) FROM ac_subscriptions WHERE is_active=1').fetchone()[0],
+        'requests':  db.execute("SELECT COUNT(*) FROM ac_software_requests WHERE status='Pending'").fetchone()[0],
+    }
+    expiring = db.execute(
+        "SELECT * FROM ac_subscriptions WHERE is_active=1 AND end_date!='' AND end_date BETWEEN ? AND ? ORDER BY end_date",
+        (today, limit30)).fetchall()
+    recent_requests = db.execute(
+        "SELECT r.*, e.name as emp_name FROM ac_software_requests r LEFT JOIN employees e ON r.employee_id=e.id ORDER BY r.requested_at DESC LIMIT 5"
+    ).fetchall()
+    return render_template('ac_index.html', stats=stats, expiring=expiring,
+                           recent_requests=recent_requests, today=today)
+
+# ── Assets ────────────────────────────────────────────────────────────────────
+@app.route('/aset/assets')
+@login_required
+def ac_assets():
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    db = get_db()
+    q = request.args.get('q','')
+    divisi = request.args.get('divisi','')
+    sql = "SELECT a.*, e.name as emp_name, e.divisi FROM ac_assets a LEFT JOIN employees e ON a.employee_id=e.id WHERE 1=1"
+    params = []
+    if q:
+        sql += ' AND (e.name LIKE ? OR a.device_type LIKE ? OR a.asset_tag LIKE ?)'; params += [f'%{q}%']*3
+    if divisi:
+        sql += ' AND e.divisi=?'; params.append(divisi)
+    sql += ' ORDER BY e.divisi, e.name'
+    assets = db.execute(sql, params).fetchall()
+    divisis = [r[0] for r in db.execute("SELECT DISTINCT divisi FROM employees WHERE divisi!='' ORDER BY divisi").fetchall()]
+    return render_template('ac_assets.html', assets=assets, q=q, divisi=divisi, divisis=divisis)
+
+@app.route('/aset/assets/new', methods=['GET','POST'])
+@login_required
+def ac_asset_new():
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_assets'))
+    db = get_db()
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
+    if request.method == 'POST':
+        cur = db.execute(
+            'INSERT INTO ac_assets(employee_id,device_type,brand,os,os_license_type,processor,ram,disk,office_version,asset_tag,serial_number,purchase_date,condition,notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (request.form.get('employee_id') or None, request.form.get('device_type','Laptop'),
+             request.form.get('brand',''), request.form.get('os',''), request.form.get('os_license_type',''),
+             request.form.get('processor',''), request.form.get('ram',''), request.form.get('disk',''),
+             request.form.get('office_version',''), request.form.get('asset_tag',''),
+             request.form.get('serial_number',''), request.form.get('purchase_date',''),
+             request.form.get('condition','Baik'), request.form.get('notes','')))
+        aid = cur.lastrowid
+        for s in [x.strip() for x in request.form.get('softwares','').split('\n') if x.strip()]:
+            db.execute('INSERT INTO ac_asset_software(asset_id,software_name) VALUES(?,?)', (aid, s))
+        db.commit()
+        audit_log('create', 'ac_assets', aid, f"Asset baru untuk {request.form.get('employee_id','')}", 'aset')
+        flash('Asset berhasil ditambahkan.', 'success')
+        return redirect(url_for('ac_asset_detail', aid=aid))
+    return render_template('ac_asset_form.html', asset=None, employees=employees, sw_text='')
+
+@app.route('/aset/assets/<int:aid>')
+@login_required
+def ac_asset_detail(aid):
+    if not ac_require('ac_view'): return redirect(url_for('ac_assets'))
+    db = get_db()
+    asset = db.execute('SELECT a.*, e.name as emp_name, e.divisi, e.jabatan, e.phone, e.email FROM ac_assets a LEFT JOIN employees e ON a.employee_id=e.id WHERE a.id=?', (aid,)).fetchone()
+    if not asset: flash('Asset tidak ditemukan.', 'danger'); return redirect(url_for('ac_assets'))
+    softwares = db.execute('SELECT * FROM ac_asset_software WHERE asset_id=? ORDER BY software_name', (aid,)).fetchall()
+    return render_template('ac_asset_detail.html', asset=asset, softwares=softwares)
+
+@app.route('/aset/assets/<int:aid>/edit', methods=['GET','POST'])
+@login_required
+def ac_asset_edit(aid):
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_assets'))
+    db = get_db()
+    asset = db.execute('SELECT * FROM ac_assets WHERE id=?', (aid,)).fetchone()
+    if not asset: flash('Asset tidak ditemukan.', 'danger'); return redirect(url_for('ac_assets'))
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
+    if request.method == 'POST':
+        db.execute(
+            'UPDATE ac_assets SET employee_id=?,device_type=?,brand=?,os=?,os_license_type=?,processor=?,ram=?,disk=?,office_version=?,asset_tag=?,serial_number=?,purchase_date=?,condition=?,notes=?,updated_at=datetime("now","localtime") WHERE id=?',
+            (request.form.get('employee_id') or None, request.form.get('device_type','Laptop'),
+             request.form.get('brand',''), request.form.get('os',''), request.form.get('os_license_type',''),
+             request.form.get('processor',''), request.form.get('ram',''), request.form.get('disk',''),
+             request.form.get('office_version',''), request.form.get('asset_tag',''),
+             request.form.get('serial_number',''), request.form.get('purchase_date',''),
+             request.form.get('condition','Baik'), request.form.get('notes',''), aid))
+        db.execute('DELETE FROM ac_asset_software WHERE asset_id=?', (aid,))
+        for s in [x.strip() for x in request.form.get('softwares','').split('\n') if x.strip()]:
+            db.execute('INSERT INTO ac_asset_software(asset_id,software_name) VALUES(?,?)', (aid, s))
+        db.commit()
+        flash('Asset diperbarui.', 'success')
+        return redirect(url_for('ac_asset_detail', aid=aid))
+    sw_text = '\n'.join(r['software_name'] for r in db.execute('SELECT software_name FROM ac_asset_software WHERE asset_id=? ORDER BY software_name', (aid,)).fetchall())
+    return render_template('ac_asset_form.html', asset=asset, employees=employees, sw_text=sw_text)
+
+@app.route('/aset/assets/<int:aid>/delete', methods=['POST'])
+@login_required
+def ac_asset_delete(aid):
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_assets'))
+    get_db().execute('DELETE FROM ac_assets WHERE id=?', (aid,)); get_db().commit()
+    flash('Asset dihapus.', 'success'); return redirect(url_for('ac_assets'))
+
+# ── Infrastruktur ─────────────────────────────────────────────────────────────
+@app.route('/aset/infra')
+@login_required
+def ac_infra():
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    db = get_db()
+    q = request.args.get('q',''); dtype = request.args.get('dtype','')
+    sql = 'SELECT * FROM ac_infrastructure WHERE 1=1'; params = []
+    if q:
+        sql += ' AND (device_type LIKE ? OR model LIKE ? OR nickname LIKE ? OR serial_number LIKE ?)'; params += [f'%{q}%']*4
+    if dtype:
+        sql += ' AND device_type=?'; params.append(dtype)
+    items = db.execute(sql+' ORDER BY device_type, nickname', params).fetchall()
+    dtypes = [r[0] for r in db.execute("SELECT DISTINCT device_type FROM ac_infrastructure ORDER BY device_type").fetchall()]
+    return render_template('ac_infra.html', items=items, q=q, dtype=dtype, dtypes=dtypes)
+
+@app.route('/aset/infra/new', methods=['GET','POST'])
+@login_required
+def ac_infra_new():
+    if not ac_require('ac_manage_infra'): return redirect(url_for('ac_infra'))
+    db = get_db()
+    if request.method == 'POST':
+        db.execute('INSERT INTO ac_infrastructure(device_type,brand,model,description,serial_number,nickname,ups_group,location,status,condition_notes) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                   (request.form.get('device_type',''), request.form.get('brand',''), request.form.get('model',''),
+                    request.form.get('description',''), request.form.get('serial_number',''), request.form.get('nickname',''),
+                    request.form.get('ups_group',''), request.form.get('location',''),
+                    request.form.get('status','Aktif'), request.form.get('condition_notes','')))
+        db.commit(); flash('Perangkat ditambahkan.', 'success')
+        return redirect(url_for('ac_infra'))
+    return render_template('ac_infra_form.html', item=None)
+
+@app.route('/aset/infra/<int:iid>/edit', methods=['GET','POST'])
+@login_required
+def ac_infra_edit(iid):
+    if not ac_require('ac_manage_infra'): return redirect(url_for('ac_infra'))
+    db = get_db()
+    item = db.execute('SELECT * FROM ac_infrastructure WHERE id=?', (iid,)).fetchone()
+    if not item: flash('Tidak ditemukan.', 'danger'); return redirect(url_for('ac_infra'))
+    if request.method == 'POST':
+        db.execute('UPDATE ac_infrastructure SET device_type=?,brand=?,model=?,description=?,serial_number=?,nickname=?,ups_group=?,location=?,status=?,condition_notes=? WHERE id=?',
+                   (request.form.get('device_type',''), request.form.get('brand',''), request.form.get('model',''),
+                    request.form.get('description',''), request.form.get('serial_number',''), request.form.get('nickname',''),
+                    request.form.get('ups_group',''), request.form.get('location',''),
+                    request.form.get('status','Aktif'), request.form.get('condition_notes',''), iid))
+        db.commit(); flash('Perangkat diperbarui.', 'success')
+        return redirect(url_for('ac_infra'))
+    return render_template('ac_infra_form.html', item=item)
+
+@app.route('/aset/infra/<int:iid>/delete', methods=['POST'])
+@login_required
+def ac_infra_delete(iid):
+    if not ac_require('ac_manage_infra'): return redirect(url_for('ac_infra'))
+    get_db().execute('DELETE FROM ac_infrastructure WHERE id=?', (iid,)); get_db().commit()
+    flash('Perangkat dihapus.', 'success'); return redirect(url_for('ac_infra'))
+
+# ── Lisensi ───────────────────────────────────────────────────────────────────
+@app.route('/aset/licenses')
+@login_required
+def ac_licenses():
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    db = get_db()
+    q = request.args.get('q','')
+    sql = "SELECT l.*, COUNT(la.id) as assigned FROM ac_licenses l LEFT JOIN ac_license_assignments la ON la.license_id=l.id"
+    params = []
+    if q:
+        sql += ' WHERE l.software_name LIKE ?'; params.append(f'%{q}%')
+    lics = db.execute(sql+' GROUP BY l.id ORDER BY l.software_name', params).fetchall()
+    return render_template('ac_licenses.html', licenses=lics, q=q)
+
+@app.route('/aset/licenses/new', methods=['GET','POST'])
+@app.route('/aset/licenses/<int:lid>/edit', methods=['GET','POST'])
+@login_required
+def ac_license_form(lid=None):
+    if not ac_require('ac_manage_licenses'): return redirect(url_for('ac_licenses'))
+    db = get_db()
+    lic = db.execute('SELECT * FROM ac_licenses WHERE id=?', (lid,)).fetchone() if lid else None
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+    assignments = [r['employee_id'] for r in db.execute('SELECT employee_id FROM ac_license_assignments WHERE license_id=?', (lid,)).fetchall()] if lid else []
+    if request.method == 'POST':
+        if lid:
+            db.execute('UPDATE ac_licenses SET software_name=?,license_key=?,license_type=?,version=?,year=?,max_seats=?,notes=?,is_active=? WHERE id=?',
+                       (request.form['software_name'].strip(), request.form.get('license_key','').strip(),
+                        request.form.get('license_type','Perpetual'), request.form.get('version','').strip(),
+                        request.form.get('year') or None, request.form.get('max_seats',1),
+                        request.form.get('notes','').strip(), 1 if request.form.get('is_active') else 0, lid))
+            db.execute('DELETE FROM ac_license_assignments WHERE license_id=?', (lid,))
+        else:
+            cur = db.execute('INSERT INTO ac_licenses(software_name,license_key,license_type,version,year,max_seats,notes) VALUES(?,?,?,?,?,?,?)',
+                       (request.form['software_name'].strip(), request.form.get('license_key','').strip(),
+                        request.form.get('license_type','Perpetual'), request.form.get('version','').strip(),
+                        request.form.get('year') or None, request.form.get('max_seats',1), request.form.get('notes','').strip()))
+            lid = cur.lastrowid
+        for emp_id in request.form.getlist('assigned_employees'):
+            if emp_id: db.execute('INSERT INTO ac_license_assignments(license_id,employee_id) VALUES(?,?)', (lid, emp_id))
+        db.commit(); flash('Lisensi disimpan.', 'success')
+        return redirect(url_for('ac_licenses'))
+    return render_template('ac_license_form.html', lic=lic, employees=employees, assignments=assignments)
+
+@app.route('/aset/licenses/<int:lid>/delete', methods=['POST'])
+@login_required
+def ac_license_delete(lid):
+    if not ac_require('ac_manage_licenses'): return redirect(url_for('ac_licenses'))
+    get_db().execute('DELETE FROM ac_licenses WHERE id=?', (lid,)); get_db().commit()
+    flash('Lisensi dihapus.', 'success'); return redirect(url_for('ac_licenses'))
+
+# ── Subscription ──────────────────────────────────────────────────────────────
+@app.route('/aset/subscriptions')
+@login_required
+def ac_subscriptions():
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    from datetime import date as _date
+    subs = get_db().execute('SELECT * FROM ac_subscriptions ORDER BY is_active DESC, end_date').fetchall()
+    return render_template('ac_subscriptions.html', subscriptions=subs, today=_date.today().isoformat())
+
+@app.route('/aset/subscriptions/new', methods=['GET','POST'])
+@app.route('/aset/subscriptions/<int:sid>/edit', methods=['GET','POST'])
+@login_required
+def ac_subscription_form(sid=None):
+    if not ac_require('ac_manage_subs'): return redirect(url_for('ac_subscriptions'))
+    db = get_db()
+    sub = db.execute('SELECT * FROM ac_subscriptions WHERE id=?', (sid,)).fetchone() if sid else None
+    if request.method == 'POST':
+        vals = (request.form['provider'].strip(), request.form.get('category','SaaS'),
+                request.form.get('billing_cycle','Monthly'), request.form.get('start_date',''),
+                request.form.get('end_date',''), request.form.get('username','').strip(),
+                request.form.get('password','').strip(), request.form.get('access_url','').strip(),
+                request.form.get('notes','').strip())
+        if sid:
+            db.execute('UPDATE ac_subscriptions SET provider=?,category=?,billing_cycle=?,start_date=?,end_date=?,username=?,password=?,access_url=?,notes=?,is_active=? WHERE id=?',
+                       vals + (1 if request.form.get('is_active') else 0, sid))
+        else:
+            db.execute('INSERT INTO ac_subscriptions(provider,category,billing_cycle,start_date,end_date,username,password,access_url,notes) VALUES(?,?,?,?,?,?,?,?,?)', vals)
+        db.commit(); flash('Subscription disimpan.', 'success')
+        return redirect(url_for('ac_subscriptions'))
+    return render_template('ac_subscription_form.html', sub=sub)
+
+@app.route('/aset/subscriptions/<int:sid>/delete', methods=['POST'])
+@login_required
+def ac_subscription_delete(sid):
+    if not ac_require('ac_manage_subs'): return redirect(url_for('ac_subscriptions'))
+    get_db().execute('DELETE FROM ac_subscriptions WHERE id=?', (sid,)); get_db().commit()
+    flash('Subscription dihapus.', 'success'); return redirect(url_for('ac_subscriptions'))
+
+# ── Software Requests ─────────────────────────────────────────────────────────
+@app.route('/aset/requests')
+@login_required
+def ac_requests():
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    db = get_db()
+    status_filter = request.args.get('status','')
+    sql = "SELECT r.*, e.name as emp_name, e.divisi FROM ac_software_requests r LEFT JOIN employees e ON r.employee_id=e.id WHERE 1=1"
+    params = []
+    if status_filter:
+        sql += ' AND r.status=?'; params.append(status_filter)
+    reqs = db.execute(sql+' ORDER BY r.requested_at DESC', params).fetchall()
+    return render_template('ac_requests.html', requests=reqs, status_filter=status_filter)
+
+@app.route('/aset/requests/new', methods=['GET','POST'])
+@login_required
+def ac_request_new():
+    if not ac_require('ac_manage_requests'): return redirect(url_for('ac_requests'))
+    db = get_db()
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+    if request.method == 'POST':
+        db.execute('INSERT INTO ac_software_requests(employee_id,software_name,version,reason) VALUES(?,?,?,?)',
+                   (request.form.get('employee_id') or None, request.form['software_name'].strip(),
+                    request.form.get('version','').strip(), request.form.get('reason','').strip()))
+        db.commit(); flash('Request ditambahkan.', 'success')
+        return redirect(url_for('ac_requests'))
+    return render_template('ac_request_form.html', employees=employees)
+
+@app.route('/aset/requests/<int:rid>/status', methods=['POST'])
+@login_required
+def ac_request_status(rid):
+    if not ac_require('ac_manage_requests'): return redirect(url_for('ac_requests'))
+    from datetime import datetime as _dt
+    db = get_db()
+    new_status = request.form.get('status')
+    resolved_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S') if new_status in ('Approved','Rejected','Installed') else ''
+    db.execute('UPDATE ac_software_requests SET status=?,notes=?,resolved_at=?,resolved_by=? WHERE id=?',
+               (new_status, request.form.get('notes','').strip(), resolved_at, session.get('user_name',''), rid))
+    db.commit(); flash(f'Status diubah ke {new_status}.', 'success')
+    return redirect(url_for('ac_requests'))
+
+@app.route('/aset/requests/<int:rid>/delete', methods=['POST'])
+@login_required
+def ac_request_delete(rid):
+    if not ac_require('ac_manage_requests'): return redirect(url_for('ac_requests'))
+    get_db().execute('DELETE FROM ac_software_requests WHERE id=?', (rid,)); get_db().commit()
+    flash('Request dihapus.', 'success'); return redirect(url_for('ac_requests'))
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — Infrastruktur{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Infrastruktur</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <div style="width:32px;height:32px;border-radius:8px;background:#0ea5e9;display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-hdd-network text-white"></i>
+    </div>
+    <h6 class="fw-bold mb-0">Inventaris Infrastruktur</h6>
+  </div>
+  <a href="/aset/infra/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Tambah</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+  <div class="col-sm-5">
+    <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Cari device, model, nickname…">
+  </div>
+  <div class="col-sm-3">
+    <select name="dtype" class="form-select form-select-sm">
+      <option value="">Semua Tipe</option>
+      {% for d in dtypes %}<option value="{{ d }}" {{ 'selected' if d==dtype }}>{{ d }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <button class="btn btn-sm btn-outline-secondary">Filter</button>
+    {% if q or dtype %}<a href="/aset/infra" class="btn btn-sm btn-link">Reset</a>{% endif %}
+  </div>
+</form>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Tipe</th><th>Brand / Model</th><th>Nickname</th><th>S/N</th>
+          <th>UPS Group</th><th>Lokasi</th><th>Status</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in items %}
+        <tr>
+          <td><span class="badge bg-secondary">{{ i.device_type }}</span></td>
+          <td class="small fw-semibold">{{ i.brand }} {{ i.model }}</td>
+          <td class="small">{{ i.nickname or '—' }}</td>
+          <td class="small text-muted">{{ i.serial_number or '—' }}</td>
+          <td class="small text-muted">{{ i.ups_group or '—' }}</td>
+          <td class="small text-muted">{{ i.location or '—' }}</td>
+          <td>
+            <span class="badge {{ 'bg-success' if i.status=='Aktif' else 'bg-secondary' }}">{{ i.status }}</span>
+          </td>
+          <td>
+            <a href="/aset/infra/{{ i.id }}/edit" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
+            <form method="post" action="/aset/infra/{{ i.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus perangkat ini?')">
+              <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Belum ada data infrastruktur.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — {{ 'Edit' if lic else 'Tambah' }} Lisensi{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if lic else 'Tambah' }} Lisensi</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="/aset/licenses" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h6 class="fw-bold mb-0">{{ 'Edit' if lic else 'Tambah' }} Lisensi Software</h6>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">Nama Software <span class="text-danger">*</span></label>
+          <input name="software_name" value="{{ lic.software_name if lic else '' }}" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Tipe Lisensi</label>
+          <select name="license_type" class="form-select form-select-sm">
+            {% for t in ['Perpetual','Subscription','Volume','OEM','Freeware','Open Source'] %}
+            <option {{ 'selected' if (lic and lic.license_type==t) or (not lic and t=='Perpetual') }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Versi</label>
+          <input name="version" value="{{ lic.version if lic else '' }}" class="form-control form-control-sm" placeholder="2021, v5.0…">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">License Key</label>
+          <input name="license_key" value="{{ lic.license_key if lic else '' }}" class="form-control form-control-sm font-monospace">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Tahun</label>
+          <input name="year" type="number" value="{{ lic.year if lic else '' }}" class="form-control form-control-sm" placeholder="2024">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Maks Seat</label>
+          <input name="max_seats" type="number" min="1" value="{{ lic.max_seats if lic else 1 }}" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Catatan</label>
+          <textarea name="notes" rows="2" class="form-control form-control-sm">{{ lic.notes if lic else '' }}</textarea>
+        </div>
+
+        {% if lic %}
+        <div class="col-md-3">
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="is_active" id="is_active" {{ 'checked' if lic.is_active }}>
+            <label class="form-check-label small fw-semibold" for="is_active">Lisensi Aktif</label>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Assign ke Karyawan</label>
+          <div class="row row-cols-2 row-cols-md-4 g-1">
+            {% for e in employees %}
+            <div class="col">
+              <div class="form-check small">
+                <input class="form-check-input" type="checkbox" name="assigned_employees"
+                       value="{{ e.id }}" id="emp_{{ e.id }}" {{ 'checked' if e.id in assignments }}>
+                <label class="form-check-label" for="emp_{{ e.id }}">{{ e.name }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-3 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">Simpan</button>
+        <a href="/aset/licenses" class="btn btn-outline-secondary btn-sm">Batal</a>
+        {% if lic %}
+        <form method="post" action="/aset/licenses/{{ lic.id }}/delete" class="ms-auto" onsubmit="return confirm('Hapus lisensi ini?')">
+          <button class="btn btn-sm btn-outline-danger">Hapus</button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

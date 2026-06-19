@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — {{ asset.brand }} {{ asset.device_type }}{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Detail Asset</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <a href="/aset/assets" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+    <h6 class="fw-bold mb-0">{{ asset.brand }} {{ asset.device_type }}</h6>
+    <span class="badge {{ 'bg-success' if asset.condition=='Baik' else ('bg-warning text-dark' if asset.condition=='Perlu Perhatian' else 'bg-danger') }}">{{ asset.condition }}</span>
+  </div>
+  <a href="/aset/assets/{{ asset.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-laptop me-1" style="color:#6f42c1"></i>Informasi Asset</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th class="text-muted fw-normal small" style="width:40%">Asset Tag</th><td><span class="badge bg-secondary">{{ asset.asset_tag or '—' }}</span></td></tr>
+          <tr><th class="text-muted fw-normal small">Serial Number</th><td class="small">{{ asset.serial_number or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Tipe</th><td class="small">{{ asset.device_type }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Brand</th><td class="small">{{ asset.brand or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Tgl Pembelian</th><td class="small">{{ asset.purchase_date or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Catatan</th><td class="small">{{ asset.notes or '—' }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-person me-1" style="color:#6f42c1"></i>Pengguna</div>
+      <div class="card-body">
+        {% if asset.emp_name %}
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th class="text-muted fw-normal small" style="width:40%">Nama</th><td class="small fw-semibold">{{ asset.emp_name }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Divisi</th><td class="small">{{ asset.divisi or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Jabatan</th><td class="small">{{ asset.jabatan or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Telepon</th><td class="small">{{ asset.phone or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Email</th><td class="small">{{ asset.email or '—' }}</td></tr>
+        </table>
+        {% else %}
+        <div class="text-muted small py-2">Tidak ada pengguna (stok/spare)</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-cpu me-1" style="color:#6f42c1"></i>Spesifikasi</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th class="text-muted fw-normal small" style="width:40%">OS</th><td class="small">{{ asset.os or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Lisensi OS</th><td class="small">{{ asset.os_license_type or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Versi Office</th><td class="small">{{ asset.office_version or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Processor</th><td class="small">{{ asset.processor or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">RAM</th><td class="small">{{ asset.ram or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Storage</th><td class="small">{{ asset.disk or '—' }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-grid me-1" style="color:#6f42c1"></i>Software Terpasang</div>
+      <div class="card-body">
+        {% if softwares %}
+        <div class="d-flex flex-wrap gap-1">
+          {% for s in softwares %}
+          <span class="badge bg-light text-dark border">{{ s.software_name }}</span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small">Belum ada data software.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

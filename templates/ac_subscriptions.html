@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — Subscription{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Subscription</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <div style="width:32px;height:32px;border-radius:8px;background:#10b981;display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-cloud-check text-white"></i>
+    </div>
+    <h6 class="fw-bold mb-0">Subscription & ISP</h6>
+  </div>
+  <a href="/aset/subscriptions/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Tambah</a>
+</div>
+
+<div class="row g-3">
+  {% for s in subscriptions %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card border-0 shadow-sm h-100 {{ 'opacity-50' if not s.is_active }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <div class="fw-bold">{{ s.provider }}</div>
+            <span class="badge bg-secondary">{{ s.category }}</span>
+            <span class="badge bg-light text-dark border ms-1">{{ s.billing_cycle }}</span>
+          </div>
+          <span class="badge {{ 'bg-success' if s.is_active else 'bg-secondary' }}">{{ 'Aktif' if s.is_active else 'Nonaktif' }}</span>
+        </div>
+        {% if s.end_date %}
+        <div class="small mt-2">
+          <i class="bi bi-calendar-event me-1"></i>
+          <span class="{{ 'text-danger fw-bold' if s.end_date <= today else 'text-muted' }}">
+            Berakhir: {{ s.end_date }}
+          </span>
+        </div>
+        {% endif %}
+        {% if s.username %}
+        <div class="small text-muted mt-1"><i class="bi bi-person me-1"></i>{{ s.username }}</div>
+        {% endif %}
+        {% if s.access_url %}
+        <div class="small mt-1"><i class="bi bi-link-45deg me-1"></i><span class="text-muted">{{ s.access_url[:40] }}{% if s.access_url|length > 40 %}…{% endif %}</span></div>
+        {% endif %}
+        {% if s.notes %}
+        <div class="small text-muted mt-1">{{ s.notes }}</div>
+        {% endif %}
+      </div>
+      <div class="card-footer bg-transparent border-top-0 pt-0 pb-2">
+        <a href="/aset/subscriptions/{{ s.id }}/edit" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-pencil me-1"></i>Edit</a>
+        <form method="post" action="/aset/subscriptions/{{ s.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus subscription ini?')">
+          <button class="btn btn-sm btn-outline-danger py-0 px-2"><i class="bi bi-trash"></i></button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12 text-center text-muted py-5">Belum ada data subscription.</div>
+  {% endfor %}
+</div>
+{% endblock %}
