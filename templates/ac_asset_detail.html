@@ -13,6 +13,7 @@
 </div>
 
 <div class="row g-3">
+  {# ── Info Asset ── #}
   <div class="col-md-6">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header py-2 fw-bold small"><i class="bi bi-laptop me-1" style="color:#6f42c1"></i>Informasi Asset</div>
@@ -28,24 +29,86 @@
       </div>
     </div>
   </div>
+
+  {# ── Pengguna ── #}
   <div class="col-md-6">
     <div class="card border-0 shadow-sm h-100">
-      <div class="card-header py-2 fw-bold small"><i class="bi bi-person me-1" style="color:#6f42c1"></i>Pengguna</div>
-      <div class="card-body">
-        {% if asset.emp_name %}
-        <table class="table table-sm table-borderless mb-0">
-          <tr><th class="text-muted fw-normal small" style="width:40%">Nama</th><td class="small fw-semibold">{{ asset.emp_name }}</td></tr>
-          <tr><th class="text-muted fw-normal small">Divisi</th><td class="small">{{ asset.divisi or '—' }}</td></tr>
-          <tr><th class="text-muted fw-normal small">Jabatan</th><td class="small">{{ asset.jabatan or '—' }}</td></tr>
-          <tr><th class="text-muted fw-normal small">Telepon</th><td class="small">{{ asset.phone or '—' }}</td></tr>
-          <tr><th class="text-muted fw-normal small">Email</th><td class="small">{{ asset.email or '—' }}</td></tr>
-        </table>
+      <div class="card-header py-2 fw-bold small d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-person me-1" style="color:#6f42c1"></i>Pengguna</span>
+        {% if link_status == 'linked' %}
+          <span class="badge bg-success"><i class="bi bi-link-45deg me-1"></i>Terhubung</span>
+        {% elif link_status == 'unlinked' %}
+          <span class="badge bg-warning text-dark"><i class="bi bi-link-45deg me-1"></i>Manual</span>
         {% else %}
-        <div class="text-muted small py-2">Tidak ada pengguna (stok/spare)</div>
+          <span class="badge bg-light text-muted border">Tidak ada pengguna</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if link_status == 'linked' %}
+          <table class="table table-sm table-borderless mb-0">
+            <tr><th class="text-muted fw-normal small" style="width:40%">Nama</th><td class="small fw-semibold">{{ asset.emp_name }}</td></tr>
+            <tr><th class="text-muted fw-normal small">Divisi</th><td class="small">{{ asset.divisi or '—' }}</td></tr>
+            <tr><th class="text-muted fw-normal small">Jabatan</th><td class="small">{{ asset.jabatan or '—' }}</td></tr>
+            <tr><th class="text-muted fw-normal small">Telepon</th><td class="small">{{ asset.phone or '—' }}</td></tr>
+            <tr><th class="text-muted fw-normal small">Email</th><td class="small">{{ asset.email or '—' }}</td></tr>
+          </table>
+          <div class="mt-2">
+            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#unlinkPanel">
+              <i class="bi bi-unlink me-1"></i>Putuskan Koneksi
+            </button>
+          </div>
+          <div class="collapse mt-2" id="unlinkPanel">
+            <form method="post" action="/aset/assets/{{ asset.id }}/link">
+              <input type="hidden" name="action" value="unlink">
+              <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-danger" type="submit">Konfirmasi putuskan</button>
+                <span class="small text-muted">Pengguna dilepas, nama manual dipertahankan.</span>
+              </div>
+            </form>
+          </div>
+
+        {% elif link_status == 'unlinked' %}
+          {# Manual name — tawarkan untuk link ke karyawan #}
+          <div class="mb-2">
+            <div class="fw-semibold small">{{ asset.manual_employee_name }}</div>
+            <div class="text-muted" style="font-size:.75rem">Nama dari input manual — belum terhubung ke data karyawan.</div>
+          </div>
+          <div class="p-2 rounded border border-warning" style="background:#fffbe6">
+            <div class="small fw-semibold text-warning-emphasis mb-1"><i class="bi bi-search me-1"></i>Hubungkan ke karyawan</div>
+            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center">
+              <input type="hidden" name="action" value="link">
+              <select name="employee_id" class="form-select form-select-sm" style="max-width:260px">
+                <option value="">— Pilih karyawan —</option>
+                {% for e in employees %}
+                <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-sm btn-warning" type="submit">Hubungkan</button>
+            </form>
+          </div>
+
+        {% else %}
+          {# no_user — tidak ada karyawan, bisa assign #}
+          <div class="text-muted small mb-2">Tidak ada pengguna (stok / spare)</div>
+          <div class="p-2 rounded border" style="background:#f8f9fa">
+            <div class="small fw-semibold mb-1"><i class="bi bi-person-plus me-1" style="color:#6f42c1"></i>Assign ke karyawan</div>
+            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center">
+              <input type="hidden" name="action" value="link">
+              <select name="employee_id" class="form-select form-select-sm" style="max-width:260px">
+                <option value="">— Pilih karyawan —</option>
+                {% for e in employees %}
+                <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-sm btn-primary" type="submit">Assign</button>
+            </form>
+          </div>
         {% endif %}
       </div>
     </div>
   </div>
+
+  {# ── Spesifikasi ── #}
   <div class="col-md-6">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header py-2 fw-bold small"><i class="bi bi-cpu me-1" style="color:#6f42c1"></i>Spesifikasi</div>
@@ -61,6 +124,8 @@
       </div>
     </div>
   </div>
+
+  {# ── Software ── #}
   <div class="col-md-6">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header py-2 fw-bold small"><i class="bi bi-grid me-1" style="color:#6f42c1"></i>Software Terpasang</div>

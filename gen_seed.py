@@ -65,7 +65,7 @@ for row in ws.iter_rows(min_row=2, max_row=43, values_only=True):
     proc_e = esc(str(processor).replace('\n', ' + ')) if processor else ''
     office_e = esc(str(office).replace('\n', ' ')) if office else ''
 
-    lines.append(f"INSERT INTO ac_assets(employee_id,device_type,brand,os,os_license_type,processor,ram,disk,office_version,condition,notes) VALUES({emp_sql},'Laptop','{brand_e}','{os_name}','{esc(os_lic)}','{proc_e}','{ram_e}','{disk_e}','{office_e}','Baik','[seeded]');")
+    lines.append(f"INSERT INTO ac_assets(employee_id,manual_employee_name,device_type,brand,os,os_license_type,processor,ram,disk,office_version,condition,notes) VALUES({emp_sql},'{nama_e}','Laptop','{brand_e}','{os_name}','{esc(os_lic)}','{proc_e}','{ram_e}','{disk_e}','{office_e}','Baik','[seeded]');")
 
     for sw in parse_sw(apps):
         lines.append(f"INSERT INTO ac_asset_software(asset_id,software_name) VALUES(last_insert_rowid(),'{esc(sw)}');")
