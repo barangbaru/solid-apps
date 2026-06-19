@@ -6512,6 +6512,7 @@ def ac_assets():
     divisi        = request.args.get('divisi', '')
     status_filter = request.args.get('status', '')       # 'linked' | 'unlinked'
     asset_status  = request.args.get('asset_status', '') # 'aktif' | 'end'
+    sort          = request.args.get('sort', 'updated')  # 'updated' | 'name' | 'divisi'
     sql = """SELECT a.*, e.name as emp_name, e.divisi,
              CASE WHEN a.employee_id IS NOT NULL THEN 'linked'
                   WHEN a.manual_employee_name!='' THEN 'unlinked'
@@ -6531,14 +6532,19 @@ def ac_assets():
         sql += " AND a.status='End'"
     elif asset_status == 'aktif':
         sql += " AND (a.status IS NULL OR a.status='Aktif')"
-    sql += ' ORDER BY a.status ASC, COALESCE(e.divisi, a.manual_employee_name), COALESCE(e.name, a.manual_employee_name)'
+    ORDER_MAP = {
+        'updated': 'a.updated_at DESC, a.id DESC',
+        'name':    'COALESCE(e.name, a.manual_employee_name) ASC',
+        'divisi':  'COALESCE(e.divisi,"") ASC, COALESCE(e.name, a.manual_employee_name) ASC',
+    }
+    sql += ' ORDER BY a.status ASC, ' + ORDER_MAP.get(sort, ORDER_MAP['updated'])
     assets = db.execute(sql, params).fetchall()
     divisis       = [r[0] for r in db.execute("SELECT DISTINCT divisi FROM employees WHERE divisi!='' ORDER BY divisi").fetchall()]
     unlinked_count = db.execute("SELECT COUNT(*) FROM ac_assets WHERE (status IS NULL OR status='Aktif') AND employee_id IS NULL AND manual_employee_name!=''").fetchone()[0]
     end_count      = db.execute("SELECT COUNT(*) FROM ac_assets WHERE status='End'").fetchone()[0]
     return render_template('ac_assets.html', assets=assets, q=q, divisi=divisi,
                            divisis=divisis, status_filter=status_filter,
-                           asset_status=asset_status,
+                           asset_status=asset_status, sort=sort,
                            unlinked_count=unlinked_count, end_count=end_count)
 
 @app.route('/aset/assets/new', methods=['GET','POST'])

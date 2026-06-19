@@ -47,9 +47,16 @@
       <option value="end" {{ 'selected' if asset_status=='end' }}>End saja</option>
     </select>
   </div>
+  <div class="col-sm-2">
+    <select name="sort" class="form-select form-select-sm">
+      <option value="updated" {{ 'selected' if sort=='updated' }}>Terbaru diperbarui</option>
+      <option value="name"    {{ 'selected' if sort=='name' }}>Nama pengguna</option>
+      <option value="divisi"  {{ 'selected' if sort=='divisi' }}>Divisi</option>
+    </select>
+  </div>
   <div class="col-auto">
     <button class="btn btn-sm btn-outline-secondary">Filter</button>
-    {% if q or divisi or status_filter or asset_status %}<a href="/aset/assets" class="btn btn-sm btn-link">Reset</a>{% endif %}
+    {% if q or divisi or status_filter or asset_status or sort != 'updated' %}<a href="/aset/assets" class="btn btn-sm btn-link">Reset</a>{% endif %}
   </div>
 </form>
 
@@ -59,7 +66,7 @@
       <thead class="table-light">
         <tr>
           <th>Asset Tag</th><th>Device</th><th>Pengguna</th><th>Mulai Pakai</th>
-          <th>Divisi</th><th>OS</th><th>Spek</th><th>Status</th><th></th>
+          <th>Divisi</th><th>OS</th><th>Spek</th><th>Status</th><th>Diperbarui</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -104,6 +111,11 @@
             {% else %}
               <span class="badge {{ 'bg-success' if a.condition=='Baik' else ('bg-warning text-dark' if a.condition=='Perlu Perhatian' else 'bg-danger') }}">{{ a.condition }}</span>
             {% endif %}
+          </td>
+          <td class="small text-muted text-nowrap">
+            {% if a.updated_at %}
+              <span title="{{ a.updated_at }}">{{ a.updated_at[:10] }}</span>
+            {% else %}—{% endif %}
           </td>
           <td class="text-nowrap">
             <a href="/aset/assets/{{ a.id }}" class="btn btn-sm btn-outline-secondary py-0 px-1"><i class="bi bi-eye"></i></a>
