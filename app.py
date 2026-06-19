@@ -728,6 +728,9 @@ DEFAULT_SETTINGS = {
     'app_url': '',  # URL publik aplikasi mis. https://evaluasi.perusahaan.com (kosong = auto-detect)
     'ac_sub_reminder_enabled': '1',
     'ac_sub_reminder_days': '30,14,7,1',
+    'ac_notification_emails': '',
+    'ac_notification_telegram_ids': '',
+    'ac_notification_wa_phones': '',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -1046,6 +1049,19 @@ def get_notification_wa_phones(settings, emp_phone=''):
         if p and p not in phones:
             phones.append(p)
     return phones
+
+def _parse_list(raw):
+    """Parse newline/comma-separated string jadi list string non-kosong."""
+    return [x.strip() for x in raw.replace('\n', ',').split(',') if x.strip()]
+
+def get_ac_notification_emails(settings):
+    return _parse_list(settings.get('ac_notification_emails', ''))
+
+def get_ac_notification_telegram_ids(settings):
+    return [normalize_telegram_id(t) for t in _parse_list(settings.get('ac_notification_telegram_ids', ''))]
+
+def get_ac_notification_wa_phones(settings):
+    return _parse_list(settings.get('ac_notification_wa_phones', ''))
 
 # ─── RBAC Helpers ─────────────────────────────────────────────────────────────
 
@@ -1766,12 +1782,16 @@ def run_subscription_reminders(triggered_by='auto'):
         reminder_days_raw = settings.get('ac_sub_reminder_days', '30,14,7,1')
         reminder_days = [int(d.strip()) for d in reminder_days_raw.split(',') if d.strip().isdigit()]
 
-        bot_token    = settings.get('telegram_bot_token', '').strip()
-        default_chat = settings.get('telegram_default_chat_id', '').strip()
-        wa_url       = settings.get('openwa_url', '').strip()
-        wa_key       = settings.get('openwa_api_key', '').strip()
-        wa_session   = settings.get('openwa_session_id', 'default').strip()
-        wa_enabled   = settings.get('openwa_enabled', '0') == '1'
+        bot_token  = settings.get('telegram_bot_token', '').strip()
+        wa_url     = settings.get('openwa_url', '').strip()
+        wa_key     = settings.get('openwa_api_key', '').strip()
+        wa_session = settings.get('openwa_session_id', 'default').strip()
+        wa_enabled = settings.get('openwa_enabled', '0') == '1'
+
+        # Gunakan daftar penerima khusus AssetCore
+        ac_emails  = get_ac_notification_emails(settings)
+        ac_tg_ids  = get_ac_notification_telegram_ids(settings)
+        ac_phones  = get_ac_notification_wa_phones(settings)
 
         sent = failed = 0
         today = date.today()
@@ -1794,33 +1814,30 @@ def run_subscription_reminders(triggered_by='auto'):
                 if sub['last_reminder_sent'] == today_str:
                     continue
 
-            subj   = f"[Reminder] {sub['provider']} — {'berakhir dalam '+str(days_left)+' hari' if days_left > 0 else 'BERAKHIR HARI INI'}"
+            subj   = f"[AssetCore] Reminder {sub['provider']} — {'berakhir dalam '+str(days_left)+' hari' if days_left > 0 else 'BERAKHIR HARI INI'}"
             html   = compose_sub_email(sub, days_left)
             tg_msg = compose_sub_telegram(sub, days_left)
             wa_msg = compose_sub_wa(sub, days_left)
 
-            # Email — ke notification_emails (admin IT)
-            if settings.get('smtp_host', '').strip():
-                for to_email in get_notification_emails(settings):
+            # Email — daftar AC penerima
+            if settings.get('smtp_host', '').strip() and ac_emails:
+                for to_email in ac_emails:
                     ok, err = send_email(settings, to_email, subj, html)
                     audit_notif('email', to_email, subj, html, ok, err, triggered_by, app_slug='aset')
                     if ok: sent += 1
                     else:  failed += 1
 
-            # Telegram — ke notification_telegram_ids / default chat
-            if bot_token:
-                for chat_id in get_notification_telegram_ids(settings, '', default_chat):
+            # Telegram — daftar AC penerima
+            if bot_token and ac_tg_ids:
+                for chat_id in ac_tg_ids:
                     ok, err = send_telegram(bot_token, chat_id, tg_msg,
                                             _log_subject=subj, _app_slug='aset')
                     if ok: sent += 1
                     else:  failed += 1
 
-            # WhatsApp — ke extra phones
-            if wa_enabled and wa_url:
-                for phone in settings.get('openwa_extra_phones', '').split(','):
-                    phone = phone.strip()
-                    if not phone:
-                        continue
+            # WhatsApp — daftar AC penerima
+            if wa_enabled and wa_url and ac_phones:
+                for phone in ac_phones:
                     ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone, wa_msg)
                     audit_notif('whatsapp', phone, subj, wa_msg, ok, err, triggered_by, app_slug='aset')
                     if ok: sent += 1
@@ -6662,31 +6679,31 @@ def ac_subscription_remind_one(sid):
     except Exception:
         days_left = 999
     sent = failed = 0
-    subj   = f"[Reminder] {sub['provider']} — {'berakhir dalam '+str(days_left)+' hari' if days_left > 0 else 'BERAKHIR HARI INI'}"
+    subj   = f"[AssetCore] Reminder {sub['provider']} — {'berakhir dalam '+str(days_left)+' hari' if days_left > 0 else 'BERAKHIR HARI INI'}"
     html   = compose_sub_email(sub, days_left)
     tg_msg = compose_sub_telegram(sub, days_left)
     wa_msg = compose_sub_wa(sub, days_left)
-    bot_token    = settings.get('telegram_bot_token', '').strip()
-    default_chat = settings.get('telegram_default_chat_id', '').strip()
-    wa_url       = settings.get('openwa_url', '').strip()
-    wa_key       = settings.get('openwa_api_key', '').strip()
-    wa_session   = settings.get('openwa_session_id', 'default').strip()
-    wa_enabled   = settings.get('openwa_enabled', '0') == '1'
-    if settings.get('smtp_host', '').strip():
-        for to_email in get_notification_emails(settings):
+    bot_token  = settings.get('telegram_bot_token', '').strip()
+    wa_url     = settings.get('openwa_url', '').strip()
+    wa_key     = settings.get('openwa_api_key', '').strip()
+    wa_session = settings.get('openwa_session_id', 'default').strip()
+    wa_enabled = settings.get('openwa_enabled', '0') == '1'
+    ac_emails  = get_ac_notification_emails(settings)
+    ac_tg_ids  = get_ac_notification_telegram_ids(settings)
+    ac_phones  = get_ac_notification_wa_phones(settings)
+    if settings.get('smtp_host', '').strip() and ac_emails:
+        for to_email in ac_emails:
             ok, err = send_email(settings, to_email, subj, html)
             audit_notif('email', to_email, subj, html, ok, err, 'manual', app_slug='aset')
             if ok: sent += 1
             else:  failed += 1
-    if bot_token:
-        for chat_id in get_notification_telegram_ids(settings, '', default_chat):
+    if bot_token and ac_tg_ids:
+        for chat_id in ac_tg_ids:
             ok, err = send_telegram(bot_token, chat_id, tg_msg, _log_subject=subj, _app_slug='aset')
             if ok: sent += 1
             else:  failed += 1
-    if wa_enabled and wa_url:
-        for phone in settings.get('openwa_extra_phones', '').split(','):
-            phone = phone.strip()
-            if not phone: continue
+    if wa_enabled and wa_url and ac_phones:
+        for phone in ac_phones:
             ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone, wa_msg)
             audit_notif('whatsapp', phone, subj, wa_msg, ok, err, 'manual', app_slug='aset')
             if ok: sent += 1
@@ -6694,8 +6711,85 @@ def ac_subscription_remind_one(sid):
     db.execute("UPDATE ac_subscriptions SET last_reminder_sent=? WHERE id=?",
                (date.today().isoformat(), sid))
     db.commit()
-    flash(f'Reminder "{sub["provider"]}": {sent} terkirim, {failed} gagal.', 'success' if failed == 0 else 'warning')
+    if sent == 0 and failed == 0:
+        flash(f'Tidak ada penerima notifikasi yang dikonfigurasi. Isi dulu di Pengaturan → Notifikasi.', 'warning')
+    else:
+        flash(f'Reminder "{sub["provider"]}": {sent} terkirim, {failed} gagal.', 'success' if failed == 0 else 'warning')
     return redirect(url_for('ac_subscriptions'))
+
+# ── AssetCore Settings ────────────────────────────────────────────────────────
+AC_SETTINGS_KEYS = [
+    'ac_sub_reminder_enabled', 'ac_sub_reminder_days',
+    'ac_notification_emails', 'ac_notification_telegram_ids', 'ac_notification_wa_phones',
+]
+
+@app.route('/aset/settings', methods=['GET', 'POST'])
+@login_required
+def ac_settings():
+    if not ac_require('ac_manage_subs'): return redirect(url_for('ac_index'))
+    db = get_db()
+    if request.method == 'POST':
+        for k in AC_SETTINGS_KEYS:
+            if k == 'ac_sub_reminder_enabled':
+                v = '1' if request.form.get(k) else '0'
+            else:
+                v = request.form.get(k, '').strip()
+            save_setting(db, k, v)
+        db.commit()
+        flash('Pengaturan notifikasi AssetCore disimpan.', 'success')
+        return redirect(url_for('ac_settings'))
+    cfg = get_settings(db)
+    return render_template('ac_settings.html', cfg=cfg)
+
+@app.route('/aset/settings/test-email', methods=['POST'])
+@login_required
+def ac_settings_test_email():
+    if not ac_require('ac_manage_subs'): return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    db = get_db()
+    settings = get_settings(db)
+    to_email = request.form.get('test_email', '').strip()
+    if not to_email:
+        return jsonify({'ok': False, 'msg': 'Masukkan alamat email tujuan'})
+    if not settings.get('smtp_host', '').strip():
+        return jsonify({'ok': False, 'msg': 'SMTP belum dikonfigurasi di Pengaturan Sistem Portal'})
+    ok, err = send_email(settings, to_email, '[AssetCore] Test Email Notifikasi',
+                         '<h3>✅ Test berhasil!</h3><p>Konfigurasi notifikasi email AssetCore sudah benar.</p>')
+    return jsonify({'ok': ok, 'msg': 'Email berhasil dikirim' if ok else str(err)})
+
+@app.route('/aset/settings/test-telegram', methods=['POST'])
+@login_required
+def ac_settings_test_telegram():
+    if not ac_require('ac_manage_subs'): return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    db = get_db()
+    settings = get_settings(db)
+    bot_token = settings.get('telegram_bot_token', '').strip()
+    chat_id   = request.form.get('test_chat_id', '').strip()
+    if not bot_token:
+        return jsonify({'ok': False, 'msg': 'Bot Token belum dikonfigurasi di Pengaturan Sistem Portal'})
+    if not chat_id:
+        return jsonify({'ok': False, 'msg': 'Masukkan Chat ID tujuan test'})
+    ok, err = send_telegram(bot_token, normalize_telegram_id(chat_id),
+                            '✅ <b>Test berhasil!</b>\n\nNotifikasi Telegram AssetCore sudah terhubung.',
+                            _app_slug='aset')
+    return jsonify({'ok': ok, 'msg': 'Pesan Telegram berhasil dikirim' if ok else str(err)})
+
+@app.route('/aset/settings/test-whatsapp', methods=['POST'])
+@login_required
+def ac_settings_test_whatsapp():
+    if not ac_require('ac_manage_subs'): return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    db = get_db()
+    settings = get_settings(db)
+    wa_url     = settings.get('openwa_url', '').strip()
+    wa_key     = settings.get('openwa_api_key', '').strip()
+    wa_session = settings.get('openwa_session_id', 'default').strip()
+    phone      = request.form.get('test_wa_phone', '').strip()
+    if not settings.get('openwa_enabled', '0') == '1' or not wa_url:
+        return jsonify({'ok': False, 'msg': 'WhatsApp (OpenWA) belum diaktifkan di Pengaturan Sistem Portal'})
+    if not phone:
+        return jsonify({'ok': False, 'msg': 'Masukkan nomor HP tujuan test'})
+    ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone,
+                            '✅ *Test berhasil!*\n\nNotifikasi WhatsApp AssetCore sudah terhubung.')
+    return jsonify({'ok': ok, 'msg': f'Pesan terkirim ke {normalize_phone_wa(phone)}' if ok else str(err)})
 
 # ── Software Requests ─────────────────────────────────────────────────────────
 @app.route('/aset/requests')

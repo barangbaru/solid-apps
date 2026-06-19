@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — Pengaturan Notifikasi{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Pengaturan Notifikasi</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <div style="width:32px;height:32px;border-radius:8px;background:#6f42c1;display:flex;align-items:center;justify-content:center">
+    <i class="bi bi-bell-fill text-white"></i>
+  </div>
+  <h6 class="fw-bold mb-0">Pengaturan Notifikasi AssetCore</h6>
+</div>
+
+<div class="alert alert-light border small py-2 mb-3 d-flex align-items-center gap-2">
+  <i class="bi bi-info-circle text-primary"></i>
+  <div>
+    Konfigurasi SMTP, Bot Token Telegram, dan OpenWA dikelola di
+    <a href="/portal/system-settings" class="fw-semibold">Pengaturan Sistem Portal</a>.
+    Halaman ini khusus mengatur <strong>daftar penerima</strong> notifikasi subscription/ISP AssetCore.
+  </div>
+</div>
+
+<form method="post" id="acSettingsForm">
+<div class="row g-3">
+
+  {# ── Kolom Kiri: Penerima ── #}
+  <div class="col-lg-7">
+
+    {# Email #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 d-flex align-items-center justify-content-between">
+        <span class="fw-bold small"><i class="bi bi-envelope-fill me-1 text-primary"></i>Penerima Email</span>
+        <button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="testEmail()">
+          <i class="bi bi-send me-1"></i>Test
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="form-label small text-muted">Satu email per baris (atau pisahkan dengan koma)</label>
+          <textarea name="ac_notification_emails" rows="5" class="form-control form-control-sm font-monospace"
+                    placeholder="it-admin@perusahaan.com&#10;manager-it@perusahaan.com&#10;direktur@perusahaan.com">{{ cfg.ac_notification_emails }}</textarea>
+        </div>
+        <div class="input-group input-group-sm" id="testEmailGroup">
+          <input type="email" id="testEmailAddr" class="form-control form-control-sm"
+                 placeholder="Alamat email untuk test kirim…">
+          <button type="button" class="btn btn-outline-secondary" onclick="doTestEmail()">Kirim Test</button>
+        </div>
+        <div id="testEmailResult" class="mt-1 small"></div>
+      </div>
+    </div>
+
+    {# Telegram #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 d-flex align-items-center justify-content-between">
+        <span class="fw-bold small"><i class="bi bi-telegram me-1" style="color:#0088cc"></i>Penerima Telegram</span>
+        <button type="button" class="btn btn-sm btn-outline-info py-0" onclick="showTestTg()">
+          <i class="bi bi-send me-1"></i>Test
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="form-label small text-muted">Satu chat ID / username per baris</label>
+          <textarea name="ac_notification_telegram_ids" rows="5" class="form-control form-control-sm font-monospace"
+                    placeholder="-100123456789&#10;@nama_grup&#10;123456789">{{ cfg.ac_notification_telegram_ids }}</textarea>
+          <div class="form-text">
+            Format: angka positif (personal), angka negatif (grup), <code>@username</code> (channel publik).
+            Bot Token dikonfigurasi di <a href="/portal/system-settings">Pengaturan Sistem</a>.
+          </div>
+        </div>
+        <div class="input-group input-group-sm d-none" id="testTgGroup">
+          <input type="text" id="testTgId" class="form-control form-control-sm"
+                 placeholder="Chat ID untuk test (kosong = pakai dari daftar atas)">
+          <button type="button" class="btn btn-outline-secondary" onclick="doTestTg()">Kirim Test</button>
+        </div>
+        <div id="testTgResult" class="mt-1 small"></div>
+      </div>
+    </div>
+
+    {# WhatsApp #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 d-flex align-items-center justify-content-between">
+        <span class="fw-bold small">
+          <span style="background:#25D366;color:#fff;border-radius:3px;padding:1px 5px;font-size:.8rem">
+            <i class="bi bi-whatsapp"></i>
+          </span>
+          Penerima WhatsApp
+        </span>
+        <button type="button" class="btn btn-sm btn-outline-success py-0" onclick="showTestWa()">
+          <i class="bi bi-send me-1"></i>Test
+        </button>
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="form-label small text-muted">Satu nomor per baris, format <code>08xxxxxxxxxx</code></label>
+          <textarea name="ac_notification_wa_phones" rows="5" class="form-control form-control-sm font-monospace"
+                    placeholder="08111000001&#10;08222000002&#10;08333000003">{{ cfg.ac_notification_wa_phones }}</textarea>
+          <div class="form-text">
+            OpenWA/WAHA dikonfigurasi di <a href="/portal/system-settings">Pengaturan Sistem</a>.
+          </div>
+        </div>
+        <div class="input-group input-group-sm d-none" id="testWaGroup">
+          <input type="text" id="testWaPhone" class="form-control form-control-sm"
+                 placeholder="Nomor HP untuk test, misal 08111000001">
+          <button type="button" class="btn btn-outline-secondary" onclick="doTestWa()">Kirim Test</button>
+        </div>
+        <div id="testWaResult" class="mt-1 small"></div>
+      </div>
+    </div>
+
+  </div>
+
+  {# ── Kolom Kanan: Jadwal ── #}
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-clock-history me-1 text-warning"></i>Jadwal Reminder Otomatis
+      </div>
+      <div class="card-body">
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" id="reminderEnabled"
+                 name="ac_sub_reminder_enabled" value="1"
+                 {{ 'checked' if cfg.ac_sub_reminder_enabled == '1' }}>
+          <label class="form-check-label fw-semibold small" for="reminderEnabled">
+            Aktifkan reminder otomatis
+          </label>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Ingatkan pada hari ke-</label>
+          <input type="text" name="ac_sub_reminder_days" class="form-control form-control-sm"
+                 value="{{ cfg.ac_sub_reminder_days }}"
+                 placeholder="30,14,7,1">
+          <div class="form-text">
+            Pisahkan dengan koma. Contoh: <code>30,14,7,1</code> = reminder 30 hari, 14 hari,
+            7 hari, dan 1 hari sebelum berakhir.
+          </div>
+        </div>
+        <div class="p-2 rounded small" style="background:#f8f5ff;border:1px solid #e0d5ff">
+          <div class="fw-semibold mb-1" style="color:#6f42c1"><i class="bi bi-info-circle me-1"></i>Info Jadwal</div>
+          <div class="text-muted">Scheduler berjalan otomatis setiap hari jam <strong>08:05 WIB</strong>.</div>
+          <div class="text-muted mt-1">Anti-duplikat: satu subscription hanya mendapat satu reminder per hari.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-eye me-1 text-secondary"></i>Preview Penerima Aktif
+      </div>
+      <div class="card-body py-2">
+        {% set emails = cfg.ac_notification_emails.replace('\n', ',').split(',') if cfg.ac_notification_emails else [] %}
+        {% set tg_ids = cfg.ac_notification_telegram_ids.replace('\n', ',').split(',') if cfg.ac_notification_telegram_ids else [] %}
+        {% set phones = cfg.ac_notification_wa_phones.replace('\n', ',').split(',') if cfg.ac_notification_wa_phones else [] %}
+
+        <div class="small mb-2">
+          <div class="text-muted fw-semibold"><i class="bi bi-envelope me-1"></i>Email ({{ emails|selectattr('strip')|list|length }}):</div>
+          {% for e in emails if e.strip() %}
+          <div class="ms-3 text-truncate" style="max-width:220px" title="{{ e.strip() }}">{{ e.strip() }}</div>
+          {% else %}
+          <div class="ms-3 text-muted fst-italic">Belum ada</div>
+          {% endfor %}
+        </div>
+
+        <div class="small mb-2">
+          <div class="text-muted fw-semibold"><i class="bi bi-telegram me-1"></i>Telegram ({{ tg_ids|selectattr('strip')|list|length }}):</div>
+          {% for t in tg_ids if t.strip() %}
+          <div class="ms-3 font-monospace">{{ t.strip() }}</div>
+          {% else %}
+          <div class="ms-3 text-muted fst-italic">Belum ada</div>
+          {% endfor %}
+        </div>
+
+        <div class="small">
+          <div class="text-muted fw-semibold"><i class="bi bi-whatsapp me-1" style="color:#25D366"></i>WhatsApp ({{ phones|selectattr('strip')|list|length }}):</div>
+          {% for p in phones if p.strip() %}
+          <div class="ms-3 font-monospace">{{ p.strip() }}</div>
+          {% else %}
+          <div class="ms-3 text-muted fst-italic">Belum ada</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="d-grid gap-2">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="bi bi-check-lg me-1"></i>Simpan Pengaturan
+      </button>
+      <a href="/aset/subscriptions" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>Kembali ke Subscription
+      </a>
+    </div>
+  </div>
+
+</div>
+</form>
+
+<script>
+function showEl(id){ document.getElementById(id).classList.remove('d-none'); }
+
+function showTestTg(){ showEl('testTgGroup'); }
+function showTestWa(){ showEl('testWaGroup'); }
+
+function setResult(id, ok, msg){
+  var el = document.getElementById(id);
+  el.className = 'mt-1 small ' + (ok ? 'text-success' : 'text-danger');
+  el.textContent = (ok ? '✓ ' : '✗ ') + msg;
+}
+
+function doTestEmail(){
+  var addr = document.getElementById('testEmailAddr').value.trim();
+  fetch('/aset/settings/test-email', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'test_email=' + encodeURIComponent(addr)
+  }).then(r => r.json()).then(d => setResult('testEmailResult', d.ok, d.msg));
+}
+
+function doTestTg(){
+  var id = document.getElementById('testTgId').value.trim();
+  fetch('/aset/settings/test-telegram', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'test_chat_id=' + encodeURIComponent(id)
+  }).then(r => r.json()).then(d => setResult('testTgResult', d.ok, d.msg));
+}
+
+function doTestWa(){
+  var phone = document.getElementById('testWaPhone').value.trim();
+  fetch('/aset/settings/test-whatsapp', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'test_wa_phone=' + encodeURIComponent(phone)
+  }).then(r => r.json()).then(d => setResult('testWaResult', d.ok, d.msg));
+}
+
+function testEmail(){
+  showEl('testEmailGroup');
+  document.getElementById('testEmailAddr').focus();
+}
+</script>
+{% endblock %}
