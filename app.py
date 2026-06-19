@@ -722,7 +722,11 @@ DEFAULT_SETTINGS = {
     'notification_telegram_ids': '',
     'openwa_url': '',
     'openwa_api_key': '',
-    'openwa_session_id': 'default',
+    'openwa_session_id': 'default',      # session fallback jika app tidak punya session sendiri
+    'openwa_session_evaluasi': '',        # TalentCore
+    'openwa_session_support': '',         # SupportCore
+    'openwa_session_booking': '',         # BookingCore
+    'openwa_session_aset': '',            # AssetCore
     'openwa_enabled': '0',
     'openwa_extra_phones': '',
     'app_url': '',  # URL publik aplikasi mis. https://evaluasi.perusahaan.com (kosong = auto-detect)
@@ -1049,6 +1053,15 @@ def get_notification_wa_phones(settings, emp_phone=''):
         if p and p not in phones:
             phones.append(p)
     return phones
+
+def get_openwa_session(settings, app_slug=''):
+    """Dapatkan OpenWA session ID untuk app tertentu.
+    Prioritas: per-app session → global openwa_session_id → 'default'."""
+    if app_slug:
+        specific = settings.get(f'openwa_session_{app_slug}', '').strip()
+        if specific:
+            return specific
+    return settings.get('openwa_session_id', 'default').strip() or 'default'
 
 def _parse_list(raw):
     """Parse newline/comma-separated string jadi list string non-kosong."""
@@ -1615,7 +1628,7 @@ def _send_contract_notification(db, emp, days_left, settings, triggered_by='auto
     default_chat = settings.get('telegram_default_chat_id', '').strip()
     wa_url       = settings.get('openwa_url', '').strip()
     wa_key       = settings.get('openwa_api_key', '').strip()
-    wa_session   = settings.get('openwa_session_id', 'default').strip()
+    wa_session   = get_openwa_session(settings, 'evaluasi')
     wa_enabled   = settings.get('openwa_enabled', '0') == '1'
 
     # ── Staff: Email ──
@@ -1785,7 +1798,7 @@ def run_subscription_reminders(triggered_by='auto'):
         bot_token  = settings.get('telegram_bot_token', '').strip()
         wa_url     = settings.get('openwa_url', '').strip()
         wa_key     = settings.get('openwa_api_key', '').strip()
-        wa_session = settings.get('openwa_session_id', 'default').strip()
+        wa_session = get_openwa_session(settings, 'aset')
         wa_enabled = settings.get('openwa_enabled', '0') == '1'
 
         # Gunakan daftar penerima khusus AssetCore
@@ -2259,7 +2272,7 @@ def _send_reset_notifications(user, reset_link, settings, db=None):
     # WhatsApp
     wa_url     = settings.get('openwa_url','').strip()
     wa_key     = settings.get('openwa_api_key','').strip()
-    wa_session = settings.get('openwa_session_id','').strip()  # fix: key benar
+    wa_session = get_openwa_session(settings)  # portal reset password: pakai global session
     if wa_url and contacts.get('phone'):
         wa_msg = (f'🔐 Reset Password\n\nHalo {display_name},\n'
                   f'Link reset password akun *{user["username"]}*:\n\n{reset_link}\n\n'
@@ -2965,6 +2978,7 @@ PORTAL_SYSTEM_KEYS = [
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from', 'smtp_ssl',
     'telegram_bot_token', 'telegram_default_chat_id',
     'openwa_url', 'openwa_api_key', 'openwa_session_id', 'openwa_enabled',
+    'openwa_session_evaluasi', 'openwa_session_support', 'openwa_session_booking', 'openwa_session_aset',
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
     'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
 ]
@@ -3027,12 +3041,15 @@ def portal_test_whatsapp():
     cfg = get_settings(db)
     wa_url     = cfg.get('openwa_url', '').strip()
     wa_key     = cfg.get('openwa_api_key', '').strip()
-    wa_session = cfg.get('openwa_session_id', 'default').strip()
+    test_app   = request.form.get('app_slug', '').strip()
+    wa_session = get_openwa_session(cfg, test_app) if test_app else get_openwa_session(cfg)
     phone      = request.form.get('test_wa_phone', '').strip()
     if not wa_url or not phone:
         return jsonify({'ok': False, 'msg': 'URL OpenWA dan nomor HP harus diisi'})
+    app_label  = {'evaluasi': 'TalentCore', 'support': 'SupportCore',
+                  'booking': 'BookingCore', 'aset': 'AssetCore'}.get(test_app, 'super-us')
     ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone,
-                            '✅ *Test berhasil!*\n\nKonfigurasi OpenWA WhatsApp sudah terhubung dengan super-us.')
+                            f'✅ *Test berhasil!*\n\nSesi: `{wa_session}`\nAplikasi: {app_label}')
     chat_id = normalize_phone_wa(phone)
     return jsonify({'ok': ok, 'chat_id': chat_id,
                     'msg': f'Pesan terkirim ke {chat_id}' if ok else str(err)})
@@ -5022,7 +5039,7 @@ def test_whatsapp():
     cfg = get_settings(db)
     wa_url     = request.form.get('test_wa_url', '').strip() or cfg.get('openwa_url', '').strip()
     wa_key     = cfg.get('openwa_api_key', '').strip()
-    wa_session = cfg.get('openwa_session_id', 'default').strip()
+    wa_session = get_openwa_session(cfg, 'evaluasi')
     phone      = request.form.get('test_wa_phone', '').strip()
     if not wa_url or not phone:
         return jsonify({'ok': False, 'msg': 'URL OpenWA dan nomor HP harus diisi'})
@@ -5329,7 +5346,7 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
     # ── WhatsApp (OpenWA) ──
     wa_url     = settings.get('openwa_url', '').strip()
     wa_key     = settings.get('openwa_api_key', '').strip()
-    wa_session = settings.get('openwa_session_id', 'default').strip()
+    wa_session = get_openwa_session(settings, 'evaluasi')
     wa_enabled = settings.get('openwa_enabled', '0') == '1'
     emp_phone  = emp['phone'] or ''
     if wa_enabled and wa_url and emp_phone:
@@ -6686,7 +6703,7 @@ def ac_subscription_remind_one(sid):
     bot_token  = settings.get('telegram_bot_token', '').strip()
     wa_url     = settings.get('openwa_url', '').strip()
     wa_key     = settings.get('openwa_api_key', '').strip()
-    wa_session = settings.get('openwa_session_id', 'default').strip()
+    wa_session = get_openwa_session(settings, 'aset')
     wa_enabled = settings.get('openwa_enabled', '0') == '1'
     ac_emails  = get_ac_notification_emails(settings)
     ac_tg_ids  = get_ac_notification_telegram_ids(settings)
@@ -6781,7 +6798,7 @@ def ac_settings_test_whatsapp():
     settings = get_settings(db)
     wa_url     = settings.get('openwa_url', '').strip()
     wa_key     = settings.get('openwa_api_key', '').strip()
-    wa_session = settings.get('openwa_session_id', 'default').strip()
+    wa_session = get_openwa_session(settings, 'aset')
     phone      = request.form.get('test_wa_phone', '').strip()
     if not settings.get('openwa_enabled', '0') == '1' or not wa_url:
         return jsonify({'ok': False, 'msg': 'WhatsApp (OpenWA) belum diaktifkan di Pengaturan Sistem Portal'})

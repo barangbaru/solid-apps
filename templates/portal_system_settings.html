@@ -153,13 +153,15 @@
         Konfigurasi WhatsApp via OpenWA
       </div>
       <div class="card-body">
-        <div class="row g-3">
+
+        {# ── Konfigurasi Global ── #}
+        <div class="row g-3 mb-3">
           <div class="col-12">
             <div class="form-check form-switch mb-1">
               <input class="form-check-input" type="checkbox" name="openwa_enabled" id="waEnabled"
                      {{ 'checked' if cfg.openwa_enabled == '1' else '' }}>
               <label class="form-check-label fw-semibold small" for="waEnabled">
-                Aktifkan Notifikasi WhatsApp
+                Aktifkan Notifikasi WhatsApp (semua aplikasi)
               </label>
             </div>
           </div>
@@ -167,12 +169,7 @@
             <label class="form-label fw-semibold small">URL OpenWA REST API</label>
             <input type="text" name="openwa_url" class="form-control form-control-sm"
                    value="{{ cfg.openwa_url }}" placeholder="http://10.x.x.x:3000">
-            <div class="form-text">URL server OpenWA (tanpa trailing slash).</div>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-semibold small">Session ID</label>
-            <input type="text" name="openwa_session_id" class="form-control form-control-sm"
-                   value="{{ cfg.openwa_session_id or 'default' }}" placeholder="default">
+            <div class="form-text">URL server OpenWA (tanpa trailing slash). Shared semua app.</div>
           </div>
           <div class="col-md-3">
             <label class="form-label fw-semibold small">API Key</label>
@@ -184,13 +181,74 @@
               </button>
             </div>
           </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">Session Default
+              <span class="text-muted fw-normal">(fallback)</span>
+            </label>
+            <input type="text" name="openwa_session_id" class="form-control form-control-sm"
+                   value="{{ cfg.openwa_session_id or 'default' }}" placeholder="default">
+            <div class="form-text">Dipakai jika app tidak punya session sendiri.</div>
+          </div>
         </div>
-        <hr class="my-3">
+
+        {# ── Session per Aplikasi ── #}
+        <div class="p-3 rounded mb-3" style="background:#f0fdf4;border:1px solid #bbf7d0">
+          <div class="fw-semibold small mb-2" style="color:#166534">
+            <i class="bi bi-collection me-1"></i>Session ID per Aplikasi
+          </div>
+          <div class="text-muted small mb-3">
+            Setiap aplikasi dapat menggunakan sesi WhatsApp yang berbeda (akun WA berbeda).
+            Kosongkan untuk menggunakan Session Default di atas.
+          </div>
+          <div class="row g-2">
+            {% set app_sessions = [
+              ('openwa_session_evaluasi', 'TalentCore', 'bi-graph-up', '#0d6efd'),
+              ('openwa_session_support',  'SupportCore', 'bi-headset', '#198754'),
+              ('openwa_session_booking',  'BookingCore', 'bi-calendar-check', '#fd7e14'),
+              ('openwa_session_aset',     'AssetCore',  'bi-hdd-stack', '#6f42c1'),
+            ] %}
+            {% for key, label, icon, color in app_sessions %}
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold d-flex align-items-center gap-1">
+                <i class="bi {{ icon }}" style="color:{{ color }}"></i>{{ label }}
+              </label>
+              <div class="input-group input-group-sm">
+                <input type="text" name="{{ key }}" class="form-control form-control-sm font-monospace"
+                       value="{{ cfg.get(key, '') }}"
+                       placeholder="default">
+                <button type="button" class="btn btn-outline-secondary btn-sm px-2"
+                        title="Test kirim WA menggunakan session {{ label }}"
+                        onclick="testWaApp('{{ key.replace('openwa_session_', '') }}', this)">
+                  <i class="bi bi-send"></i>
+                </button>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="mt-2 small text-muted">
+            <i class="bi bi-info-circle me-1"></i>
+            Tiap session = satu nomor WA yang sudah scan QR di OpenWA.
+            Gunakan <code>openwa/sessions</code> endpoint untuk lihat daftar session yang aktif.
+          </div>
+        </div>
+
+        {# ── Test Kirim ── #}
+        <hr class="my-2">
         <div class="row g-2 align-items-end">
-          <div class="col-md-5">
-            <label class="form-label fw-semibold small">Test — Nomor HP tujuan</label>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Nomor HP tujuan test</label>
             <input type="text" id="testWaPhone" class="form-control form-control-sm"
                    placeholder="08xxxxxxxxxx">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">Pilih session</label>
+            <select id="testWaApp" class="form-select form-select-sm">
+              <option value="">Default / Global</option>
+              <option value="evaluasi">TalentCore</option>
+              <option value="support">SupportCore</option>
+              <option value="booking">BookingCore</option>
+              <option value="aset">AssetCore</option>
+            </select>
           </div>
           <div class="col-auto">
             <button type="button" class="btn btn-sm fw-semibold"
@@ -200,11 +258,12 @@
           </div>
           <div class="col-12"><div id="waResult" class="small"></div></div>
         </div>
+
         <div class="alert alert-success py-2 small mt-3 mb-0" style="border-left:4px solid #25D366">
           <strong>Cara setup OpenWA:</strong>
-          Pastikan OpenWA berjalan & QR code di-scan •
+          Pastikan OpenWA berjalan & QR code di-scan untuk setiap sesi •
           Isi URL OpenWA, contoh: <code>http://192.168.1.x:3000</code> •
-          Klik Test WA untuk verifikasi •
+          Buat session baru di OpenWA lalu isi nama session-nya di kolom per-app •
           Di data karyawan pastikan kolom <strong>No. HP/WA</strong> diisi format <code>08xxxxxxxxxx</code>
         </div>
       </div>
@@ -401,16 +460,41 @@ function testTelegram() {
 }
 
 function testWhatsapp() {
-  const phone = document.getElementById('testWaPhone').value.trim();
+  const phone  = document.getElementById('testWaPhone').value.trim();
+  const appSel = document.getElementById('testWaApp');
+  const app    = appSel ? appSel.value : '';
   if (!phone) { alert('Masukkan nomor HP tujuan test'); return; }
   const fd = new FormData(document.getElementById('sysSettingsForm'));
   fetch('/portal/system-settings', {method:'POST', body:fd}).then(() => {
     const fd2 = new FormData();
     fd2.append('test_wa_phone', phone);
+    fd2.append('app_slug', app);
     return fetch('/portal/system-settings/test-whatsapp', {method:'POST', body:fd2});
   }).then(r=>r.json()).then(d=>{
-    showResult('waResult', d.ok, d.ok ? d.msg + (d.chat_id ? ` (${d.chat_id})` : '') : d.msg);
+    const sess = app ? ` [session: ${app}]` : ' [session: default]';
+    showResult('waResult', d.ok, d.ok ? d.msg + (d.chat_id ? ` (${d.chat_id})` : '') + sess : d.msg);
   });
+}
+
+function testWaApp(appSlug, btn) {
+  const phone = document.getElementById('testWaPhone').value.trim()
+              || prompt('Masukkan nomor HP tujuan test (08xxxxxxxxxx):');
+  if (!phone) return;
+  document.getElementById('testWaPhone').value = phone;
+  document.getElementById('testWaApp').value   = appSlug;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+  const fd = new FormData(document.getElementById('sysSettingsForm'));
+  fetch('/portal/system-settings', {method:'POST', body:fd}).then(() => {
+    const fd2 = new FormData();
+    fd2.append('test_wa_phone', phone);
+    fd2.append('app_slug', appSlug);
+    return fetch('/portal/system-settings/test-whatsapp', {method:'POST', body:fd2});
+  }).then(r=>r.json()).then(d=>{
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-send"></i>';
+    showResult('waResult', d.ok, (d.ok ? '✓ ' : '✗ ') + d.msg);
+  }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="bi bi-send"></i>'; });
 }
 </script>
 {% endblock %}
