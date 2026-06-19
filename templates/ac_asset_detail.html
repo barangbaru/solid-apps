@@ -4,18 +4,66 @@
 
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
-  <div class="d-flex align-items-center gap-2">
+  <div class="d-flex align-items-center gap-2 flex-wrap">
     <a href="/aset/assets" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
     <h6 class="fw-bold mb-0">{{ asset.brand }} {{ asset.device_type }}</h6>
+    {# Status badge #}
+    {% if asset.status == 'End' %}
+      <span class="badge bg-dark"><i class="bi bi-x-circle me-1"></i>End</span>
+    {% endif %}
+    {# Condition badge #}
     <span class="badge {{ 'bg-success' if asset.condition=='Baik' else ('bg-warning text-dark' if asset.condition=='Perlu Perhatian' else 'bg-danger') }}">{{ asset.condition }}</span>
+    {% if asset.asset_tag %}
+      <span class="badge bg-secondary">{{ asset.asset_tag }}</span>
+    {% endif %}
   </div>
-  <a href="/aset/assets/{{ asset.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
+  <div class="d-flex gap-2">
+    {% if asset.status != 'End' %}
+    <a href="/aset/assets/{{ asset.id }}/edit" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    <button class="btn btn-sm btn-outline-dark" data-bs-toggle="collapse" data-bs-target="#endPanel">
+      <i class="bi bi-x-circle me-1"></i>Tandai End
+    </button>
+    {% else %}
+    <form method="post" action="/aset/assets/{{ asset.id }}/reactivate">
+      <button class="btn btn-sm btn-outline-success" type="submit">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Aktifkan Kembali
+      </button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
+{# End panel — hanya tampil jika status Aktif #}
+{% if asset.status != 'End' %}
+<div class="collapse mb-3" id="endPanel">
+  <div class="card border-dark border-opacity-25 shadow-sm">
+    <div class="card-body py-2 d-flex align-items-center gap-3 flex-wrap">
+      <i class="bi bi-x-circle text-danger fs-5"></i>
+      <div class="small text-muted">Tandai asset ini sebagai <strong>End</strong> (rusak total / hilang). User terakhir akan disimpan ke riwayat.</div>
+      <form method="post" action="/aset/assets/{{ asset.id }}/end" class="d-flex gap-2 flex-wrap align-items-center ms-auto">
+        <select name="end_reason" class="form-select form-select-sm" style="width:200px">
+          <option>Rusak Total</option>
+          <option>Hilang</option>
+          <option>Dicuri</option>
+          <option>Upgrade / Diganti Baru</option>
+          <option>Dipinjamkan Keluar</option>
+          <option>Lainnya</option>
+        </select>
+        <button type="submit" class="btn btn-sm btn-danger"
+                onclick="return confirm('Tandai asset ini sebagai End?')">Konfirmasi End</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-3">
+
   {# ── Info Asset ── #}
   <div class="col-md-6">
-    <div class="card border-0 shadow-sm h-100">
+    <div class="card border-0 shadow-sm h-100 {{ 'opacity-50' if asset.status == 'End' }}">
       <div class="card-header py-2 fw-bold small"><i class="bi bi-laptop me-1" style="color:#6f42c1"></i>Informasi Asset</div>
       <div class="card-body">
         <table class="table table-sm table-borderless mb-0">
@@ -24,6 +72,15 @@
           <tr><th class="text-muted fw-normal small">Tipe</th><td class="small">{{ asset.device_type }}</td></tr>
           <tr><th class="text-muted fw-normal small">Brand</th><td class="small">{{ asset.brand or '—' }}</td></tr>
           <tr><th class="text-muted fw-normal small">Tgl Pembelian</th><td class="small">{{ asset.purchase_date or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Status</th>
+            <td>
+              {% if asset.status == 'End' %}
+                <span class="badge bg-dark">End</span>
+              {% else %}
+                <span class="badge bg-success">Aktif</span>
+              {% endif %}
+            </td>
+          </tr>
           <tr><th class="text-muted fw-normal small">Catatan</th><td class="small">{{ asset.notes or '—' }}</td></tr>
         </table>
       </div>
@@ -34,7 +91,7 @@
   <div class="col-md-6">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header py-2 fw-bold small d-flex align-items-center justify-content-between">
-        <span><i class="bi bi-person me-1" style="color:#6f42c1"></i>Pengguna</span>
+        <span><i class="bi bi-person me-1" style="color:#6f42c1"></i>Pengguna Saat Ini</span>
         {% if asset.link_status == 'linked' %}
           <span class="badge bg-success"><i class="bi bi-link-45deg me-1"></i>Terhubung</span>
         {% elif asset.link_status == 'unlinked' %}
@@ -44,68 +101,65 @@
         {% endif %}
       </div>
       <div class="card-body">
-        {% if asset.link_status == 'linked' %}
-          <table class="table table-sm table-borderless mb-0">
+        {% if asset.status == 'End' %}
+          <div class="text-muted small fst-italic">Asset sudah End — tidak ada pengguna aktif.</div>
+        {% elif asset.link_status == 'linked' %}
+          <table class="table table-sm table-borderless mb-2">
             <tr><th class="text-muted fw-normal small" style="width:40%">Nama</th><td class="small fw-semibold">{{ asset.emp_name }}</td></tr>
             <tr><th class="text-muted fw-normal small">Divisi</th><td class="small">{{ asset.divisi or '—' }}</td></tr>
             <tr><th class="text-muted fw-normal small">Jabatan</th><td class="small">{{ asset.jabatan or '—' }}</td></tr>
             <tr><th class="text-muted fw-normal small">Telepon</th><td class="small">{{ asset.phone or '—' }}</td></tr>
             <tr><th class="text-muted fw-normal small">Email</th><td class="small">{{ asset.email or '—' }}</td></tr>
+            {% if asset.started_using %}
+            <tr><th class="text-muted fw-normal small">Mulai pakai</th><td class="small">{{ asset.started_using }}</td></tr>
+            {% endif %}
           </table>
-          <div class="mt-2">
-            <button class="btn btn-sm btn-outline-danger" data-bs-toggle="collapse" data-bs-target="#unlinkPanel">
-              <i class="bi bi-unlink me-1"></i>Putuskan Koneksi
-            </button>
-          </div>
-          <div class="collapse mt-2" id="unlinkPanel">
+          <div class="collapse" id="unlinkPanel">
             <form method="post" action="/aset/assets/{{ asset.id }}/link">
               <input type="hidden" name="action" value="unlink">
-              <div class="d-flex align-items-center gap-2">
-                <button class="btn btn-sm btn-danger" type="submit">Konfirmasi putuskan</button>
-                <span class="small text-muted">Pengguna dilepas, nama manual dipertahankan.</span>
+              <div class="d-flex gap-2 flex-wrap align-items-center">
+                <select name="reason" class="form-select form-select-sm" style="width:200px">
+                  <option>Pindah ke Laptop Lain</option>
+                  <option>Resign</option>
+                  <option>Rotasi / Mutasi</option>
+                  <option>Upgrade Laptop</option>
+                  <option>Lainnya</option>
+                </select>
+                <button class="btn btn-sm btn-danger" type="submit">Lepas Koneksi</button>
               </div>
             </form>
           </div>
+          <button class="btn btn-sm btn-outline-danger mt-1" data-bs-toggle="collapse" data-bs-target="#unlinkPanel">
+            <i class="bi bi-unlink me-1"></i>Ganti / Lepas Pengguna
+          </button>
 
         {% elif asset.link_status == 'unlinked' %}
-          {# Nama manual — tawarkan untuk link ke karyawan yang ada di employees table #}
           <div class="mb-2">
             <div class="fw-semibold small">{{ asset.manual_employee_name }}</div>
-            <div class="text-muted" style="font-size:.75rem">
-              <i class="bi bi-info-circle me-1"></i>Nama diisi manual — belum terhubung ke data karyawan TalentCore.
-            </div>
+            <div class="text-muted" style="font-size:.75rem">Nama manual — belum terhubung ke data karyawan TalentCore.</div>
+            {% if asset.started_using %}<div class="text-muted" style="font-size:.75rem">Mulai pakai: {{ asset.started_using }}</div>{% endif %}
           </div>
-          <div class="p-2 rounded border border-warning" style="background:#fffbe6">
-            <div class="small fw-semibold text-warning-emphasis mb-1">
-              <i class="bi bi-search me-1"></i>Hubungkan ke karyawan (jika ada di TalentCore)
-            </div>
-            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center flex-wrap">
+          <div class="p-2 rounded border border-warning mb-2" style="background:#fffbe6">
+            <div class="small fw-semibold text-warning-emphasis mb-1"><i class="bi bi-search me-1"></i>Hubungkan ke karyawan</div>
+            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 flex-wrap align-items-center">
               <input type="hidden" name="action" value="link">
-              <select name="employee_id" class="form-select form-select-sm" style="max-width:280px">
+              <select name="employee_id" class="form-select form-select-sm" style="max-width:240px">
                 <option value="">— Pilih karyawan —</option>
-                {% for e in employees %}
-                <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>
-                {% endfor %}
+                {% for e in employees %}<option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>{% endfor %}
               </select>
               <button class="btn btn-sm btn-warning" type="submit">Hubungkan</button>
             </form>
-            <div class="text-muted mt-1" style="font-size:.72rem">
-              Jika tidak ada di daftar → biarkan manual. Nama tidak akan ditambahkan ke TalentCore.
-            </div>
           </div>
 
         {% else %}
-          {# no_user — stok/spare, bisa assign ke karyawan #}
           <div class="text-muted small mb-2">Tidak ada pengguna (stok / spare)</div>
           <div class="p-2 rounded border" style="background:#f8f9fa">
             <div class="small fw-semibold mb-1"><i class="bi bi-person-plus me-1" style="color:#6f42c1"></i>Assign ke karyawan</div>
-            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center flex-wrap">
+            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 flex-wrap align-items-center">
               <input type="hidden" name="action" value="link">
-              <select name="employee_id" class="form-select form-select-sm" style="max-width:280px">
+              <select name="employee_id" class="form-select form-select-sm" style="max-width:240px">
                 <option value="">— Pilih karyawan —</option>
-                {% for e in employees %}
-                <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>
-                {% endfor %}
+                {% for e in employees %}<option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>{% endfor %}
               </select>
               <button class="btn btn-sm btn-primary" type="submit">Assign</button>
             </form>
@@ -139,9 +193,7 @@
       <div class="card-body">
         {% if softwares %}
         <div class="d-flex flex-wrap gap-1">
-          {% for s in softwares %}
-          <span class="badge bg-light text-dark border">{{ s.software_name }}</span>
-          {% endfor %}
+          {% for s in softwares %}<span class="badge bg-light text-dark border">{{ s.software_name }}</span>{% endfor %}
         </div>
         {% else %}
         <div class="text-muted small">Belum ada data software.</div>
@@ -149,5 +201,72 @@
       </div>
     </div>
   </div>
+
+  {# ── Riwayat Penggunaan ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small d-flex align-items-center gap-2">
+        <i class="bi bi-clock-history" style="color:#6f42c1"></i>
+        Riwayat Penggunaan
+        {% if history %}<span class="badge bg-secondary fw-normal">{{ history|length }} entri</span>{% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if history %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Pengguna</th>
+                <th>Mulai Pakai</th>
+                <th>Berhenti</th>
+                <th>Durasi</th>
+                <th>Alasan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for h in history %}
+              {% set user_name = h.emp_name if h.emp_name else (h.manual_employee_name if h.manual_employee_name else '—') %}
+              <tr>
+                <td class="small">
+                  {% if h.emp_name %}
+                    <i class="bi bi-person-check text-success me-1"></i>{{ h.emp_name }}
+                    {% if h.divisi %}<span class="text-muted">({{ h.divisi }})</span>{% endif %}
+                  {% elif h.manual_employee_name %}
+                    <i class="bi bi-person me-1 text-warning"></i>{{ h.manual_employee_name }}
+                    <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">Manual</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">{{ h.started_at or '—' }}</td>
+                <td class="small text-muted">{{ h.ended_at or '—' }}</td>
+                <td class="small text-muted">
+                  {% if h.started_at and h.ended_at %}
+                    {# Hitung durasi sederhana dari tanggal string #}
+                    {{ h.started_at }} s/d {{ h.ended_at }}
+                  {% else %}—{% endif %}
+                </td>
+                <td class="small">
+                  <span class="badge {{ 'bg-danger' if 'End' in h.reason or 'Rusak' in h.reason or 'Hilang' in h.reason
+                                       else ('bg-info text-dark' if 'Upgrade' in h.reason or 'Ganti' in h.reason
+                                       else 'bg-light text-dark border') }}">
+                    {{ h.reason or '—' }}
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted small p-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Belum ada riwayat penggunaan. Riwayat akan tercatat saat pengguna laptop berubah.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

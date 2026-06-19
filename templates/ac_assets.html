@@ -9,23 +9,47 @@
       <i class="bi bi-laptop text-white"></i>
     </div>
     <h6 class="fw-bold mb-0">Inventaris Laptop / PC</h6>
+    {% if unlinked_count > 0 %}
+    <a href="/aset/assets?status=unlinked" class="badge bg-warning text-dark text-decoration-none">
+      <i class="bi bi-link-45deg me-1"></i>{{ unlinked_count }} belum terhubung
+    </a>
+    {% endif %}
+    {% if end_count > 0 %}
+    <a href="/aset/assets?asset_status=end" class="badge bg-dark text-decoration-none">
+      <i class="bi bi-x-circle me-1"></i>{{ end_count }} End
+    </a>
+    {% endif %}
   </div>
   <a href="/aset/assets/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Tambah Asset</a>
 </div>
 
 <form method="get" class="row g-2 mb-3">
-  <div class="col-sm-5">
+  <div class="col-sm-4">
     <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Cari nama, device, asset tag…">
   </div>
-  <div class="col-sm-3">
+  <div class="col-sm-2">
     <select name="divisi" class="form-select form-select-sm">
       <option value="">Semua Divisi</option>
       {% for d in divisis %}<option value="{{ d }}" {{ 'selected' if d==divisi }}>{{ d }}</option>{% endfor %}
     </select>
   </div>
+  <div class="col-sm-2">
+    <select name="status" class="form-select form-select-sm">
+      <option value="">Semua Link Status</option>
+      <option value="linked" {{ 'selected' if status_filter=='linked' }}>Terhubung</option>
+      <option value="unlinked" {{ 'selected' if status_filter=='unlinked' }}>Belum Terhubung</option>
+    </select>
+  </div>
+  <div class="col-sm-2">
+    <select name="asset_status" class="form-select form-select-sm">
+      <option value="">Aktif & End</option>
+      <option value="aktif" {{ 'selected' if asset_status=='aktif' }}>Aktif saja</option>
+      <option value="end" {{ 'selected' if asset_status=='end' }}>End saja</option>
+    </select>
+  </div>
   <div class="col-auto">
     <button class="btn btn-sm btn-outline-secondary">Filter</button>
-    {% if q or divisi %}<a href="/aset/assets" class="btn btn-sm btn-link">Reset</a>{% endif %}
+    {% if q or divisi or status_filter or asset_status %}<a href="/aset/assets" class="btn btn-sm btn-link">Reset</a>{% endif %}
   </div>
 </form>
 
@@ -34,19 +58,37 @@
     <table class="table table-sm table-hover mb-0 align-middle">
       <thead class="table-light">
         <tr>
-          <th>Asset Tag</th><th>Device</th><th>Karyawan</th><th>Divisi</th>
-          <th>OS</th><th>Spek</th><th>Kondisi</th><th></th>
+          <th>Asset Tag</th><th>Device</th><th>Pengguna</th><th>Mulai Pakai</th>
+          <th>Divisi</th><th>OS</th><th>Spek</th><th>Status</th><th></th>
         </tr>
       </thead>
       <tbody>
         {% for a in assets %}
-        <tr>
-          <td><span class="badge bg-secondary">{{ a.asset_tag or '—' }}</span></td>
+        {% set is_end = a.status == 'End' %}
+        {% set display_name = a.emp_name if a.emp_name else a.manual_employee_name %}
+        <tr class="{{ 'table-secondary text-muted' if is_end }}">
           <td>
-            <div class="fw-semibold small">{{ a.brand }} {{ a.device_type }}</div>
+            <span class="badge {{ 'bg-secondary' if not is_end else 'bg-dark' }}">{{ a.asset_tag or '—' }}</span>
+          </td>
+          <td>
+            <div class="fw-semibold small {{ 'text-decoration-line-through' if is_end }}">{{ a.brand }} {{ a.device_type }}</div>
             {% if a.serial_number %}<div class="text-muted" style="font-size:.73rem">S/N: {{ a.serial_number }}</div>{% endif %}
           </td>
-          <td class="small">{{ a.emp_name or '<em class="text-muted">Tidak ada</em>'|safe }}</td>
+          <td class="small">
+            {% if is_end %}
+              <span class="badge bg-dark">End</span>
+            {% elif a.link_status == 'linked' %}
+              {{ display_name }}
+            {% elif a.link_status == 'unlinked' %}
+              {{ display_name }}
+              <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem" title="Nama manual, belum terhubung ke karyawan">
+                <i class="bi bi-link-45deg"></i> Manual
+              </span>
+            {% else %}
+              <em class="text-muted">Stok</em>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ a.started_using or '—' }}</td>
           <td class="small text-muted">{{ a.divisi or '—' }}</td>
           <td class="small">
             {{ a.os or '—' }}
@@ -57,18 +99,33 @@
             {% if a.ram %}RAM {{ a.ram }}{% endif %}{% if a.disk %} · {{ a.disk }}{% endif %}
           </td>
           <td>
-            <span class="badge {{ 'bg-success' if a.condition=='Baik' else ('bg-warning text-dark' if a.condition=='Perlu Perhatian' else 'bg-danger') }}">{{ a.condition }}</span>
+            {% if is_end %}
+              <span class="badge bg-dark"><i class="bi bi-x-circle me-1"></i>End</span>
+            {% else %}
+              <span class="badge {{ 'bg-success' if a.condition=='Baik' else ('bg-warning text-dark' if a.condition=='Perlu Perhatian' else 'bg-danger') }}">{{ a.condition }}</span>
+            {% endif %}
           </td>
-          <td>
-            <a href="/aset/assets/{{ a.id }}" class="btn btn-sm btn-outline-secondary btn-sm py-0 px-1"><i class="bi bi-eye"></i></a>
+          <td class="text-nowrap">
+            <a href="/aset/assets/{{ a.id }}" class="btn btn-sm btn-outline-secondary py-0 px-1"><i class="bi bi-eye"></i></a>
+            {% if not is_end %}
             <a href="/aset/assets/{{ a.id }}/edit" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
+            {% endif %}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="text-center text-muted py-4">Belum ada data.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">Belum ada data.</td></tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  <div class="card-footer text-muted small py-2 d-flex gap-3 flex-wrap">
+    <span>{{ assets|length }} asset ditemukan</span>
+    {% if unlinked_count > 0 and status_filter != 'unlinked' %}
+    <a href="/aset/assets?status=unlinked" class="text-warning">{{ unlinked_count }} belum terhubung ke karyawan</a>
+    {% endif %}
+    {% if end_count > 0 and asset_status != 'end' %}
+    <a href="/aset/assets?asset_status=end" class="text-secondary">{{ end_count }} asset End</a>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
