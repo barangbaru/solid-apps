@@ -6499,8 +6499,17 @@ def ac_index():
     recent_requests = db.execute(
         "SELECT r.*, e.name as emp_name FROM ac_software_requests r LEFT JOIN employees e ON r.employee_id=e.id ORDER BY r.requested_at DESC LIMIT 5"
     ).fetchall()
+    recent_history = db.execute(
+        """SELECT h.*, e.name as emp_name,
+                  a.brand, a.device_type, a.asset_tag, a.id as asset_id
+           FROM ac_asset_history h
+           LEFT JOIN employees e ON h.employee_id=e.id
+           LEFT JOIN ac_assets a ON h.asset_id=a.id
+           ORDER BY h.id DESC LIMIT 10"""
+    ).fetchall()
     return render_template('ac_index.html', stats=stats, expiring=expiring,
-                           recent_requests=recent_requests, today=today)
+                           recent_requests=recent_requests, recent_history=recent_history,
+                           today=today)
 
 # ── Assets ────────────────────────────────────────────────────────────────────
 @app.route('/aset/assets')

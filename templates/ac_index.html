@@ -91,7 +91,7 @@
   </div>
 </div>
 
-<div class="row g-3">
+<div class="row g-3 mb-3">
   {% if expiring %}
   <div class="col-md-6">
     <div class="card border-0 shadow-sm h-100">
@@ -139,4 +139,80 @@
     </div>
   </div>
 </div>
+
+{% if recent_history %}
+<div class="row g-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold d-flex align-items-center gap-2">
+        <i class="bi bi-clock-history" style="color:#6f42c1"></i>
+        Riwayat Perpindahan Pengguna Asset Terbaru
+        <a href="/aset/assets?sort=updated" class="btn btn-sm btn-outline-secondary py-0 ms-auto" style="font-size:.75rem">
+          Lihat Semua Asset
+        </a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:36px"></th>
+              <th>Asset</th>
+              <th>Pengguna</th>
+              <th>Mulai</th>
+              <th>Berhenti</th>
+              <th>Alasan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for h in recent_history %}
+            {% set user_name = h.emp_name if h.emp_name else (h.manual_employee_name if h.manual_employee_name else '—') %}
+            {% set is_end    = 'End' in (h.reason or '') or 'Rusak' in (h.reason or '') or 'Hilang' in (h.reason or '') %}
+            {% set is_resign = 'Resign' in (h.reason or '') %}
+            {% set is_move   = 'Pindah' in (h.reason or '') or 'Upgrade' in (h.reason or '') or 'Rotasi' in (h.reason or '') %}
+            <tr>
+              <td class="text-center">
+                {% if is_end %}
+                  <i class="bi bi-x-circle text-danger" title="Asset End"></i>
+                {% elif is_resign %}
+                  <i class="bi bi-person-dash text-warning" title="Resign"></i>
+                {% elif is_move %}
+                  <i class="bi bi-arrow-left-right text-info" title="Pindah/Upgrade"></i>
+                {% else %}
+                  <i class="bi bi-person-gear text-secondary" title="Perubahan"></i>
+                {% endif %}
+              </td>
+              <td>
+                <a href="/aset/assets/{{ h.asset_id }}" class="text-decoration-none fw-semibold small">
+                  {{ h.brand or '' }} {{ h.device_type or '' }}
+                </a>
+                {% if h.asset_tag %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ h.asset_tag }}</span>{% endif %}
+              </td>
+              <td class="small">
+                {% if h.emp_name %}
+                  <i class="bi bi-person-check text-success me-1"></i>{{ h.emp_name }}
+                {% elif h.manual_employee_name %}
+                  <i class="bi bi-person text-warning me-1"></i>{{ h.manual_employee_name }}
+                  <span class="badge bg-warning text-dark" style="font-size:.6rem">Manual</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ h.started_at or '—' }}</td>
+              <td class="small text-muted">{{ h.ended_at or '—' }}</td>
+              <td>
+                <span class="badge
+                  {{ 'bg-danger' if is_end else ('bg-warning text-dark' if is_resign else ('bg-info text-dark' if is_move else 'bg-light text-dark border')) }}"
+                  style="font-size:.7rem">
+                  {{ h.reason or '—' }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
