@@ -493,6 +493,54 @@
     </li>
   </ul>
 
+  {% elif current_app_slug == 'aset' %}
+  {# ── App sidebar: AssetCore ── #}
+  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
+    <div style="width:6px;height:6px;border-radius:50%;background:#6f42c1;flex-shrink:0"></div>
+    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
+      AssetCore
+    </span>
+  </div>
+  <div class="sidebar-section">Menu Utama</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/aset/" class="{{ 'active' if request.path == '/aset/' }}">
+        <i class="bi bi-grid-1x2 nav-icon"></i> Dashboard
+      </a>
+    </li>
+  </ul>
+  <div class="sidebar-section">Inventaris</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/aset/assets" class="{{ 'active' if '/aset/assets' in request.path }}">
+        <i class="bi bi-laptop nav-icon"></i> Laptop / PC
+      </a>
+    </li>
+    <li>
+      <a href="/aset/infra" class="{{ 'active' if '/aset/infra' in request.path }}">
+        <i class="bi bi-hdd-network nav-icon"></i> Infrastruktur
+      </a>
+    </li>
+  </ul>
+  <div class="sidebar-section">Software</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/aset/licenses" class="{{ 'active' if '/aset/licenses' in request.path }}">
+        <i class="bi bi-key nav-icon"></i> Lisensi
+      </a>
+    </li>
+    <li>
+      <a href="/aset/subscriptions" class="{{ 'active' if '/aset/subscriptions' in request.path }}">
+        <i class="bi bi-cloud-check nav-icon"></i> Subscription
+      </a>
+    </li>
+    <li>
+      <a href="/aset/requests" class="{{ 'active' if '/aset/requests' in request.path }}">
+        <i class="bi bi-inbox nav-icon"></i> Request Software
+      </a>
+    </li>
+  </ul>
+
   {% else %}
   {# ── App sidebar: TalentCore ── #}
   <!-- Current app indicator -->

@@ -1321,6 +1321,8 @@ def auto_set_active_app():
         session['active_app'] = 'portal'
     elif path.startswith('/booking'):
         session['active_app'] = 'booking'
+    elif path.startswith('/aset'):
+        session['active_app'] = 'aset'
     else:
         session['active_app'] = 'evaluasi'
 
