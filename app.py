@@ -6544,16 +6544,29 @@ def ac_asset_edit(aid):
         new_status  = request.form.get('status', 'Aktif')
         today = date.today().isoformat()
 
-        # Deteksi perubahan user → simpan history jika berbeda
-        emp_changed = (str(emp_id or '') != str(asset['employee_id'] or '') or
-                       manual_name != (asset['manual_employee_name'] or ''))
-        if emp_changed:
-            reason = request.form.get('change_reason', '').strip() or 'Edit asset'
+        # Alasan yang membuat asset kembali available (stok)
+        FREEING_REASONS = {'Resign', 'Pindah ke Laptop Lain', 'Upgrade Laptop'}
+        change_reason = request.form.get('change_reason', '').strip()
+        has_current_user = bool(asset['employee_id'] or (asset['manual_employee_name'] or '').strip())
+
+        if change_reason in FREEING_REASONS and has_current_user:
+            # Paksa asset jadi available — simpan history lalu hapus user
             _record_asset_history(db, aid, asset['employee_id'], asset['manual_employee_name'],
-                                  asset['started_using'], reason)
-            new_started = today if (emp_id or manual_name) else ''
+                                  asset['started_using'], change_reason)
+            emp_id      = None
+            manual_name = ''
+            new_started = ''
         else:
-            new_started = asset['started_using'] or ''
+            # Deteksi perubahan user biasa → simpan history jika berbeda
+            emp_changed = (str(emp_id or '') != str(asset['employee_id'] or '') or
+                           manual_name != (asset['manual_employee_name'] or ''))
+            if emp_changed:
+                reason = change_reason or 'Edit asset'
+                _record_asset_history(db, aid, asset['employee_id'], asset['manual_employee_name'],
+                                      asset['started_using'], reason)
+                new_started = today if (emp_id or manual_name) else ''
+            else:
+                new_started = asset['started_using'] or ''
 
         db.execute(
             'UPDATE ac_assets SET employee_id=?,manual_employee_name=?,started_using=?,status=?,'

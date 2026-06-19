@@ -137,8 +137,8 @@
       {% if asset %}
       <div class="mt-3 p-3 rounded" style="background:#fff8e1;border:1px solid #ffe082" id="changeReasonBox">
         <div class="fw-semibold small mb-1"><i class="bi bi-clock-history me-1 text-warning"></i>Alasan Perubahan Pengguna</div>
-        <div class="d-flex gap-2 align-items-center">
-          <select name="change_reason" class="form-select form-select-sm" style="max-width:280px">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <select name="change_reason" id="changeReasonSelect" class="form-select form-select-sm" style="max-width:280px" onchange="onReasonChange(this)">
             <option value="">— Pilih alasan (opsional) —</option>
             <option>Pindah ke Laptop Lain</option>
             <option>Upgrade Laptop</option>
@@ -148,6 +148,11 @@
             <option>Lainnya</option>
           </select>
           <span class="text-muted small">Direkam ke riwayat jika pengguna berubah.</span>
+        </div>
+        <div id="freeingWarning" class="mt-2 alert alert-warning py-1 px-2 small mb-0 d-none">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <strong>Perhatian:</strong> Alasan ini akan <strong>melepas pengguna</strong> dari asset —
+          asset akan menjadi <em>stok/available</em> dan history tercatat otomatis.
         </div>
       </div>
       {% endif %}
@@ -179,5 +184,12 @@ document.querySelectorAll('input[name="emp_mode"]').forEach(function(radio) {
     }
   });
 });
+
+var FREEING_REASONS = ['Resign', 'Pindah ke Laptop Lain', 'Upgrade Laptop'];
+function onReasonChange(sel) {
+  var warn = document.getElementById('freeingWarning');
+  if (!warn) return;
+  warn.classList.toggle('d-none', FREEING_REASONS.indexOf(sel.value) === -1);
+}
 </script>
 {% endblock %}
