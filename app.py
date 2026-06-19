@@ -1795,6 +1795,100 @@ def compose_sub_wa(sub, days_left):
             f"⏳ {status}\n\n"
             f"_Segera lakukan perpanjangan atau evaluasi layanan ini._")
 
+# ─── AssetCore: Asset User Change Notifications ───────────────────────────────
+
+def _asset_user_display(db, asset):
+    """Ambil nama pengguna saat ini dari asset (linked / manual / kosong)."""
+    if asset['employee_id']:
+        row = db.execute('SELECT name FROM employees WHERE id=?', (asset['employee_id'],)).fetchone()
+        return row['name'] if row else f'ID#{asset["employee_id"]}'
+    return (asset['manual_employee_name'] or '').strip()
+
+def _compose_asset_notif(asset, event, old_user, new_user, reason, fmt='email'):
+    """
+    event: 'assigned' | 'released' | 'end'
+    fmt:   'email' | 'telegram' | 'wa'
+    """
+    name  = f"{asset['brand'] or ''} {asset['device_type'] or ''}".strip()
+    tag   = asset['asset_tag'] or '—'
+    today = date.today().isoformat()
+
+    if event == 'assigned':
+        icon, title = '🔄', 'Perubahan Pengguna Asset'
+        line = f'Dari: {old_user or "—"}  →  Ke: {new_user or "—"}'
+    elif event == 'released':
+        icon, title = '📦', 'Asset Menjadi Available (Stok)'
+        line = f'Pengguna sebelumnya: {old_user or "—"}'
+    else:
+        icon, title = '❌', 'Asset Ditandai End'
+        line = f'Pengguna terakhir: {old_user or "—"}'
+
+    if fmt == 'email':
+        return (f"<h3>{icon} {title}</h3>"
+                f"<table>"
+                f"<tr><td><b>Asset</b></td><td>: {name}</td></tr>"
+                f"<tr><td><b>Asset Tag</b></td><td>: {tag}</td></tr>"
+                f"<tr><td><b>S/N</b></td><td>: {asset['serial_number'] or '—'}</td></tr>"
+                f"<tr><td><b>Info</b></td><td>: {line}</td></tr>"
+                f"<tr><td><b>Alasan</b></td><td>: {reason or '—'}</td></tr>"
+                f"<tr><td><b>Tanggal</b></td><td>: {today}</td></tr>"
+                f"</table>")
+    elif fmt == 'telegram':
+        return (f"{icon} <b>{title}</b>\n\n"
+                f"💻 <b>{name}</b>  |  Tag: <code>{tag}</code>\n"
+                f"👤 {line}\n"
+                f"📋 Alasan: {reason or '—'}\n"
+                f"📅 {today}")
+    else:
+        return (f"{icon} *{title}*\n\n"
+                f"💻 *{name}*  |  Tag: {tag}\n"
+                f"👤 {line}\n"
+                f"📋 Alasan: {reason or '—'}\n"
+                f"📅 {today}")
+
+def _notify_asset_change(db, asset, event, old_user, new_user, reason):
+    """Kirim notifikasi perubahan pengguna/status asset ke semua channel AC."""
+    try:
+        settings   = get_settings(db)
+        ac_emails  = get_ac_notification_emails(settings)
+        ac_tg_ids  = get_ac_notification_telegram_ids(settings)
+        ac_phones  = get_ac_notification_wa_phones(settings)
+        if not (ac_emails or ac_tg_ids or ac_phones):
+            return
+
+        name = f"{asset['brand'] or ''} {asset['device_type'] or ''}".strip()
+        tag  = asset['asset_tag'] or ''
+        ev_label = ('Perubahan Pengguna' if event == 'assigned'
+                    else ('Asset Available' if event == 'released' else 'Asset End'))
+        subj = f"[AssetCore] {ev_label}: {name} {tag}".strip()
+
+        email_body = _compose_asset_notif(asset, event, old_user, new_user, reason, 'email')
+        tg_msg     = _compose_asset_notif(asset, event, old_user, new_user, reason, 'telegram')
+        wa_msg     = _compose_asset_notif(asset, event, old_user, new_user, reason, 'wa')
+
+        bot_token  = settings.get('telegram_bot_token', '').strip()
+        wa_url     = settings.get('openwa_url', '').strip()
+        wa_key     = settings.get('openwa_api_key', '').strip()
+        wa_session = get_openwa_session(settings, 'aset')
+        wa_enabled = settings.get('openwa_enabled', '0') == '1'
+
+        if settings.get('smtp_host', '').strip() and ac_emails:
+            for to_email in ac_emails:
+                ok, err = send_email(settings, to_email, subj, email_body)
+                audit_notif('email', to_email, subj, email_body, ok, err, 'manual', app_slug='aset')
+
+        if bot_token and ac_tg_ids:
+            for chat_id in ac_tg_ids:
+                send_telegram(bot_token, chat_id, tg_msg, _log_subject=subj, _app_slug='aset')
+
+        if wa_enabled and wa_url and ac_phones:
+            for phone in ac_phones:
+                ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone, wa_msg)
+                audit_notif('whatsapp', phone, subj, wa_msg, ok, err, 'manual', app_slug='aset')
+    except Exception:
+        pass  # Jangan ganggu flow utama jika notifikasi gagal
+
+
 def run_subscription_reminders(triggered_by='auto'):
     """Cek ac_subscriptions yang mendekati expired dan kirim notifikasi.
     Dipanggil dari scheduler (auto) atau route manual (manual)."""
@@ -6509,24 +6603,29 @@ def ac_asset_link(aid):
     today  = date.today().isoformat()
 
     if action == 'unlink':
+        old_user = _asset_user_display(db, cur_asset)
         _record_asset_history(db, aid, cur_asset['employee_id'], cur_asset['manual_employee_name'],
                               cur_asset['started_using'], reason)
         db.execute('UPDATE ac_assets SET employee_id=NULL, started_using=?, updated_at=datetime("now","localtime") WHERE id=?',
                    ('', aid))
         db.commit()
+        _notify_asset_change(db, cur_asset, 'released', old_user, '', reason)
         flash('Link karyawan dilepas. Riwayat penggunaan tersimpan.', 'success')
     else:
         emp_id = request.form.get('employee_id') or None
         if not emp_id:
             flash('Pilih karyawan terlebih dahulu.', 'warning')
             return redirect(url_for('ac_asset_detail', aid=aid))
+        old_user = _asset_user_display(db, cur_asset)
         _record_asset_history(db, aid, cur_asset['employee_id'], cur_asset['manual_employee_name'],
                               cur_asset['started_using'], reason)
         db.execute('UPDATE ac_assets SET employee_id=?, manual_employee_name=?, started_using=?, updated_at=datetime("now","localtime") WHERE id=?',
                    (emp_id, '', today, aid))
         db.commit()
         emp = db.execute('SELECT name FROM employees WHERE id=?', (emp_id,)).fetchone()
-        flash(f'Asset dihubungkan ke {emp["name"] if emp else "karyawan"}. Riwayat tersimpan.', 'success')
+        new_user = emp['name'] if emp else ''
+        _notify_asset_change(db, cur_asset, 'assigned', old_user, new_user, reason)
+        flash(f'Asset dihubungkan ke {new_user or "karyawan"}. Riwayat tersimpan.', 'success')
     return redirect(url_for('ac_asset_detail', aid=aid))
 
 @app.route('/aset/assets/<int:aid>/edit', methods=['GET','POST'])
@@ -6549,22 +6648,29 @@ def ac_asset_edit(aid):
         change_reason = request.form.get('change_reason', '').strip()
         has_current_user = bool(asset['employee_id'] or (asset['manual_employee_name'] or '').strip())
 
+        notif_event = notif_old = notif_new = notif_reason = None
+
         if change_reason in FREEING_REASONS and has_current_user:
             # Paksa asset jadi available — simpan history lalu hapus user
+            notif_old = _asset_user_display(db, asset)
             _record_asset_history(db, aid, asset['employee_id'], asset['manual_employee_name'],
                                   asset['started_using'], change_reason)
             emp_id      = None
             manual_name = ''
             new_started = ''
+            notif_event = 'released'; notif_reason = change_reason
         else:
             # Deteksi perubahan user biasa → simpan history jika berbeda
             emp_changed = (str(emp_id or '') != str(asset['employee_id'] or '') or
                            manual_name != (asset['manual_employee_name'] or ''))
             if emp_changed:
                 reason = change_reason or 'Edit asset'
+                notif_old = _asset_user_display(db, asset)
                 _record_asset_history(db, aid, asset['employee_id'], asset['manual_employee_name'],
                                       asset['started_using'], reason)
                 new_started = today if (emp_id or manual_name) else ''
+                notif_event  = 'assigned' if (emp_id or manual_name) else 'released'
+                notif_reason = reason
             else:
                 new_started = asset['started_using'] or ''
 
@@ -6584,6 +6690,16 @@ def ac_asset_edit(aid):
         for s in [x.strip() for x in request.form.get('softwares','').split('\n') if x.strip()]:
             db.execute('INSERT INTO ac_asset_software(asset_id,software_name) VALUES(?,?)', (aid, s))
         db.commit()
+
+        if notif_event:
+            if notif_event == 'assigned':
+                if emp_id:
+                    emp_row = db.execute('SELECT name FROM employees WHERE id=?', (emp_id,)).fetchone()
+                    notif_new = emp_row['name'] if emp_row else manual_name
+                else:
+                    notif_new = manual_name or ''
+            _notify_asset_change(db, asset, notif_event, notif_old or '', notif_new or '', notif_reason or '')
+
         flash('Asset diperbarui.', 'success')
         return redirect(url_for('ac_asset_detail', aid=aid))
     sw_text = '\n'.join(r['software_name'] for r in db.execute('SELECT software_name FROM ac_asset_software WHERE asset_id=? ORDER BY software_name', (aid,)).fetchall())
@@ -6598,6 +6714,7 @@ def ac_asset_end(aid):
     asset = db.execute('SELECT * FROM ac_assets WHERE id=?', (aid,)).fetchone()
     if not asset: return redirect(url_for('ac_assets'))
     reason = request.form.get('end_reason', 'End').strip() or 'End'
+    old_user = _asset_user_display(db, asset)
     _record_asset_history(db, aid, asset['employee_id'], asset['manual_employee_name'],
                           asset['started_using'], reason)
     db.execute(
@@ -6605,6 +6722,7 @@ def ac_asset_end(aid):
         'updated_at=datetime("now","localtime") WHERE id=?',
         ('End', asset['manual_employee_name'] or '', '', aid))
     db.commit()
+    _notify_asset_change(db, asset, 'end', old_user, '', reason)
     audit_log('end', 'ac_assets', aid, f'Asset ditandai End: {reason}', 'aset')
     flash(f'Asset ditandai sebagai End ({reason}). Riwayat pengguna terakhir tersimpan.', 'warning')
     return redirect(url_for('ac_asset_detail', aid=aid))
