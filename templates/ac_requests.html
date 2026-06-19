@@ -13,22 +13,26 @@
   <a href="/aset/requests/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Tambah Request</a>
 </div>
 
-<form method="get" class="d-flex gap-2 mb-3">
+<form method="get" class="d-flex gap-2 mb-3 flex-wrap">
   <select name="status" class="form-select form-select-sm" style="max-width:180px">
     <option value="">Semua Status</option>
     {% for s in ['Pending','Approved','Rejected','Installed'] %}
     <option {{ 'selected' if s==status_filter }}>{{ s }}</option>
     {% endfor %}
   </select>
+  <select name="sort" class="form-select form-select-sm" style="max-width:200px">
+    <option value="updated"   {{ 'selected' if sort=='updated' }}>Terbaru diperbarui</option>
+    <option value="requested" {{ 'selected' if sort=='requested' }}>Tgl request</option>
+  </select>
   <button class="btn btn-sm btn-outline-secondary">Filter</button>
-  {% if status_filter %}<a href="/aset/requests" class="btn btn-sm btn-link">Reset</a>{% endif %}
+  {% if status_filter or sort != 'updated' %}<a href="/aset/requests" class="btn btn-sm btn-link">Reset</a>{% endif %}
 </form>
 
 <div class="card border-0 shadow-sm">
   <div class="table-responsive">
     <table class="table table-sm table-hover mb-0 align-middle">
       <thead class="table-light">
-        <tr><th>Software</th><th>Versi</th><th>Pemohon</th><th>Divisi</th><th>Alasan</th><th>Tanggal</th><th>Status</th><th></th></tr>
+        <tr><th>Software</th><th>Versi</th><th>Pemohon</th><th>Divisi</th><th>Alasan</th><th>Tanggal</th><th>Status</th><th>Diperbarui</th><th></th></tr>
       </thead>
       <tbody>
         {% for r in requests %}
@@ -43,6 +47,9 @@
             <span class="badge {{ 'bg-warning text-dark' if r.status=='Pending' else ('bg-success' if r.status=='Approved' else ('bg-info' if r.status=='Installed' else 'bg-danger')) }}">
               {{ r.status }}
             </span>
+          </td>
+          <td class="small text-muted text-nowrap">
+            {% if r.updated_at %}<span title="{{ r.updated_at }}">{{ r.updated_at[:10] }}</span>{% else %}—{% endif %}
           </td>
           <td>
             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"

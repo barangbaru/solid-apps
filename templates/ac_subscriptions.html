@@ -28,6 +28,14 @@
   Notifikasi melalui Email, Telegram, dan WhatsApp sesuai konfigurasi di Pengaturan Sistem.
 </div>
 
+<form method="get" class="d-flex gap-2 mb-3 align-items-center">
+  <span class="text-muted small">Urutan:</span>
+  <select name="sort" class="form-select form-select-sm" style="max-width:200px" onchange="this.form.submit()">
+    <option value="updated"  {{ 'selected' if sort=='updated' }}>Terbaru diperbarui</option>
+    <option value="end_date" {{ 'selected' if sort=='end_date' }}>Tgl berakhir</option>
+  </select>
+</form>
+
 <div class="row g-3">
   {% for s in subscriptions %}
   {% set days_left = (s.end_date | string | length > 5 and (s.end_date > today)) %}

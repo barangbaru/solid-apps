@@ -26,9 +26,15 @@
       {% for c in categories %}<option value="{{ c }}" {{ 'selected' if c==cat }}>{{ c }}</option>{% endfor %}
     </select>
   </div>
+  <div class="col-sm-2">
+    <select name="sort" class="form-select form-select-sm">
+      <option value="schedule" {{ 'selected' if sort=='schedule' }}>Jadwal terdekat</option>
+      <option value="updated"  {{ 'selected' if sort=='updated' }}>Terbaru diperbarui</option>
+    </select>
+  </div>
   <div class="col-auto">
     <button class="btn btn-sm btn-outline-secondary">Filter</button>
-    {% if q or cat %}<a href="/aset/maintenance" class="btn btn-sm btn-link">Reset</a>{% endif %}
+    {% if q or cat or sort != 'schedule' %}<a href="/aset/maintenance" class="btn btn-sm btn-link">Reset</a>{% endif %}
   </div>
 </form>
 
@@ -44,6 +50,7 @@
           <th>Terakhir</th>
           <th>Jadwal Berikutnya</th>
           <th>Vendor / PIC</th>
+          <th>Diperbarui</th>
           <th></th>
         </tr>
       </thead>
@@ -84,6 +91,9 @@
             {% if item.vendor and item.pic %} / {% endif %}
             {% if item.pic %}{{ item.pic }}{% endif %}
             {% if not item.vendor and not item.pic %}—{% endif %}
+          </td>
+          <td class="small text-muted text-nowrap">
+            {% if item.updated_at %}<span title="{{ item.updated_at }}">{{ item.updated_at[:10] }}</span>{% else %}—{% endif %}
           </td>
           <td class="text-nowrap">
             <a href="/aset/maintenance/{{ item.id }}" class="btn btn-sm btn-outline-secondary py-0 px-1"><i class="bi bi-eye"></i></a>

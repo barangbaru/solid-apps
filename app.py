@@ -713,10 +713,14 @@ MIGRATIONS = [
     ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
     ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
     ('sc_sla_categories',  'maintenance_type',        "TEXT DEFAULT 'corrective'"),
-    ('ac_assets',          'manual_employee_name',    "TEXT DEFAULT ''"),
-    ('ac_assets',          'status',                  "TEXT DEFAULT 'Aktif'"),
-    ('ac_assets',          'started_using',           "TEXT DEFAULT ''"),
-    ('ac_subscriptions',   'last_reminder_sent',      "TEXT DEFAULT ''"),
+    ('ac_assets',            'manual_employee_name',    "TEXT DEFAULT ''"),
+    ('ac_assets',            'status',                  "TEXT DEFAULT 'Aktif'"),
+    ('ac_assets',            'started_using',           "TEXT DEFAULT ''"),
+    ('ac_subscriptions',     'last_reminder_sent',      "TEXT DEFAULT ''"),
+    ('ac_infrastructure',    'updated_at',              "TEXT DEFAULT ''"),
+    ('ac_licenses',          'updated_at',              "TEXT DEFAULT ''"),
+    ('ac_subscriptions',     'updated_at',              "TEXT DEFAULT ''"),
+    ('ac_software_requests', 'updated_at',              "TEXT DEFAULT ''"),
 ]
 
 SC_TICKET_STATUSES = [
@@ -6830,6 +6834,7 @@ def ac_maintenance():
     today = _d.today().isoformat()
     q = request.args.get('q', '')
     cat = request.args.get('cat', '')
+    sort = request.args.get('sort', 'schedule')
     sql = "SELECT * FROM ac_maintenance WHERE is_active=1"
     params = []
     if q:
@@ -6838,12 +6843,15 @@ def ac_maintenance():
     if cat:
         sql += " AND category=?"
         params.append(cat)
-    sql += " ORDER BY CASE WHEN next_maintenance='' THEN '9999' ELSE next_maintenance END ASC"
+    if sort == 'updated':
+        sql += " ORDER BY COALESCE(NULLIF(updated_at,''),'1970') DESC, id DESC"
+    else:
+        sql += " ORDER BY CASE WHEN next_maintenance='' THEN '9999' ELSE next_maintenance END ASC"
     items = db.execute(sql, params).fetchall()
     items_with_status = [(r, _maintenance_status(r, today)) for r in items]
     categories = [r[0] for r in db.execute("SELECT DISTINCT category FROM ac_maintenance WHERE category!='' ORDER BY category").fetchall()]
     overdue_count = sum(1 for _, s in items_with_status if s == 'overdue')
-    return render_template('ac_maintenance.html', items=items_with_status, q=q, cat=cat,
+    return render_template('ac_maintenance.html', items=items_with_status, q=q, cat=cat, sort=sort,
                            categories=categories, today=today, overdue_count=overdue_count)
 
 @app.route('/aset/maintenance/new', methods=['GET', 'POST'])
@@ -6945,14 +6953,17 @@ def ac_infra():
     if not ac_require('ac_view'): return redirect(url_for('ac_index'))
     db = get_db()
     q = request.args.get('q',''); dtype = request.args.get('dtype','')
+    sort = request.args.get('sort', 'updated')
     sql = 'SELECT * FROM ac_infrastructure WHERE 1=1'; params = []
     if q:
         sql += ' AND (device_type LIKE ? OR model LIKE ? OR nickname LIKE ? OR serial_number LIKE ?)'; params += [f'%{q}%']*4
     if dtype:
         sql += ' AND device_type=?'; params.append(dtype)
-    items = db.execute(sql+' ORDER BY device_type, nickname', params).fetchall()
+    order = ('COALESCE(NULLIF(updated_at,""),"1970") DESC, id DESC' if sort == 'updated'
+             else 'device_type ASC, nickname ASC')
+    items = db.execute(sql + ' ORDER BY ' + order, params).fetchall()
     dtypes = [r[0] for r in db.execute("SELECT DISTINCT device_type FROM ac_infrastructure ORDER BY device_type").fetchall()]
-    return render_template('ac_infra.html', items=items, q=q, dtype=dtype, dtypes=dtypes)
+    return render_template('ac_infra.html', items=items, q=q, dtype=dtype, dtypes=dtypes, sort=sort)
 
 @app.route('/aset/infra/new', methods=['GET','POST'])
 @login_required
@@ -6977,7 +6988,7 @@ def ac_infra_edit(iid):
     item = db.execute('SELECT * FROM ac_infrastructure WHERE id=?', (iid,)).fetchone()
     if not item: flash('Tidak ditemukan.', 'danger'); return redirect(url_for('ac_infra'))
     if request.method == 'POST':
-        db.execute('UPDATE ac_infrastructure SET device_type=?,brand=?,model=?,description=?,serial_number=?,nickname=?,ups_group=?,location=?,status=?,condition_notes=? WHERE id=?',
+        db.execute('UPDATE ac_infrastructure SET device_type=?,brand=?,model=?,description=?,serial_number=?,nickname=?,ups_group=?,location=?,status=?,condition_notes=?,updated_at=datetime("now","localtime") WHERE id=?',
                    (request.form.get('device_type',''), request.form.get('brand',''), request.form.get('model',''),
                     request.form.get('description',''), request.form.get('serial_number',''), request.form.get('nickname',''),
                     request.form.get('ups_group',''), request.form.get('location',''),
@@ -7000,12 +7011,15 @@ def ac_licenses():
     if not ac_require('ac_view'): return redirect(url_for('ac_index'))
     db = get_db()
     q = request.args.get('q','')
+    sort = request.args.get('sort', 'updated')
     sql = "SELECT l.*, COUNT(la.id) as assigned FROM ac_licenses l LEFT JOIN ac_license_assignments la ON la.license_id=l.id"
     params = []
     if q:
         sql += ' WHERE l.software_name LIKE ?'; params.append(f'%{q}%')
-    lics = db.execute(sql+' GROUP BY l.id ORDER BY l.software_name', params).fetchall()
-    return render_template('ac_licenses.html', licenses=lics, q=q)
+    order = ('COALESCE(NULLIF(l.updated_at,""),"1970") DESC, l.id DESC' if sort == 'updated'
+             else 'l.software_name ASC')
+    lics = db.execute(sql + ' GROUP BY l.id ORDER BY ' + order, params).fetchall()
+    return render_template('ac_licenses.html', licenses=lics, q=q, sort=sort)
 
 @app.route('/aset/licenses/new', methods=['GET','POST'])
 @app.route('/aset/licenses/<int:lid>/edit', methods=['GET','POST'])
@@ -7018,7 +7032,7 @@ def ac_license_form(lid=None):
     assignments = [r['employee_id'] for r in db.execute('SELECT employee_id FROM ac_license_assignments WHERE license_id=?', (lid,)).fetchall()] if lid else []
     if request.method == 'POST':
         if lid:
-            db.execute('UPDATE ac_licenses SET software_name=?,license_key=?,license_type=?,version=?,year=?,max_seats=?,notes=?,is_active=? WHERE id=?',
+            db.execute('UPDATE ac_licenses SET software_name=?,license_key=?,license_type=?,version=?,year=?,max_seats=?,notes=?,is_active=?,updated_at=datetime("now","localtime") WHERE id=?',
                        (request.form['software_name'].strip(), request.form.get('license_key','').strip(),
                         request.form.get('license_type','Perpetual'), request.form.get('version','').strip(),
                         request.form.get('year') or None, request.form.get('max_seats',1),
@@ -7053,9 +7067,13 @@ def ac_subscriptions():
     settings = get_settings(get_db())
     reminder_days_raw = settings.get('ac_sub_reminder_days', '30,14,7,1')
     reminder_days = [int(d.strip()) for d in reminder_days_raw.split(',') if d.strip().isdigit()]
-    subs = get_db().execute('SELECT * FROM ac_subscriptions ORDER BY is_active DESC, end_date').fetchall()
+    sort = request.args.get('sort', 'updated')
+    db = get_db()
+    order = ("COALESCE(NULLIF(updated_at,''),'1970') DESC, id DESC" if sort == 'updated'
+             else 'is_active DESC, end_date ASC')
+    subs = db.execute(f'SELECT * FROM ac_subscriptions ORDER BY {order}').fetchall()
     return render_template('ac_subscriptions.html',
-                           subscriptions=subs,
+                           subscriptions=subs, sort=sort,
                            today=today.isoformat(),
                            today_plus_7=(today + timedelta(days=7)).isoformat(),
                            today_plus_30=(today + timedelta(days=30)).isoformat(),
@@ -7075,7 +7093,7 @@ def ac_subscription_form(sid=None):
                 request.form.get('password','').strip(), request.form.get('access_url','').strip(),
                 request.form.get('notes','').strip())
         if sid:
-            db.execute('UPDATE ac_subscriptions SET provider=?,category=?,billing_cycle=?,start_date=?,end_date=?,username=?,password=?,access_url=?,notes=?,is_active=? WHERE id=?',
+            db.execute('UPDATE ac_subscriptions SET provider=?,category=?,billing_cycle=?,start_date=?,end_date=?,username=?,password=?,access_url=?,notes=?,is_active=?,updated_at=datetime("now","localtime") WHERE id=?',
                        vals + (1 if request.form.get('is_active') else 0, sid))
         else:
             db.execute('INSERT INTO ac_subscriptions(provider,category,billing_cycle,start_date,end_date,username,password,access_url,notes) VALUES(?,?,?,?,?,?,?,?,?)', vals)
@@ -7237,12 +7255,15 @@ def ac_requests():
     if not ac_require('ac_view'): return redirect(url_for('ac_index'))
     db = get_db()
     status_filter = request.args.get('status','')
+    sort = request.args.get('sort', 'updated')
     sql = "SELECT r.*, e.name as emp_name, e.divisi FROM ac_software_requests r LEFT JOIN employees e ON r.employee_id=e.id WHERE 1=1"
     params = []
     if status_filter:
         sql += ' AND r.status=?'; params.append(status_filter)
-    reqs = db.execute(sql+' ORDER BY r.requested_at DESC', params).fetchall()
-    return render_template('ac_requests.html', requests=reqs, status_filter=status_filter)
+    order = ("COALESCE(NULLIF(r.updated_at,''),r.requested_at) DESC, r.id DESC" if sort == 'updated'
+             else 'r.requested_at DESC')
+    reqs = db.execute(sql + ' ORDER BY ' + order, params).fetchall()
+    return render_template('ac_requests.html', requests=reqs, status_filter=status_filter, sort=sort)
 
 @app.route('/aset/requests/new', methods=['GET','POST'])
 @login_required
@@ -7266,7 +7287,7 @@ def ac_request_status(rid):
     db = get_db()
     new_status = request.form.get('status')
     resolved_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S') if new_status in ('Approved','Rejected','Installed') else ''
-    db.execute('UPDATE ac_software_requests SET status=?,notes=?,resolved_at=?,resolved_by=? WHERE id=?',
+    db.execute('UPDATE ac_software_requests SET status=?,notes=?,resolved_at=?,resolved_by=?,updated_at=datetime("now","localtime") WHERE id=?',
                (new_status, request.form.get('notes','').strip(), resolved_at, session.get('user_name',''), rid))
     db.commit(); flash(f'Status diubah ke {new_status}.', 'success')
     return redirect(url_for('ac_requests'))

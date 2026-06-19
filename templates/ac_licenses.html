@@ -17,9 +17,15 @@
   <div class="col-sm-5">
     <input name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Cari nama software…">
   </div>
+  <div class="col-sm-2">
+    <select name="sort" class="form-select form-select-sm">
+      <option value="updated" {{ 'selected' if sort=='updated' }}>Terbaru diperbarui</option>
+      <option value="name"    {{ 'selected' if sort=='name' }}>Nama software</option>
+    </select>
+  </div>
   <div class="col-auto">
     <button class="btn btn-sm btn-outline-secondary">Cari</button>
-    {% if q %}<a href="/aset/licenses" class="btn btn-sm btn-link">Reset</a>{% endif %}
+    {% if q or sort != 'updated' %}<a href="/aset/licenses" class="btn btn-sm btn-link">Reset</a>{% endif %}
   </div>
 </form>
 
@@ -29,7 +35,7 @@
       <thead class="table-light">
         <tr>
           <th>Software</th><th>Tipe</th><th>Versi</th><th>Tahun</th>
-          <th>Seat</th><th>Terpakai</th><th>Status</th><th></th>
+          <th>Seat</th><th>Terpakai</th><th>Status</th><th>Diperbarui</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -46,6 +52,9 @@
           </td>
           <td>
             <span class="badge {{ 'bg-success' if l.is_active else 'bg-secondary' }}">{{ 'Aktif' if l.is_active else 'Nonaktif' }}</span>
+          </td>
+          <td class="small text-muted text-nowrap">
+            {% if l.updated_at %}<span title="{{ l.updated_at }}">{{ l.updated_at[:10] }}</span>{% else %}—{% endif %}
           </td>
           <td>
             <a href="/aset/licenses/{{ l.id }}/edit" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>

@@ -23,9 +23,15 @@
       {% for d in dtypes %}<option value="{{ d }}" {{ 'selected' if d==dtype }}>{{ d }}</option>{% endfor %}
     </select>
   </div>
+  <div class="col-sm-2">
+    <select name="sort" class="form-select form-select-sm">
+      <option value="updated" {{ 'selected' if sort=='updated' }}>Terbaru diperbarui</option>
+      <option value="type"    {{ 'selected' if sort=='type' }}>Tipe / Nama</option>
+    </select>
+  </div>
   <div class="col-auto">
     <button class="btn btn-sm btn-outline-secondary">Filter</button>
-    {% if q or dtype %}<a href="/aset/infra" class="btn btn-sm btn-link">Reset</a>{% endif %}
+    {% if q or dtype or sort != 'updated' %}<a href="/aset/infra" class="btn btn-sm btn-link">Reset</a>{% endif %}
   </div>
 </form>
 
@@ -35,7 +41,7 @@
       <thead class="table-light">
         <tr>
           <th>Tipe</th><th>Brand / Model</th><th>Nickname</th><th>S/N</th>
-          <th>UPS Group</th><th>Lokasi</th><th>Status</th><th></th>
+          <th>UPS Group</th><th>Lokasi</th><th>Status</th><th>Diperbarui</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -49,6 +55,9 @@
           <td class="small text-muted">{{ i.location or '—' }}</td>
           <td>
             <span class="badge {{ 'bg-success' if i.status=='Aktif' else 'bg-secondary' }}">{{ i.status }}</span>
+          </td>
+          <td class="small text-muted text-nowrap">
+            {% if i.updated_at %}<span title="{{ i.updated_at }}">{{ i.updated_at[:10] }}</span>{% else %}—{% endif %}
           </td>
           <td>
             <a href="/aset/infra/{{ i.id }}/edit" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
