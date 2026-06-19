@@ -676,6 +676,7 @@ MIGRATIONS = [
     ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
     ('sc_sla_categories',  'maintenance_type',        "TEXT DEFAULT 'corrective'"),
     ('ac_assets',          'manual_employee_name',    "TEXT DEFAULT ''"),
+    ('ac_subscriptions',   'last_reminder_sent',      "TEXT DEFAULT ''"),
 ]
 
 SC_TICKET_STATUSES = [
@@ -725,6 +726,8 @@ DEFAULT_SETTINGS = {
     'openwa_enabled': '0',
     'openwa_extra_phones': '',
     'app_url': '',  # URL publik aplikasi mis. https://evaluasi.perusahaan.com (kosong = auto-detect)
+    'ac_sub_reminder_enabled': '1',
+    'ac_sub_reminder_days': '30,14,7,1',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -1706,6 +1709,131 @@ def run_contract_reminders(triggered_by='auto'):
     finally:
         db.close()
 
+# ─── AssetCore: Subscription Reminders ────────────────────────────────────────
+
+def compose_sub_email(sub, days_left):
+    icon = '🔴' if days_left <= 7 else ('🟡' if days_left <= 14 else '🟢')
+    cat  = sub['category'] or 'Subscription'
+    status = 'berakhir <b>HARI INI</b>' if days_left == 0 else \
+             f'berakhir dalam <b>{days_left} hari</b>' if days_left > 0 else \
+             f'<b>sudah berakhir {abs(days_left)} hari lalu</b>'
+    return (f"<h3>{icon} Reminder {cat}: {sub['provider']}</h3>"
+            f"<table>"
+            f"<tr><td><b>Layanan</b></td><td>: {sub['provider']}</td></tr>"
+            f"<tr><td><b>Kategori</b></td><td>: {cat}</td></tr>"
+            f"<tr><td><b>Billing</b></td><td>: {sub['billing_cycle'] or '-'}</td></tr>"
+            f"<tr><td><b>Tgl Berakhir</b></td><td>: {sub['end_date']}</td></tr>"
+            f"<tr><td><b>Status</b></td><td>: Subscription {status}</td></tr>"
+            f"</table>"
+            f"<p>Mohon segera lakukan perpanjangan atau evaluasi layanan ini.</p>")
+
+def compose_sub_telegram(sub, days_left):
+    icon = '🔴' if days_left <= 7 else ('🟡' if days_left <= 14 else '🟢')
+    cat  = sub['category'] or 'Subscription'
+    status = 'Berakhir HARI INI!' if days_left == 0 else \
+             f'Berakhir dalam {days_left} hari' if days_left > 0 else \
+             f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
+    return (f"{icon} <b>Reminder {cat}</b>\n\n"
+            f"📦 <b>{sub['provider']}</b>\n"
+            f"💳 Billing: {sub['billing_cycle'] or '-'}\n"
+            f"📅 Berakhir: <b>{sub['end_date']}</b>\n"
+            f"⏳ {status}\n\n"
+            f"<i>Segera lakukan perpanjangan atau evaluasi layanan ini.</i>")
+
+def compose_sub_wa(sub, days_left):
+    icon = '🔴' if days_left <= 7 else ('🟡' if days_left <= 14 else '🟢')
+    cat  = sub['category'] or 'Subscription'
+    status = 'Berakhir HARI INI!' if days_left == 0 else \
+             f'Berakhir dalam {days_left} hari' if days_left > 0 else \
+             f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
+    return (f"{icon} *Reminder {cat}*\n\n"
+            f"📦 *{sub['provider']}*\n"
+            f"💳 Billing: {sub['billing_cycle'] or '-'}\n"
+            f"📅 Berakhir: *{sub['end_date']}*\n"
+            f"⏳ {status}\n\n"
+            f"_Segera lakukan perpanjangan atau evaluasi layanan ini._")
+
+def run_subscription_reminders(triggered_by='auto'):
+    """Cek ac_subscriptions yang mendekati expired dan kirim notifikasi.
+    Dipanggil dari scheduler (auto) atau route manual (manual)."""
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    try:
+        settings = get_settings(db)
+        if settings.get('ac_sub_reminder_enabled', '1') != '1' and triggered_by == 'auto':
+            return 0, 0
+
+        reminder_days_raw = settings.get('ac_sub_reminder_days', '30,14,7,1')
+        reminder_days = [int(d.strip()) for d in reminder_days_raw.split(',') if d.strip().isdigit()]
+
+        bot_token    = settings.get('telegram_bot_token', '').strip()
+        default_chat = settings.get('telegram_default_chat_id', '').strip()
+        wa_url       = settings.get('openwa_url', '').strip()
+        wa_key       = settings.get('openwa_api_key', '').strip()
+        wa_session   = settings.get('openwa_session_id', 'default').strip()
+        wa_enabled   = settings.get('openwa_enabled', '0') == '1'
+
+        sent = failed = 0
+        today = date.today()
+        today_str = today.isoformat()
+
+        subs = db.execute(
+            "SELECT * FROM ac_subscriptions WHERE is_active=1 AND end_date!='' AND end_date IS NOT NULL"
+        ).fetchall()
+
+        for sub in subs:
+            try:
+                end_date = date.fromisoformat(sub['end_date'])
+            except Exception:
+                continue
+            days_left = (end_date - today).days
+
+            if triggered_by == 'auto':
+                if days_left not in reminder_days:
+                    continue
+                if sub['last_reminder_sent'] == today_str:
+                    continue
+
+            subj   = f"[Reminder] {sub['provider']} — {'berakhir dalam '+str(days_left)+' hari' if days_left > 0 else 'BERAKHIR HARI INI'}"
+            html   = compose_sub_email(sub, days_left)
+            tg_msg = compose_sub_telegram(sub, days_left)
+            wa_msg = compose_sub_wa(sub, days_left)
+
+            # Email — ke notification_emails (admin IT)
+            if settings.get('smtp_host', '').strip():
+                for to_email in get_notification_emails(settings):
+                    ok, err = send_email(settings, to_email, subj, html)
+                    audit_notif('email', to_email, subj, html, ok, err, triggered_by, app_slug='aset')
+                    if ok: sent += 1
+                    else:  failed += 1
+
+            # Telegram — ke notification_telegram_ids / default chat
+            if bot_token:
+                for chat_id in get_notification_telegram_ids(settings, '', default_chat):
+                    ok, err = send_telegram(bot_token, chat_id, tg_msg,
+                                            _log_subject=subj, _app_slug='aset')
+                    if ok: sent += 1
+                    else:  failed += 1
+
+            # WhatsApp — ke extra phones
+            if wa_enabled and wa_url:
+                for phone in settings.get('openwa_extra_phones', '').split(','):
+                    phone = phone.strip()
+                    if not phone:
+                        continue
+                    ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone, wa_msg)
+                    audit_notif('whatsapp', phone, subj, wa_msg, ok, err, triggered_by, app_slug='aset')
+                    if ok: sent += 1
+                    else:  failed += 1
+
+            db.execute("UPDATE ac_subscriptions SET last_reminder_sent=? WHERE id=?",
+                       (today_str, sub['id']))
+
+        db.commit()
+        return sent, failed
+    finally:
+        db.close()
+
 # ─── APScheduler ───────────────────────────────────────────────────────────────
 
 def start_scheduler():
@@ -1715,10 +1843,13 @@ def start_scheduler():
         scheduler.add_job(lambda: run_contract_reminders('auto'),
                           'cron', hour=8, minute=0,
                           id='contract_reminder', replace_existing=True)
+        scheduler.add_job(lambda: run_subscription_reminders('auto'),
+                          'cron', hour=8, minute=5,
+                          id='sub_reminder', replace_existing=True)
         scheduler.start()
         import atexit
         atexit.register(scheduler.shutdown)
-        print(" Scheduler aktif: cek kontrak setiap hari jam 08:00")
+        print(" Scheduler aktif: cek kontrak 08:00, cek subscription 08:05")
     except Exception as e:
         print(f" Scheduler gagal: {e}")
 
@@ -6461,9 +6592,18 @@ def ac_license_delete(lid):
 @login_required
 def ac_subscriptions():
     if not ac_require('ac_view'): return redirect(url_for('ac_index'))
-    from datetime import date as _date
+    from datetime import date as _date, timedelta
+    today = _date.today()
+    settings = get_settings(get_db())
+    reminder_days_raw = settings.get('ac_sub_reminder_days', '30,14,7,1')
+    reminder_days = [int(d.strip()) for d in reminder_days_raw.split(',') if d.strip().isdigit()]
     subs = get_db().execute('SELECT * FROM ac_subscriptions ORDER BY is_active DESC, end_date').fetchall()
-    return render_template('ac_subscriptions.html', subscriptions=subs, today=_date.today().isoformat())
+    return render_template('ac_subscriptions.html',
+                           subscriptions=subs,
+                           today=today.isoformat(),
+                           today_plus_7=(today + timedelta(days=7)).isoformat(),
+                           today_plus_30=(today + timedelta(days=30)).isoformat(),
+                           reminder_days=sorted(reminder_days, reverse=True))
 
 @app.route('/aset/subscriptions/new', methods=['GET','POST'])
 @app.route('/aset/subscriptions/<int:sid>/edit', methods=['GET','POST'])
@@ -6493,6 +6633,69 @@ def ac_subscription_delete(sid):
     if not ac_require('ac_manage_subs'): return redirect(url_for('ac_subscriptions'))
     get_db().execute('DELETE FROM ac_subscriptions WHERE id=?', (sid,)); get_db().commit()
     flash('Subscription dihapus.', 'success'); return redirect(url_for('ac_subscriptions'))
+
+@app.route('/aset/subscriptions/remind', methods=['POST'])
+@login_required
+def ac_subscription_remind():
+    """Trigger manual reminder untuk semua subscription yang mendekati expired."""
+    if not ac_require('ac_manage_subs'): return redirect(url_for('ac_subscriptions'))
+    sent, failed = run_subscription_reminders(triggered_by='manual')
+    if sent == 0 and failed == 0:
+        flash('Tidak ada subscription yang perlu diingatkan (belum masuk periode reminder).', 'info')
+    else:
+        flash(f'Reminder terkirim: {sent} sukses, {failed} gagal.', 'success' if failed == 0 else 'warning')
+    return redirect(url_for('ac_subscriptions'))
+
+@app.route('/aset/subscriptions/<int:sid>/remind', methods=['POST'])
+@login_required
+def ac_subscription_remind_one(sid):
+    """Trigger reminder manual untuk satu subscription tertentu."""
+    if not ac_require('ac_manage_subs'): return redirect(url_for('ac_subscriptions'))
+    db = get_db()
+    sub = db.execute('SELECT * FROM ac_subscriptions WHERE id=?', (sid,)).fetchone()
+    if not sub:
+        flash('Subscription tidak ditemukan.', 'danger')
+        return redirect(url_for('ac_subscriptions'))
+    settings = get_settings(db)
+    try:
+        days_left = (date.fromisoformat(sub['end_date']) - date.today()).days if sub['end_date'] else 999
+    except Exception:
+        days_left = 999
+    sent = failed = 0
+    subj   = f"[Reminder] {sub['provider']} — {'berakhir dalam '+str(days_left)+' hari' if days_left > 0 else 'BERAKHIR HARI INI'}"
+    html   = compose_sub_email(sub, days_left)
+    tg_msg = compose_sub_telegram(sub, days_left)
+    wa_msg = compose_sub_wa(sub, days_left)
+    bot_token    = settings.get('telegram_bot_token', '').strip()
+    default_chat = settings.get('telegram_default_chat_id', '').strip()
+    wa_url       = settings.get('openwa_url', '').strip()
+    wa_key       = settings.get('openwa_api_key', '').strip()
+    wa_session   = settings.get('openwa_session_id', 'default').strip()
+    wa_enabled   = settings.get('openwa_enabled', '0') == '1'
+    if settings.get('smtp_host', '').strip():
+        for to_email in get_notification_emails(settings):
+            ok, err = send_email(settings, to_email, subj, html)
+            audit_notif('email', to_email, subj, html, ok, err, 'manual', app_slug='aset')
+            if ok: sent += 1
+            else:  failed += 1
+    if bot_token:
+        for chat_id in get_notification_telegram_ids(settings, '', default_chat):
+            ok, err = send_telegram(bot_token, chat_id, tg_msg, _log_subject=subj, _app_slug='aset')
+            if ok: sent += 1
+            else:  failed += 1
+    if wa_enabled and wa_url:
+        for phone in settings.get('openwa_extra_phones', '').split(','):
+            phone = phone.strip()
+            if not phone: continue
+            ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone, wa_msg)
+            audit_notif('whatsapp', phone, subj, wa_msg, ok, err, 'manual', app_slug='aset')
+            if ok: sent += 1
+            else:  failed += 1
+    db.execute("UPDATE ac_subscriptions SET last_reminder_sent=? WHERE id=?",
+               (date.today().isoformat(), sid))
+    db.commit()
+    flash(f'Reminder "{sub["provider"]}": {sent} terkirim, {failed} gagal.', 'success' if failed == 0 else 'warning')
+    return redirect(url_for('ac_subscriptions'))
 
 # ── Software Requests ─────────────────────────────────────────────────────────
 @app.route('/aset/requests')
