@@ -35,16 +35,16 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header py-2 fw-bold small d-flex align-items-center justify-content-between">
         <span><i class="bi bi-person me-1" style="color:#6f42c1"></i>Pengguna</span>
-        {% if link_status == 'linked' %}
+        {% if asset.link_status == 'linked' %}
           <span class="badge bg-success"><i class="bi bi-link-45deg me-1"></i>Terhubung</span>
-        {% elif link_status == 'unlinked' %}
+        {% elif asset.link_status == 'unlinked' %}
           <span class="badge bg-warning text-dark"><i class="bi bi-link-45deg me-1"></i>Manual</span>
         {% else %}
           <span class="badge bg-light text-muted border">Tidak ada pengguna</span>
         {% endif %}
       </div>
       <div class="card-body">
-        {% if link_status == 'linked' %}
+        {% if asset.link_status == 'linked' %}
           <table class="table table-sm table-borderless mb-0">
             <tr><th class="text-muted fw-normal small" style="width:40%">Nama</th><td class="small fw-semibold">{{ asset.emp_name }}</td></tr>
             <tr><th class="text-muted fw-normal small">Divisi</th><td class="small">{{ asset.divisi or '—' }}</td></tr>
@@ -67,17 +67,21 @@
             </form>
           </div>
 
-        {% elif link_status == 'unlinked' %}
-          {# Manual name — tawarkan untuk link ke karyawan #}
+        {% elif asset.link_status == 'unlinked' %}
+          {# Nama manual — tawarkan untuk link ke karyawan yang ada di employees table #}
           <div class="mb-2">
             <div class="fw-semibold small">{{ asset.manual_employee_name }}</div>
-            <div class="text-muted" style="font-size:.75rem">Nama dari input manual — belum terhubung ke data karyawan.</div>
+            <div class="text-muted" style="font-size:.75rem">
+              <i class="bi bi-info-circle me-1"></i>Nama diisi manual — belum terhubung ke data karyawan TalentCore.
+            </div>
           </div>
           <div class="p-2 rounded border border-warning" style="background:#fffbe6">
-            <div class="small fw-semibold text-warning-emphasis mb-1"><i class="bi bi-search me-1"></i>Hubungkan ke karyawan</div>
-            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center">
+            <div class="small fw-semibold text-warning-emphasis mb-1">
+              <i class="bi bi-search me-1"></i>Hubungkan ke karyawan (jika ada di TalentCore)
+            </div>
+            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center flex-wrap">
               <input type="hidden" name="action" value="link">
-              <select name="employee_id" class="form-select form-select-sm" style="max-width:260px">
+              <select name="employee_id" class="form-select form-select-sm" style="max-width:280px">
                 <option value="">— Pilih karyawan —</option>
                 {% for e in employees %}
                 <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>
@@ -85,16 +89,19 @@
               </select>
               <button class="btn btn-sm btn-warning" type="submit">Hubungkan</button>
             </form>
+            <div class="text-muted mt-1" style="font-size:.72rem">
+              Jika tidak ada di daftar → biarkan manual. Nama tidak akan ditambahkan ke TalentCore.
+            </div>
           </div>
 
         {% else %}
-          {# no_user — tidak ada karyawan, bisa assign #}
+          {# no_user — stok/spare, bisa assign ke karyawan #}
           <div class="text-muted small mb-2">Tidak ada pengguna (stok / spare)</div>
           <div class="p-2 rounded border" style="background:#f8f9fa">
             <div class="small fw-semibold mb-1"><i class="bi bi-person-plus me-1" style="color:#6f42c1"></i>Assign ke karyawan</div>
-            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center">
+            <form method="post" action="/aset/assets/{{ asset.id }}/link" class="d-flex gap-2 align-items-center flex-wrap">
               <input type="hidden" name="action" value="link">
-              <select name="employee_id" class="form-select form-select-sm" style="max-width:260px">
+              <select name="employee_id" class="form-select form-select-sm" style="max-width:280px">
                 <option value="">— Pilih karyawan —</option>
                 {% for e in employees %}
                 <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>

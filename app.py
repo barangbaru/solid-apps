@@ -675,6 +675,7 @@ MIGRATIONS = [
     ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
     ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
     ('sc_sla_categories',  'maintenance_type',        "TEXT DEFAULT 'corrective'"),
+    ('ac_assets',          'manual_employee_name',    "TEXT DEFAULT ''"),
 ]
 
 SC_TICKET_STATUSES = [
@@ -6225,16 +6226,28 @@ def ac_assets():
     db = get_db()
     q = request.args.get('q','')
     divisi = request.args.get('divisi','')
-    sql = "SELECT a.*, e.name as emp_name, e.divisi FROM ac_assets a LEFT JOIN employees e ON a.employee_id=e.id WHERE 1=1"
+    status_filter = request.args.get('status','')  # 'linked' | 'unlinked'
+    sql = """SELECT a.*, e.name as emp_name, e.divisi,
+             CASE WHEN a.employee_id IS NOT NULL THEN 'linked'
+                  WHEN a.manual_employee_name!='' THEN 'unlinked'
+                  ELSE 'no_user' END as link_status
+             FROM ac_assets a LEFT JOIN employees e ON a.employee_id=e.id WHERE 1=1"""
     params = []
     if q:
-        sql += ' AND (e.name LIKE ? OR a.device_type LIKE ? OR a.asset_tag LIKE ?)'; params += [f'%{q}%']*3
+        sql += ' AND (e.name LIKE ? OR a.manual_employee_name LIKE ? OR a.device_type LIKE ? OR a.asset_tag LIKE ?)'
+        params += [f'%{q}%']*4
     if divisi:
         sql += ' AND e.divisi=?'; params.append(divisi)
-    sql += ' ORDER BY e.divisi, e.name'
+    if status_filter == 'unlinked':
+        sql += ' AND a.employee_id IS NULL AND a.manual_employee_name!=""'
+    elif status_filter == 'linked':
+        sql += ' AND a.employee_id IS NOT NULL'
+    sql += ' ORDER BY COALESCE(e.divisi, a.manual_employee_name), COALESCE(e.name, a.manual_employee_name)'
     assets = db.execute(sql, params).fetchall()
     divisis = [r[0] for r in db.execute("SELECT DISTINCT divisi FROM employees WHERE divisi!='' ORDER BY divisi").fetchall()]
-    return render_template('ac_assets.html', assets=assets, q=q, divisi=divisi, divisis=divisis)
+    unlinked_count = db.execute("SELECT COUNT(*) FROM ac_assets WHERE employee_id IS NULL AND manual_employee_name!=''").fetchone()[0]
+    return render_template('ac_assets.html', assets=assets, q=q, divisi=divisi,
+                           divisis=divisis, status_filter=status_filter, unlinked_count=unlinked_count)
 
 @app.route('/aset/assets/new', methods=['GET','POST'])
 @login_required
@@ -6243,9 +6256,12 @@ def ac_asset_new():
     db = get_db()
     employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
     if request.method == 'POST':
+        mode = request.form.get('emp_mode', 'linked')
+        emp_id = request.form.get('employee_id') or None if mode == 'linked' else None
+        manual_name = request.form.get('manual_employee_name', '').strip() if mode == 'manual' else ''
         cur = db.execute(
-            'INSERT INTO ac_assets(employee_id,device_type,brand,os,os_license_type,processor,ram,disk,office_version,asset_tag,serial_number,purchase_date,condition,notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            (request.form.get('employee_id') or None, request.form.get('device_type','Laptop'),
+            'INSERT INTO ac_assets(employee_id,manual_employee_name,device_type,brand,os,os_license_type,processor,ram,disk,office_version,asset_tag,serial_number,purchase_date,condition,notes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (emp_id, manual_name, request.form.get('device_type','Laptop'),
              request.form.get('brand',''), request.form.get('os',''), request.form.get('os_license_type',''),
              request.form.get('processor',''), request.form.get('ram',''), request.form.get('disk',''),
              request.form.get('office_version',''), request.form.get('asset_tag',''),
@@ -6255,7 +6271,8 @@ def ac_asset_new():
         for s in [x.strip() for x in request.form.get('softwares','').split('\n') if x.strip()]:
             db.execute('INSERT INTO ac_asset_software(asset_id,software_name) VALUES(?,?)', (aid, s))
         db.commit()
-        audit_log('create', 'ac_assets', aid, f"Asset baru untuk {request.form.get('employee_id','')}", 'aset')
+        label = request.form.get('employee_id','') if mode == 'linked' else manual_name
+        audit_log('create', 'ac_assets', aid, f"Asset baru: {label}", 'aset')
         flash('Asset berhasil ditambahkan.', 'success')
         return redirect(url_for('ac_asset_detail', aid=aid))
     return render_template('ac_asset_form.html', asset=None, employees=employees, sw_text='')
@@ -6265,10 +6282,38 @@ def ac_asset_new():
 def ac_asset_detail(aid):
     if not ac_require('ac_view'): return redirect(url_for('ac_assets'))
     db = get_db()
-    asset = db.execute('SELECT a.*, e.name as emp_name, e.divisi, e.jabatan, e.phone, e.email FROM ac_assets a LEFT JOIN employees e ON a.employee_id=e.id WHERE a.id=?', (aid,)).fetchone()
+    asset = db.execute('''SELECT a.*, e.name as emp_name, e.divisi, e.jabatan, e.phone, e.email,
+                          CASE WHEN a.employee_id IS NOT NULL THEN 'linked'
+                               WHEN a.manual_employee_name!='' THEN 'unlinked'
+                               ELSE 'no_user' END as link_status
+                          FROM ac_assets a LEFT JOIN employees e ON a.employee_id=e.id WHERE a.id=?''', (aid,)).fetchone()
     if not asset: flash('Asset tidak ditemukan.', 'danger'); return redirect(url_for('ac_assets'))
     softwares = db.execute('SELECT * FROM ac_asset_software WHERE asset_id=? ORDER BY software_name', (aid,)).fetchall()
-    return render_template('ac_asset_detail.html', asset=asset, softwares=softwares)
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
+    return render_template('ac_asset_detail.html', asset=asset, softwares=softwares, employees=employees)
+
+@app.route('/aset/assets/<int:aid>/link', methods=['POST'])
+@login_required
+def ac_asset_link(aid):
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_asset_detail', aid=aid))
+    db = get_db()
+    action = request.form.get('action', 'link')
+    if action == 'unlink':
+        # Lepas link employee_id; manual_employee_name tetap (agar nama tidak hilang)
+        db.execute('UPDATE ac_assets SET employee_id=NULL, updated_at=datetime("now","localtime") WHERE id=?', (aid,))
+        db.commit()
+        flash('Link karyawan dilepas. Nama manual tetap tersimpan.', 'success')
+    else:
+        emp_id = request.form.get('employee_id') or None
+        if not emp_id:
+            flash('Pilih karyawan terlebih dahulu.', 'warning')
+            return redirect(url_for('ac_asset_detail', aid=aid))
+        # Hubungkan ke karyawan; manual_employee_name dibiarkan sebagai riwayat
+        db.execute('UPDATE ac_assets SET employee_id=?, updated_at=datetime("now","localtime") WHERE id=?', (emp_id, aid))
+        db.commit()
+        emp = db.execute('SELECT name FROM employees WHERE id=?', (emp_id,)).fetchone()
+        flash(f'Asset dihubungkan ke {emp["name"] if emp else "karyawan"}.', 'success')
+    return redirect(url_for('ac_asset_detail', aid=aid))
 
 @app.route('/aset/assets/<int:aid>/edit', methods=['GET','POST'])
 @login_required
@@ -6279,9 +6324,12 @@ def ac_asset_edit(aid):
     if not asset: flash('Asset tidak ditemukan.', 'danger'); return redirect(url_for('ac_assets'))
     employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
     if request.method == 'POST':
+        mode = request.form.get('emp_mode', 'linked')
+        emp_id = request.form.get('employee_id') or None if mode == 'linked' else None
+        manual_name = request.form.get('manual_employee_name', '').strip() if mode == 'manual' else ''
         db.execute(
-            'UPDATE ac_assets SET employee_id=?,device_type=?,brand=?,os=?,os_license_type=?,processor=?,ram=?,disk=?,office_version=?,asset_tag=?,serial_number=?,purchase_date=?,condition=?,notes=?,updated_at=datetime("now","localtime") WHERE id=?',
-            (request.form.get('employee_id') or None, request.form.get('device_type','Laptop'),
+            'UPDATE ac_assets SET employee_id=?,manual_employee_name=?,device_type=?,brand=?,os=?,os_license_type=?,processor=?,ram=?,disk=?,office_version=?,asset_tag=?,serial_number=?,purchase_date=?,condition=?,notes=?,updated_at=datetime("now","localtime") WHERE id=?',
+            (emp_id, manual_name, request.form.get('device_type','Laptop'),
              request.form.get('brand',''), request.form.get('os',''), request.form.get('os_license_type',''),
              request.form.get('processor',''), request.form.get('ram',''), request.form.get('disk',''),
              request.form.get('office_version',''), request.form.get('asset_tag',''),
