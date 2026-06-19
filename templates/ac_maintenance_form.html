@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — {{ 'Edit' if item else 'Tambah' }} Jadwal Maintenance{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if item else 'Tambah' }} Jadwal Maintenance</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{{ '/aset/maintenance/'+item.id|string if item else '/aset/maintenance' }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <h6 class="fw-bold mb-0">{{ 'Edit' if item else 'Tambah' }} Jadwal Maintenance</h6>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <form method="post" id="maintenanceForm">
+
+      <div class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label fw-semibold small">Judul Maintenance <span class="text-danger">*</span></label>
+          <input name="title" value="{{ item.title if item else '' }}" class="form-control form-control-sm"
+                 placeholder="Maintenance AC Ruang Server, Cek Panel Listrik…" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Kategori</label>
+          <select name="category" class="form-select form-select-sm" id="categorySelect" onchange="toggleCustomCat(this)">
+            {% set cats = ['AC / HVAC', 'Listrik', 'UPS', 'Genset', 'Jaringan / Network', 'Server', 'CCTV', 'Fire Suppression', 'Lainnya'] %}
+            {% set cur_cat = item.category if item else '' %}
+            {% for c in cats %}
+            <option {{ 'selected' if cur_cat == c }}>{{ c }}</option>
+            {% endfor %}
+            {% if item and item.category and item.category not in cats %}
+            <option value="{{ item.category }}" selected>{{ item.category }}</option>
+            {% endif %}
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">Lokasi</label>
+          <input name="location" value="{{ item.location if item else '' }}" class="form-control form-control-sm"
+                 placeholder="Ruang Server, Lantai 2, Gedung A…">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Frekuensi</label>
+          <select name="frequency" class="form-select form-select-sm" id="freqSelect" onchange="calcNext()">
+            {% for f in ['Harian','Mingguan','Bulanan','3 Bulan','6 Bulan','Tahunan'] %}
+            <option {{ 'selected' if (item and item.frequency==f) or (not item and f=='Bulanan') }}>{{ f }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Estimasi Biaya (Rp)</label>
+          <input name="cost_estimate" type="number" step="1000"
+                 value="{{ item.cost_estimate|int if item and item.cost_estimate else '' }}"
+                 class="form-control form-control-sm" placeholder="500000">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label fw-semibold small">Deskripsi / Scope Pekerjaan</label>
+          <textarea name="description" rows="3" class="form-control form-control-sm"
+                    placeholder="Cek refrigerant, bersihkan filter, cek kompresor…">{{ item.description if item else '' }}</textarea>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Vendor / Kontraktor</label>
+          <input name="vendor" value="{{ item.vendor if item else '' }}" class="form-control form-control-sm"
+                 placeholder="PT. Servis Andalan">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">PIC Internal</label>
+          <input name="pic" value="{{ item.pic if item else '' }}" class="form-control form-control-sm"
+                 placeholder="Nama penanggung jawab internal">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Catatan</label>
+          <input name="notes" value="{{ item.notes if item else '' }}" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-12">
+          <div class="p-3 rounded" style="background:#f8f5ff;border:1px solid #e0d5ff">
+            <div class="fw-semibold small mb-2" style="color:#6f42c1"><i class="bi bi-calendar2-check me-1"></i>Jadwal</div>
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label small">Tanggal Maintenance Terakhir</label>
+                <input name="last_maintenance" id="lastMaint" type="date"
+                       value="{{ item.last_maintenance if item else '' }}"
+                       class="form-control form-control-sm" onchange="calcNext()">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small">Jadwal Maintenance Berikutnya</label>
+                <input name="next_maintenance" id="nextMaint" type="date"
+                       value="{{ item.next_maintenance if item else '' }}"
+                       class="form-control form-control-sm">
+                <div class="form-text">Dikosongkan = dihitung otomatis dari tanggal terakhir + frekuensi.</div>
+              </div>
+              <div class="col-md-4 d-flex align-items-end">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="calcNext(true)">
+                  <i class="bi bi-calculator me-1"></i>Hitung Otomatis
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="mt-3 d-flex gap-2 align-items-center">
+        <button type="submit" class="btn btn-primary btn-sm">Simpan</button>
+        <a href="{{ '/aset/maintenance/'+item.id|string if item else '/aset/maintenance' }}"
+           class="btn btn-outline-secondary btn-sm">Batal</a>
+        {% if item %}
+        <form method="post" action="/aset/maintenance/{{ item.id }}/delete" class="ms-auto"
+              onsubmit="return confirm('Hapus jadwal ini beserta seluruh log-nya?')">
+          <button class="btn btn-sm btn-outline-danger">Hapus</button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+var FREQ_DAYS = {
+  'Harian':1,'Mingguan':7,'Bulanan':30,'3 Bulan':90,'6 Bulan':180,'Tahunan':365
+};
+function calcNext(force) {
+  var last = document.getElementById('lastMaint').value;
+  var next = document.getElementById('nextMaint');
+  if (!last) return;
+  if (next.value && !force) return;  // jangan timpa jika sudah diisi manual
+  var freq = document.getElementById('freqSelect').value;
+  var days = FREQ_DAYS[freq] || 30;
+  var d = new Date(last);
+  d.setDate(d.getDate() + days);
+  next.value = d.toISOString().slice(0,10);
+}
+</script>
+{% endblock %}

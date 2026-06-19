@@ -632,6 +632,33 @@ CREATE TABLE IF NOT EXISTS ac_software_requests (
     resolved_by TEXT DEFAULT '',
     notes TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS ac_maintenance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    category TEXT DEFAULT 'Lainnya',
+    location TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    frequency TEXT DEFAULT 'Bulanan',
+    last_maintenance TEXT DEFAULT '',
+    next_maintenance TEXT DEFAULT '',
+    vendor TEXT DEFAULT '',
+    pic TEXT DEFAULT '',
+    cost_estimate REAL DEFAULT NULL,
+    is_active INTEGER DEFAULT 1,
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS ac_maintenance_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    maintenance_id INTEGER NOT NULL REFERENCES ac_maintenance(id) ON DELETE CASCADE,
+    done_at TEXT DEFAULT '',
+    done_by TEXT DEFAULT '',
+    cost REAL DEFAULT NULL,
+    result TEXT DEFAULT 'OK',
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 MIGRATIONS = [
@@ -6507,9 +6534,15 @@ def ac_index():
            LEFT JOIN ac_assets a ON h.asset_id=a.id
            ORDER BY h.id DESC LIMIT 10"""
     ).fetchall()
+    limit30 = (_date.today() + timedelta(days=30)).isoformat()
+    maintenance_alert = db.execute(
+        """SELECT * FROM ac_maintenance WHERE is_active=1
+           AND next_maintenance!='' AND next_maintenance<=?
+           ORDER BY next_maintenance ASC LIMIT 10""", (limit30,)
+    ).fetchall()
     return render_template('ac_index.html', stats=stats, expiring=expiring,
                            recent_requests=recent_requests, recent_history=recent_history,
-                           today=today)
+                           maintenance_alert=maintenance_alert, today=today)
 
 # ── Assets ────────────────────────────────────────────────────────────────────
 @app.route('/aset/assets')
@@ -6760,6 +6793,150 @@ def ac_asset_delete(aid):
     if not ac_require('ac_manage_assets'): return redirect(url_for('ac_assets'))
     get_db().execute('DELETE FROM ac_assets WHERE id=?', (aid,)); get_db().commit()
     flash('Asset dihapus.', 'success'); return redirect(url_for('ac_assets'))
+
+# ── Maintenance ───────────────────────────────────────────────────────────────
+
+MAINTENANCE_FREQ_DAYS = {
+    'Harian': 1, 'Mingguan': 7, 'Bulanan': 30,
+    '3 Bulan': 90, '6 Bulan': 180, 'Tahunan': 365,
+}
+
+def _maintenance_next(last_date_str, frequency):
+    """Hitung next_maintenance dari last_maintenance + frequency."""
+    try:
+        from datetime import date as _d, timedelta
+        last = _d.fromisoformat(last_date_str)
+        delta = timedelta(days=MAINTENANCE_FREQ_DAYS.get(frequency, 30))
+        return (last + delta).isoformat()
+    except Exception:
+        return ''
+
+def _maintenance_status(item, today_str):
+    nxt = (item['next_maintenance'] or '').strip()
+    if not nxt:
+        return 'no_schedule'
+    if nxt < today_str:
+        return 'overdue'
+    from datetime import date as _d, timedelta
+    soon = (_d.today() + timedelta(days=30)).isoformat()
+    return 'upcoming' if nxt <= soon else 'ok'
+
+@app.route('/aset/maintenance')
+@login_required
+def ac_maintenance():
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    db = get_db()
+    from datetime import date as _d
+    today = _d.today().isoformat()
+    q = request.args.get('q', '')
+    cat = request.args.get('cat', '')
+    sql = "SELECT * FROM ac_maintenance WHERE is_active=1"
+    params = []
+    if q:
+        sql += " AND (title LIKE ? OR location LIKE ? OR vendor LIKE ? OR category LIKE ?)"
+        params += [f'%{q}%'] * 4
+    if cat:
+        sql += " AND category=?"
+        params.append(cat)
+    sql += " ORDER BY CASE WHEN next_maintenance='' THEN '9999' ELSE next_maintenance END ASC"
+    items = db.execute(sql, params).fetchall()
+    items_with_status = [(r, _maintenance_status(r, today)) for r in items]
+    categories = [r[0] for r in db.execute("SELECT DISTINCT category FROM ac_maintenance WHERE category!='' ORDER BY category").fetchall()]
+    overdue_count = sum(1 for _, s in items_with_status if s == 'overdue')
+    return render_template('ac_maintenance.html', items=items_with_status, q=q, cat=cat,
+                           categories=categories, today=today, overdue_count=overdue_count)
+
+@app.route('/aset/maintenance/new', methods=['GET', 'POST'])
+@app.route('/aset/maintenance/<int:mid>/edit', methods=['GET', 'POST'])
+@login_required
+def ac_maintenance_form(mid=None):
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_maintenance'))
+    db = get_db()
+    item = db.execute('SELECT * FROM ac_maintenance WHERE id=?', (mid,)).fetchone() if mid else None
+    if request.method == 'POST':
+        title       = request.form.get('title', '').strip()
+        category    = request.form.get('category', 'Lainnya').strip()
+        location    = request.form.get('location', '').strip()
+        description = request.form.get('description', '').strip()
+        frequency   = request.form.get('frequency', 'Bulanan').strip()
+        last_maint  = request.form.get('last_maintenance', '').strip()
+        next_maint  = request.form.get('next_maintenance', '').strip()
+        vendor      = request.form.get('vendor', '').strip()
+        pic         = request.form.get('pic', '').strip()
+        cost_raw    = request.form.get('cost_estimate', '').strip()
+        cost_est    = float(cost_raw) if cost_raw else None
+        notes       = request.form.get('notes', '').strip()
+        if not title:
+            flash('Judul wajib diisi.', 'warning')
+            return render_template('ac_maintenance_form.html', item=item)
+        if not next_maint and last_maint:
+            next_maint = _maintenance_next(last_maint, frequency)
+        if mid:
+            db.execute(
+                'UPDATE ac_maintenance SET title=?,category=?,location=?,description=?,frequency=?,'
+                'last_maintenance=?,next_maintenance=?,vendor=?,pic=?,cost_estimate=?,notes=?,'
+                'updated_at=datetime("now","localtime") WHERE id=?',
+                (title, category, location, description, frequency, last_maint, next_maint,
+                 vendor, pic, cost_est, notes, mid))
+            db.commit()
+            flash('Jadwal maintenance diperbarui.', 'success')
+        else:
+            db.execute(
+                'INSERT INTO ac_maintenance(title,category,location,description,frequency,'
+                'last_maintenance,next_maintenance,vendor,pic,cost_estimate,notes) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (title, category, location, description, frequency, last_maint, next_maint,
+                 vendor, pic, cost_est, notes))
+            db.commit()
+            flash('Jadwal maintenance ditambahkan.', 'success')
+        return redirect(url_for('ac_maintenance'))
+    return render_template('ac_maintenance_form.html', item=item)
+
+@app.route('/aset/maintenance/<int:mid>')
+@login_required
+def ac_maintenance_detail(mid):
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    db = get_db()
+    from datetime import date as _d
+    item = db.execute('SELECT * FROM ac_maintenance WHERE id=?', (mid,)).fetchone()
+    if not item: flash('Data tidak ditemukan.', 'danger'); return redirect(url_for('ac_maintenance'))
+    logs = db.execute('SELECT * FROM ac_maintenance_log WHERE maintenance_id=? ORDER BY done_at DESC, id DESC', (mid,)).fetchall()
+    today = _d.today().isoformat()
+    status = _maintenance_status(item, today)
+    return render_template('ac_maintenance_detail.html', item=item, logs=logs, status=status, today=today)
+
+@app.route('/aset/maintenance/<int:mid>/done', methods=['POST'])
+@login_required
+def ac_maintenance_done(mid):
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_maintenance_detail', mid=mid))
+    db = get_db()
+    item = db.execute('SELECT * FROM ac_maintenance WHERE id=?', (mid,)).fetchone()
+    if not item: return redirect(url_for('ac_maintenance'))
+    done_at  = request.form.get('done_at', '').strip() or date.today().isoformat()
+    done_by  = request.form.get('done_by', '').strip()
+    result   = request.form.get('result', 'OK').strip()
+    cost_raw = request.form.get('cost', '').strip()
+    cost     = float(cost_raw) if cost_raw else None
+    notes    = request.form.get('notes', '').strip()
+    db.execute(
+        'INSERT INTO ac_maintenance_log(maintenance_id,done_at,done_by,cost,result,notes) VALUES(?,?,?,?,?,?)',
+        (mid, done_at, done_by, cost, result, notes))
+    next_maint = _maintenance_next(done_at, item['frequency'])
+    db.execute(
+        'UPDATE ac_maintenance SET last_maintenance=?,next_maintenance=?,updated_at=datetime("now","localtime") WHERE id=?',
+        (done_at, next_maint, mid))
+    db.commit()
+    flash(f'Maintenance dicatat. Jadwal berikutnya: {next_maint or "—"}.', 'success')
+    return redirect(url_for('ac_maintenance_detail', mid=mid))
+
+@app.route('/aset/maintenance/<int:mid>/delete', methods=['POST'])
+@login_required
+def ac_maintenance_delete(mid):
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_maintenance'))
+    db = get_db()
+    db.execute('DELETE FROM ac_maintenance WHERE id=?', (mid,))
+    db.commit()
+    flash('Jadwal maintenance dihapus.', 'success')
+    return redirect(url_for('ac_maintenance'))
 
 # ── Infrastruktur ─────────────────────────────────────────────────────────────
 @app.route('/aset/infra')

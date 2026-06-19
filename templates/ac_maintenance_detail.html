@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — {{ item.title }}{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Detail Maintenance</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center gap-2 flex-wrap">
+    <a href="/aset/maintenance" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+    <h6 class="fw-bold mb-0">{{ item.title }}</h6>
+    <span class="badge bg-light text-dark border">{{ item.category }}</span>
+    {% if status == 'overdue' %}
+      <span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>OVERDUE</span>
+    {% elif status == 'upcoming' %}
+      <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>Segera</span>
+    {% elif status == 'ok' %}
+      <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Terjadwal</span>
+    {% else %}
+      <span class="badge bg-secondary">Belum Dijadwalkan</span>
+    {% endif %}
+  </div>
+  <a href="/aset/maintenance/{{ item.id }}/edit" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-pencil me-1"></i>Edit
+  </a>
+</div>
+
+{# ── Alert overdue ── #}
+{% if status == 'overdue' %}
+<div class="alert alert-danger py-2 d-flex align-items-center gap-2 mb-3">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div class="small">Maintenance ini <strong>sudah melewati jadwal</strong> ({{ item.next_maintenance }}).
+    Segera catat pelaksanaan atau perbarui jadwal.</div>
+</div>
+{% elif status == 'upcoming' %}
+<div class="alert alert-warning py-2 d-flex align-items-center gap-2 mb-3">
+  <i class="bi bi-clock-fill fs-5"></i>
+  <div class="small">Jadwal maintenance berikutnya: <strong>{{ item.next_maintenance }}</strong>. Segera dipersiapkan.</div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+
+  {# ── Info Jadwal ── #}
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-calendar2-check me-1" style="color:#6f42c1"></i>Informasi Jadwal</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th class="text-muted fw-normal small" style="width:45%">Kategori</th>
+              <td><span class="badge bg-light text-dark border">{{ item.category }}</span></td></tr>
+          <tr><th class="text-muted fw-normal small">Lokasi</th>
+              <td class="small">{{ item.location or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Frekuensi</th>
+              <td class="small fw-semibold">{{ item.frequency }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Terakhir</th>
+              <td class="small">{{ item.last_maintenance or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Berikutnya</th>
+              <td class="small fw-semibold {{ 'text-danger' if status=='overdue' else ('text-warning' if status=='upcoming' else '') }}">
+                {{ item.next_maintenance or '—' }}
+              </td></tr>
+          <tr><th class="text-muted fw-normal small">Estimasi Biaya</th>
+              <td class="small">
+                {% if item.cost_estimate %}Rp {{ '{:,.0f}'.format(item.cost_estimate) }}{% else %}—{% endif %}
+              </td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── PIC & Vendor ── #}
+  <div class="col-md-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-person-gear me-1" style="color:#6f42c1"></i>Vendor & PIC</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th class="text-muted fw-normal small" style="width:45%">Vendor</th>
+              <td class="small">{{ item.vendor or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">PIC Internal</th>
+              <td class="small">{{ item.pic or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Deskripsi</th>
+              <td class="small">{{ item.description or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal small">Catatan</th>
+              <td class="small">{{ item.notes or '—' }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Catat Pelaksanaan ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm" style="border-left:4px solid #6f42c1 !important">
+      <div class="card-header py-2 fw-bold small d-flex align-items-center gap-2">
+        <i class="bi bi-check2-circle" style="color:#6f42c1"></i>Catat Pelaksanaan Maintenance
+      </div>
+      <div class="card-body">
+        <form method="post" action="/aset/maintenance/{{ item.id }}/done" class="row g-2 align-items-end">
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Tanggal Dilaksanakan</label>
+            <input name="done_at" type="date" value="{{ today }}" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold">Dilakukan Oleh</label>
+            <input name="done_by" class="form-control form-control-sm" placeholder="Nama teknisi / vendor">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Hasil</label>
+            <select name="result" class="form-select form-select-sm">
+              <option value="OK">OK / Selesai</option>
+              <option value="Perlu Tindak Lanjut">Perlu Tindak Lanjut</option>
+              <option value="Gagal">Gagal</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Biaya Aktual (Rp)</label>
+            <input name="cost" type="number" step="1000" class="form-control form-control-sm" placeholder="0">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Catatan</label>
+            <input name="notes" class="form-control form-control-sm" placeholder="Opsional">
+          </div>
+          <div class="col-md-1">
+            <button type="submit" class="btn btn-primary btn-sm w-100">
+              <i class="bi bi-check-lg"></i> Catat
+            </button>
+          </div>
+        </form>
+        <div class="text-muted mt-2" style="font-size:.75rem">
+          <i class="bi bi-info-circle me-1"></i>
+          Setelah dicatat, jadwal maintenance berikutnya akan dihitung otomatis berdasarkan frekuensi
+          <strong>{{ item.frequency }}</strong>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Log Riwayat ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small d-flex align-items-center gap-2">
+        <i class="bi bi-clock-history" style="color:#6f42c1"></i>
+        Riwayat Pelaksanaan
+        {% if logs %}<span class="badge bg-secondary fw-normal">{{ logs|length }} entri</span>{% endif %}
+      </div>
+      {% if logs %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Tanggal</th>
+              <th>Dilakukan Oleh</th>
+              <th>Hasil</th>
+              <th>Biaya Aktual</th>
+              <th>Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for log in logs %}
+            <tr>
+              <td class="small fw-semibold">{{ log.done_at or '—' }}</td>
+              <td class="small">{{ log.done_by or '—' }}</td>
+              <td>
+                <span class="badge {{ 'bg-success' if log.result=='OK' else ('bg-warning text-dark' if log.result=='Perlu Tindak Lanjut' else 'bg-danger') }}">
+                  {{ log.result }}
+                </span>
+              </td>
+              <td class="small text-muted">
+                {% if log.cost %}Rp {{ '{:,.0f}'.format(log.cost) }}{% else %}—{% endif %}
+              </td>
+              <td class="small text-muted">{{ log.notes or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-muted small">
+        <i class="bi bi-info-circle me-1"></i>Belum ada riwayat pelaksanaan.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

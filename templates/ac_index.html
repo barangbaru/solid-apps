@@ -140,6 +140,50 @@
   </div>
 </div>
 
+{% if maintenance_alert %}
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold d-flex align-items-center gap-2">
+        <i class="bi bi-tools" style="color:#6f42c1"></i>
+        Maintenance Perlu Perhatian
+        <a href="/aset/maintenance" class="btn btn-sm btn-outline-secondary py-0 ms-auto" style="font-size:.75rem">
+          Lihat Semua
+        </a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+          <thead class="table-light">
+            <tr><th>Judul</th><th>Kategori</th><th>Lokasi</th><th>Frekuensi</th><th>Jadwal Berikutnya</th><th>Vendor / PIC</th></tr>
+          </thead>
+          <tbody>
+            {% for m in maintenance_alert %}
+            {% set is_overdue = m.next_maintenance < today %}
+            <tr class="{{ 'table-danger' if is_overdue else 'table-warning' }}">
+              <td>
+                <a href="/aset/maintenance/{{ m.id }}" class="text-decoration-none fw-semibold small">{{ m.title }}</a>
+              </td>
+              <td><span class="badge bg-light text-dark border" style="font-size:.7rem">{{ m.category }}</span></td>
+              <td class="small text-muted">{{ m.location or '—' }}</td>
+              <td class="small">{{ m.frequency }}</td>
+              <td class="small fw-semibold {{ 'text-danger' if is_overdue else 'text-warning' }}">
+                {{ m.next_maintenance }}
+                {% if is_overdue %}<span class="ms-1 badge bg-danger" style="font-size:.65rem">OVERDUE</span>{% endif %}
+              </td>
+              <td class="small text-muted">
+                {{ m.vendor or '' }}{% if m.vendor and m.pic %} / {% endif %}{{ m.pic or '' }}
+                {% if not m.vendor and not m.pic %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if recent_history %}
 <div class="row g-3">
   <div class="col-12">
