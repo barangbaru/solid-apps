@@ -7,6 +7,14 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.4] — 2026-06-20
+### Bug Fix
+- Fix "Memeriksa update..." tidak hilang: cek update dijalankan synchronous (blocking) bukan di thread terpisah, sehingga hasil langsung tersedia saat redirect
+- Fix riwayat versi kosong: efek samping dari error `column id` yang sudah fix di v1.4.3 — setelah fix ini, klik "Cek Sekarang" langsung menampilkan daftar semua tag dari GitHub
+- Flash message lebih informatif: tampilkan "Update tersedia: vX.Y.Z" atau "Sudah versi terbaru" sesuai hasil cek
+
+---
+
 ## [1.4.3] — 2026-06-20
 ### Bug Fix
 - Fix error `column "id" does not exist` saat INSERT ke tabel tanpa kolom `id` (misal `app_settings` yang pakai `key` sebagai PK)

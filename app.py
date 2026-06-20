@@ -6811,9 +6811,17 @@ def portal_update_check():
     notify_roles = [r.strip() for r in settings.get('update_notify_roles', 'superadmin,admin').split(',')]
     if role not in notify_roles:
         abort(403)
-    import threading
-    threading.Thread(target=check_for_updates, daemon=True).start()
-    flash('Memeriksa update dari GitHub...', 'info')
+    check_for_updates()
+    # Baca hasil cek untuk flash message yang informatif
+    _db2 = get_db()
+    _s2  = get_settings(_db2)
+    _lv  = _s2.get('update_latest_version', '')
+    if _s2.get('update_available', '0') == '1':
+        flash(f'Update tersedia: v{_lv}', 'info')
+    elif _lv:
+        flash(f'Hive sudah versi terbaru (v{_lv}).', 'success')
+    else:
+        flash('Pengecekan selesai.', 'secondary')
     return redirect(url_for('portal_update'))
 
 
