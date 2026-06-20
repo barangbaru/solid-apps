@@ -924,6 +924,14 @@ def init_db():
          'headset', '#0d9488', '#e6faf8', '/support/', 1, 0, 2, ''),
         ('booking', 'BookingCore', 'Pemesanan & penjadwalan ruangan, kendaraan & aset',
          'calendar2-check', '#d97706', '#fff8e1', '/booking/', 1, 0, 3, ''),
+        ('project', 'ProjectCore', 'Manajemen proyek, task & timeline tim',
+         'kanban', '#0ea5e9', '#e0f2fe', '/project/', 1, 1, 4, ''),
+        ('docs', 'DocsCore', 'Pengelolaan dokumen, SOP & knowledge base perusahaan',
+         'file-earmark-richtext', '#10b981', '#d1fae5', '/docs/', 1, 1, 5, ''),
+        ('finance', 'FinanceCore', 'Pencatatan keuangan, anggaran & laporan finansial',
+         'cash-coin', '#f59e0b', '#fef3c7', '/finance/', 1, 1, 6, ''),
+        ('helpdesk', 'HelpdeskCore', 'Helpdesk internal karyawan & manajemen tiket IT',
+         'headset', '#8b5cf6', '#ede9fe', '/helpdesk/', 1, 1, 7, ''),
     ]
     for slug, name, desc, icon, color, bg, url, active, soon, sort, perm in _apps:
         db.execute('''INSERT INTO superapp_apps
