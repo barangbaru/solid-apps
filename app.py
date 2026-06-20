@@ -995,11 +995,12 @@ def init_db():
             (code,name,priority,response_time_hours,workaround_time_hours,resolution_time_hours,maintenance_type,description)
             VALUES(?,?,?,?,?,?,?,?)''', (code, name, prio, resp, wta, reso, mtype, desc))
     db.commit()
-    # Pastikan semua user existing punya akses ke evaluasi (default)
-    db.execute('''
-        INSERT OR IGNORE INTO user_app_access(user_id, app_slug, app_role, is_active)
-        SELECT id, 'evaluasi', role, 1 FROM users
-    ''')
+    # Pastikan superadmin punya akses ke semua app (hanya jika belum ada)
+    sa = db.execute("SELECT id FROM users WHERE role='superadmin' LIMIT 1").fetchone()
+    if sa:
+        for _slug in ['evaluasi', 'aset', 'support', 'booking']:
+            db.execute('''INSERT OR IGNORE INTO user_app_access(user_id,app_slug,app_role,is_active)
+                VALUES(?,?,?,1)''', (sa['id'], _slug, 'superadmin'))
     db.commit()
     # Database indexes untuk kolom yang sering di-WHERE/JOIN
     _indexes = [
