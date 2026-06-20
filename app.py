@@ -1005,17 +1005,21 @@ def init_db():
     for idx_name, tbl, cols in _indexes:
         db.execute(f'CREATE INDEX IF NOT EXISTS {idx_name} ON {tbl}({cols})')
     db.commit()
-    # Seed booking resources
-    _resources = [
-        ('Big Meeting Room', 'room', 'meeting', 20, 'Ruang rapat utama kapasitas besar', 'Lantai 3', '#0d6efd', 'people-fill', 1),
-        ('Small Meeting Room A', 'room', 'meeting', 8, 'Ruang rapat kecil A', 'Lantai 2', '#6f42c1', 'door-open', 2),
-        ('Small Meeting Room B', 'room', 'meeting', 8, 'Ruang rapat kecil B', 'Lantai 2', '#20c997', 'door-open', 3),
-        ('Lounge Room', 'room', 'lounge', 15, 'Area lounge untuk diskusi santai', 'Lantai 1', '#fd7e14', 'cup-hot-fill', 4),
-        ('Mobil Operasional', 'vehicle', 'car', 6, 'Kendaraan operasional perusahaan', 'Parkir Basement', '#d97706', 'car-front-fill', 5),
-    ]
-    for name, rtype, subtype, cap, desc, loc, color, icon, sort in _resources:
-        db.execute('''INSERT OR IGNORE INTO bk_resources(name,type,subtype,capacity,description,location,color,icon,sort_order)
-            VALUES(?,?,?,?,?,?,?,?,?)''', (name, rtype, subtype, cap, desc, loc, color, icon, sort))
+    # Hapus duplikat bk_resources — pertahankan baris dengan id terkecil per nama
+    db.execute('''DELETE FROM bk_resources WHERE id NOT IN (
+        SELECT MIN(id) FROM bk_resources GROUP BY name)''')
+    # Seed booking resources hanya jika belum ada data
+    if db.execute('SELECT COUNT(*) FROM bk_resources').fetchone()[0] == 0:
+        _resources = [
+            ('Big Meeting Room', 'room', 'meeting', 20, 'Ruang rapat utama kapasitas besar', 'Lantai 3', '#0d6efd', 'people-fill', 1),
+            ('Small Meeting Room A', 'room', 'meeting', 8, 'Ruang rapat kecil A', 'Lantai 2', '#6f42c1', 'door-open', 2),
+            ('Small Meeting Room B', 'room', 'meeting', 8, 'Ruang rapat kecil B', 'Lantai 2', '#20c997', 'door-open', 3),
+            ('Lounge Room', 'room', 'lounge', 15, 'Area lounge untuk diskusi santai', 'Lantai 1', '#fd7e14', 'cup-hot-fill', 4),
+            ('Mobil Operasional', 'vehicle', 'car', 6, 'Kendaraan operasional perusahaan', 'Parkir Basement', '#d97706', 'car-front-fill', 5),
+        ]
+        for name, rtype, subtype, cap, desc, loc, color, icon, sort in _resources:
+            db.execute('''INSERT INTO bk_resources(name,type,subtype,capacity,description,location,color,icon,sort_order)
+                VALUES(?,?,?,?,?,?,?,?,?)''', (name, rtype, subtype, cap, desc, loc, color, icon, sort))
     db.commit()
     db.close()
 
