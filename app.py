@@ -1407,21 +1407,8 @@ def auto_set_active_app():
 
 @app.before_request
 def enforce_mfa_setup():
-    if 'user_id' not in session:
-        return
-    exempt = {'login', 'login_mfa', 'login_google', 'login_google_callback',
-              'logout', 'mfa_setup', 'mfa_challenge', 'static'}
-    if request.endpoint in exempt or (request.endpoint or '').startswith('static'):
-        return
-    try:
-        db   = get_db()
-        user = db.execute('SELECT mfa_enabled FROM users WHERE id=?',
-                          (session['user_id'],)).fetchone()
-        if user and not user['mfa_enabled']:
-            flash('Aktifkan Google Authenticator MFA terlebih dahulu untuk melanjutkan.', 'warning')
-            return redirect(url_for('mfa_setup'))
-    except Exception:
-        pass
+    # MFA tidak mandatory — hanya set flag reminder untuk banner di base.html
+    pass
 
 # ─── Score Helpers ──────────────────────────────────────────────────────────────
 
@@ -2072,6 +2059,7 @@ def login():
             session['username']  = user['username']
             session['user_name'] = user['full_name'] or user['username']
             session['user_role'] = user['role']
+            session['show_mfa_prompt'] = not bool(user['mfa_enabled'])
             db.execute('UPDATE users SET last_login=? WHERE id=?',
                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             db.commit()
@@ -2104,6 +2092,7 @@ def login_mfa():
             session['username']  = user['username']
             session['user_name'] = user['full_name'] or user['username']
             session['user_role'] = user['role']
+            session['show_mfa_prompt'] = False  # sudah MFA, tidak perlu prompt
             db.execute('UPDATE users SET last_login=? WHERE id=?',
                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             db.commit()
@@ -2261,6 +2250,7 @@ def login_google_callback():
     session['username']  = user['username']
     session['user_name'] = user['full_name'] or google_name or user['username']
     session['user_role'] = user['role']
+    session['show_mfa_prompt'] = not bool(user['mfa_enabled'])
     audit_log('login_google', 'users', user['id'],
               f'Login via Google ({google_email})', app_slug='portal')
     flash(f'Selamat datang, {session["user_name"]}!', 'success')
@@ -2316,7 +2306,16 @@ def mfa_setup():
                 return redirect(url_for('mfa_setup'))
             flash('Kode Authenticator salah. MFA tidak dinonaktifkan.', 'danger')
     mfa_on = bool(user['mfa_enabled'] and user['totp_secret'])
+    if mfa_on:
+        session['show_mfa_prompt'] = False
     return render_template('mfa_setup.html', user=user, step='intro', mfa_on=mfa_on)
+
+@app.route('/mfa/dismiss-prompt', methods=['POST'])
+@login_required
+def mfa_dismiss_prompt():
+    """User pilih 'Aktifkan Nanti' — sembunyikan prompt untuk sesi ini."""
+    session['show_mfa_prompt'] = False
+    return ('', 204)
 
 @app.route('/admin/users/<int:uid>/send-reset', methods=['POST'])
 @superadmin_required
