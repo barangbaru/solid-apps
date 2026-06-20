@@ -89,6 +89,30 @@ class _DBWrapper:
         sql = re.sub(r'\?', '%s', sql)
         if is_or_ignore:
             sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
+        # ── Konversi fungsi SQLite → PostgreSQL ───────────────────────────────
+        # julianday(col) - julianday('now') → (col::date - CURRENT_DATE)
+        sql = re.sub(
+            r"julianday\(([^)]+)\)\s*-\s*julianday\('now'\)",
+            r"(\1::date - CURRENT_DATE)",
+            sql, flags=re.IGNORECASE)
+        # julianday('now') - julianday(col) → (CURRENT_DATE - col::date)
+        sql = re.sub(
+            r"julianday\('now'\)\s*-\s*julianday\(([^)]+)\)",
+            r"(CURRENT_DATE - \1::date)",
+            sql, flags=re.IGNORECASE)
+        # julianday(col) sisa (standalone)
+        sql = re.sub(r"julianday\(([^)]+)\)", r"\1::date", sql, flags=re.IGNORECASE)
+        # date('now') → CURRENT_DATE
+        sql = re.sub(r"date\('now'\)", "CURRENT_DATE", sql, flags=re.IGNORECASE)
+        # datetime('now','localtime') → NOW()  (di query DML, bukan DDL)
+        sql = re.sub(r"datetime\('now',\s*'localtime'\)", "NOW()", sql, flags=re.IGNORECASE)
+        # datetime('now') → NOW()
+        sql = re.sub(r"datetime\('now'\)", "NOW()", sql, flags=re.IGNORECASE)
+        # strftime('%Y-%m-%d', col) → TO_CHAR(col::date, 'YYYY-MM-DD')
+        sql = re.sub(
+            r"strftime\('%Y-%m-%d',\s*([^)]+)\)",
+            r"TO_CHAR(\1::date, 'YYYY-MM-DD')",
+            sql, flags=re.IGNORECASE)
         return sql
 
     @property
