@@ -7,6 +7,15 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.9] — 2026-06-20
+### Peningkatan
+- Update Center: halaman auto-refresh setelah deploy selesai dengan countdown (`✓ Selesai — reload (4s)`)
+- Banner hijau "Update berhasil!" muncul otomatis setelah reload (via sessionStorage)
+- Jika server restart (SSE putus), countdown 6 detik lalu reload otomatis
+- Fallback polling: jika log tidak ada aktivitas 30 detik, halaman reload otomatis untuk cek status terbaru
+
+---
+
 ## [1.4.8] — 2026-06-20
 ### Bug Fix
 - Fix in-app update trigger tidak berjalan: `ExecStartPre` multi-line bash di systemd service file tidak di-parse benar → VERSION kosong, output `date` kacau
