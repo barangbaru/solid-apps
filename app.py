@@ -2886,7 +2886,8 @@ def portal_user_add():
         username  = request.form.get('username', '').strip()
         full_name = request.form.get('full_name', '').strip()
         password  = request.form.get('password', '')
-        role      = request.form.get('role', 'admin')
+        # role portal: hanya set jika access_portal dicentang, default viewer
+        role      = request.form.get('role', 'viewer') if request.form.get('access_portal') else 'viewer'
         email     = request.form.get('email', '').strip()
         phone     = request.form.get('phone', '').strip()
         telegram  = request.form.get('telegram_id', '').strip()
@@ -2904,7 +2905,6 @@ def portal_user_add():
                 new_uid = cur.lastrowid
                 if emp_id:
                     db.execute('UPDATE employees SET user_id=? WHERE id=? AND user_id IS NULL', (new_uid, emp_id))
-                # Simpan per-app access dari form
                 for a in apps:
                     if request.form.get(f'access_{a["slug"]}'):
                         app_role = request.form.get(f'role_{a["slug"]}', 'admin')
@@ -2942,7 +2942,7 @@ def portal_user_edit(uid):
 
     if request.method == 'POST':
         full_name = request.form.get('full_name', '').strip()
-        role      = request.form.get('role', user['role'])
+        role      = request.form.get('role', 'viewer') if request.form.get('access_portal') else 'viewer'
         is_active = 1 if request.form.get('is_active') else 0
         email     = request.form.get('email', '').strip()
         phone     = request.form.get('phone', '').strip()
@@ -5856,14 +5856,15 @@ def emp_promote_role(emp_id):
         flash('Karyawan tidak ditemukan', 'danger')
         return redirect(url_for('karyawan'))
 
-    role = request.form.get('role', 'admin')
+    # role portal: hanya set jika access_portal dicentang, default viewer
+    role = request.form.get('role', 'viewer') if request.form.get('access_portal') else 'viewer'
     apps = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1').fetchall()
 
     def _save_app_access(uid):
         db.execute('DELETE FROM user_app_access WHERE user_id=?', (uid,))
         for a in apps:
             if request.form.get(f'access_{a["slug"]}'):
-                app_role = request.form.get(f'role_{a["slug"]}', role)
+                app_role = request.form.get(f'role_{a["slug"]}', 'admin')
                 db.execute('INSERT INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)',
                            (uid, a['slug'], app_role))
 

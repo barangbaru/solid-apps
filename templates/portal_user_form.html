@@ -156,24 +156,31 @@
       </div>
       <div class="mb-3">
 
-        {# ── Portal / Manajemen (selalu ada, wajib) ── #}
-        <div class="card border-primary mb-2">
-          <div class="card-body py-2 px-3 bg-primary bg-opacity-5">
+        {# ── Portal / Manajemen (opsional, checkbox) ── #}
+        {% set portal_role = user.role if user and user.role not in ('', None) else '' %}
+        {% set portal_checked = portal_role and portal_role != 'viewer' %}
+        <div class="card border mb-2">
+          <div class="card-body py-2 px-3">
             <div class="d-flex align-items-center justify-content-between gap-2">
-              <div class="d-flex align-items-center gap-2">
-                <i class="bi bi-shield-lock text-primary fs-5"></i>
-                <div>
-                  <div class="fw-semibold small">Portal / Manajemen</div>
-                  <div class="text-muted" style="font-size:.7rem">Login & akses panel admin</div>
-                </div>
+              <div class="form-check mb-0 d-flex align-items-center gap-2">
+                <input class="form-check-input" type="checkbox"
+                       name="access_portal" id="acc_portal"
+                       value="1" {{ 'checked' if portal_checked }}
+                       onchange="toggleAppRole('portal', this.checked)">
+                <label class="form-check-label fw-semibold small mb-0" for="acc_portal">
+                  <i class="bi bi-shield-lock me-1 text-primary"></i>Portal / Manajemen
+                  <span class="text-muted fw-normal" style="font-size:.7rem"> — akses panel admin</span>
+                </label>
               </div>
-              <select name="role" class="form-select form-select-sm" style="min-width:140px">
-                {% for r in global_roles %}
-                <option value="{{ r.name }}" {{ 'selected' if user and user.role == r.name }}>
-                  {{ r.name }}{% if r.description %} — {{ r.description }}{% endif %}
-                </option>
-                {% endfor %}
-              </select>
+              <div id="roleWrap_portal" style="{{ '' if portal_checked else 'opacity:.4;pointer-events:none' }}">
+                <select name="role" class="form-select form-select-sm" style="min-width:140px">
+                  {% for r in global_roles %}
+                  {% if r.name != 'viewer' %}
+                  <option value="{{ r.name }}" {{ 'selected' if portal_role == r.name }}>{{ r.name }}</option>
+                  {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
             </div>
           </div>
         </div>
