@@ -1318,8 +1318,13 @@ def inject_globals():
             portal_apps = db.execute(
                 'SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order, name'
             ).fetchall()
+            bk_resources = db.execute(
+                'SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order, name'
+            ).fetchall()
         except Exception:
-            pass
+            bk_resources = []
+    else:
+        bk_resources = []
     return {
         'current_user': {
             'id':       session.get('user_id'),
@@ -1335,6 +1340,7 @@ def inject_globals():
         'user_perms':      user_perms,
         'ALL_PERMISSIONS': ALL_PERMISSIONS,
         'portal_apps':      portal_apps,
+        'bk_resources':     bk_resources,
         'current_app_slug': session.get('active_app') or 'portal',
     }
 
@@ -6534,6 +6540,31 @@ def booking_new():
 
     pre_resource = request.args.get('resource', type=int)
     return render_template('booking_form.html', resources=resources, pre_resource=pre_resource)
+
+
+@app.route('/booking/resource/<int:rid>')
+def booking_resource_detail(rid):
+    redir = _bk_require_access()
+    if redir: return redir
+    db = get_db()
+    resource = db.execute('SELECT * FROM bk_resources WHERE id=? AND is_active=1', (rid,)).fetchone()
+    if not resource:
+        flash('Resource tidak ditemukan.', 'danger')
+        return redirect(url_for('booking_index'))
+    from datetime import datetime as _dt
+    today = _dt.now().date().isoformat()
+    upcoming = db.execute('''
+        SELECT b.*,u.full_name booker_name FROM bk_bookings b
+        JOIN users u ON u.id=b.booked_by
+        WHERE b.resource_id=? AND b.status!='cancelled' AND date(b.start_dt)>=?
+        ORDER BY b.start_dt LIMIT 30''', (rid, today)).fetchall()
+    past = db.execute('''
+        SELECT b.*,u.full_name booker_name FROM bk_bookings b
+        JOIN users u ON u.id=b.booked_by
+        WHERE b.resource_id=? AND b.status!='cancelled' AND date(b.start_dt)<?
+        ORDER BY b.start_dt DESC LIMIT 10''', (rid, today)).fetchall()
+    return render_template('booking_resource.html', resource=resource,
+                           upcoming=upcoming, past=past, today=today)
 
 
 @app.route('/booking/<int:bid>')

@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% block title %}{{ resource.name }} — BookingCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ resource.name }}</span>{% endblock %}
+
+{% block content %}
+{# ── Header resource info ── #}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+           style="width:60px;height:60px;background:{{ resource.color }}22;box-shadow:0 4px 16px {{ resource.color }}33">
+        <i class="bi bi-{{ resource.icon }}" style="font-size:1.8rem;color:{{ resource.color }}"></i>
+      </div>
+      <div>
+        <h5 class="fw-bold mb-0">{{ resource.name }}</h5>
+        <div class="text-muted small">
+          <span class="badge me-1" style="background:{{ resource.color }}22;color:{{ resource.color }};border:1px solid {{ resource.color }}44">
+            {{ 'Ruangan' if resource.type == 'room' else 'Kendaraan' }}
+            {% if resource.subtype %} — {{ resource.subtype }}{% endif %}
+          </span>
+        </div>
+      </div>
+      <a href="/booking/new?resource={{ resource.id }}" class="btn btn-warning btn-sm text-white ms-auto">
+        <i class="bi bi-plus-circle me-1"></i>Buat Booking
+      </a>
+    </div>
+    <div class="row g-3">
+      {% if resource.capacity %}
+      <div class="col-auto">
+        <div class="d-flex align-items-center gap-2 text-muted small">
+          <i class="bi bi-people" style="color:{{ resource.color }}"></i>
+          <span>Kapasitas <strong class="text-dark">{{ resource.capacity }} orang</strong></span>
+        </div>
+      </div>
+      {% endif %}
+      {% if resource.location %}
+      <div class="col-auto">
+        <div class="d-flex align-items-center gap-2 text-muted small">
+          <i class="bi bi-geo-alt" style="color:{{ resource.color }}"></i>
+          <span>Lokasi <strong class="text-dark">{{ resource.location }}</strong></span>
+        </div>
+      </div>
+      {% endif %}
+      {% if resource.description %}
+      <div class="col-12">
+        <div class="text-muted small"><i class="bi bi-info-circle me-1"></i>{{ resource.description }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── Upcoming bookings ── #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header py-2 fw-bold d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-calendar-check text-success me-1"></i>Booking Mendatang</span>
+    <span class="badge bg-success-subtle text-success border border-success-subtle">{{ upcoming|length }}</span>
+  </div>
+  {% if upcoming %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">Judul</th>
+          <th>Tanggal</th>
+          <th>Jam</th>
+          <th>Peserta</th>
+          <th>Pemesan</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in upcoming %}
+        <tr>
+          <td class="ps-3 fw-semibold">
+            <a href="/booking/{{ b.id }}" class="text-decoration-none text-dark">{{ b.title }}</a>
+            {% if b.is_recurring and not b.parent_id %}
+            <span class="badge bg-info text-dark ms-1" style="font-size:.6rem"><i class="bi bi-arrow-repeat"></i></span>
+            {% endif %}
+            {% if b.purpose %}<div class="text-muted small">{{ b.purpose[:60] }}{% if b.purpose|length > 60 %}…{% endif %}</div>{% endif %}
+          </td>
+          <td class="small">
+            {% set d = b.start_dt[:10] %}
+            <span class="{{ 'fw-bold text-success' if d == today }}">
+              {{ d }}{% if d == today %} <span class="badge bg-success" style="font-size:.6rem">Hari ini</span>{% endif %}
+            </span>
+          </td>
+          <td class="small text-muted">{{ b.start_dt[11:16] }} – {{ b.end_dt[11:16] }}</td>
+          <td class="small text-muted">{{ b.attendee_count or '—' }}{% if b.attendee_count %} orang{% endif %}</td>
+          <td class="small">{{ b.booker_name }}</td>
+          <td class="text-end pe-3">
+            <a href="/booking/{{ b.id }}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-center text-muted py-4">
+    <i class="bi bi-calendar-x" style="font-size:2rem;opacity:.3"></i>
+    <div class="mt-2 small">Belum ada booking mendatang untuk resource ini.</div>
+    <a href="/booking/new?resource={{ resource.id }}" class="btn btn-warning btn-sm text-white mt-3">
+      <i class="bi bi-plus-circle me-1"></i>Buat Booking Pertama
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Past bookings ── #}
+{% if past %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-bold d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-clock-history text-muted me-1"></i>Riwayat Booking</span>
+    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">{{ past|length }} terakhir</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="opacity:.75">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">Judul</th>
+          <th>Tanggal</th>
+          <th>Jam</th>
+          <th>Pemesan</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in past %}
+        <tr>
+          <td class="ps-3 fw-semibold">
+            <a href="/booking/{{ b.id }}" class="text-decoration-none text-dark">{{ b.title }}</a>
+            {% if b.purpose %}<div class="text-muted small">{{ b.purpose[:60] }}…</div>{% endif %}
+          </td>
+          <td class="small text-muted">{{ b.start_dt[:10] }}</td>
+          <td class="small text-muted">{{ b.start_dt[11:16] }} – {{ b.end_dt[11:16] }}</td>
+          <td class="small text-muted">{{ b.booker_name }}</td>
+          <td class="text-end pe-3">
+            <a href="/booking/{{ b.id }}" class="btn btn-sm btn-outline-secondary btn-sm">
+              <i class="bi bi-eye"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

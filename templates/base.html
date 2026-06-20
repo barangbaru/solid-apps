@@ -461,37 +461,32 @@
       </a>
     </li>
   </ul>
+  {% set room_resources = bk_resources | selectattr('type', 'equalto', 'room') | list %}
+  {% set vehicle_resources = bk_resources | selectattr('type', 'equalto', 'vehicle') | list %}
+  {% if room_resources %}
   <div class="sidebar-section">Ruangan</div>
   <ul class="sidebar-nav">
+    {% for r in room_resources %}
     <li>
-      <a href="/booking/?resource=1" class="{{ 'active' if request.args.get('resource')=='1' }}">
-        <i class="bi bi-people-fill nav-icon"></i> Big Meeting Room
+      <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
+        <i class="bi bi-{{ r.icon }} nav-icon"></i> {{ r.name }}
       </a>
     </li>
-    <li>
-      <a href="/booking/?resource=2" class="{{ 'active' if request.args.get('resource')=='2' }}">
-        <i class="bi bi-door-open nav-icon"></i> Small Room A
-      </a>
-    </li>
-    <li>
-      <a href="/booking/?resource=3" class="{{ 'active' if request.args.get('resource')=='3' }}">
-        <i class="bi bi-door-open nav-icon"></i> Small Room B
-      </a>
-    </li>
-    <li>
-      <a href="/booking/?resource=4" class="{{ 'active' if request.args.get('resource')=='4' }}">
-        <i class="bi bi-cup-hot-fill nav-icon"></i> Lounge Room
-      </a>
-    </li>
+    {% endfor %}
   </ul>
+  {% endif %}
+  {% if vehicle_resources %}
   <div class="sidebar-section">Kendaraan</div>
   <ul class="sidebar-nav">
+    {% for r in vehicle_resources %}
     <li>
-      <a href="/booking/?resource=5" class="{{ 'active' if request.args.get('resource')=='5' }}">
-        <i class="bi bi-car-front-fill nav-icon"></i> Mobil Operasional
+      <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
+        <i class="bi bi-{{ r.icon }} nav-icon"></i> {{ r.name }}
       </a>
     </li>
+    {% endfor %}
   </ul>
+  {% endif %}
 
   {% elif current_app_slug == 'aset' %}
   {# ── App sidebar: AssetCore ── #}
