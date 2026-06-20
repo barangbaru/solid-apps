@@ -103,6 +103,8 @@ class _DBWrapper:
             sql, flags=re.IGNORECASE)
         # julianday(col) sisa (standalone)
         sql = re.sub(r"julianday\(([^)]+)\)", r"\1::date", sql, flags=re.IGNORECASE)
+        # last_insert_rowid() → lastval()
+        sql = re.sub(r'\blast_insert_rowid\s*\(\s*\)', 'lastval()', sql, flags=re.IGNORECASE)
         # date('now') → CURRENT_DATE  (harus sebelum pola date(col) di bawah)
         sql = re.sub(r"date\('now'\)", "CURRENT_DATE", sql, flags=re.IGNORECASE)
         # date(col_expr) → (col_expr)::date  — konversi SQLite date() ke PostgreSQL cast

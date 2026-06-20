@@ -7,6 +7,15 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.2] — 2026-06-20
+### Bug Fix
+- Fix `last_insert_rowid()` SQLite → `lastval()` PostgreSQL di `_fix()`
+  Berlaku untuk: tambah kontrak baru (SupportCore) & booking recurring (BookingCore)
+- Audit lengkap seluruh query: tidak ada lagi `IFNULL`, `GROUP_CONCAT`, `GLOB`, `PRINTF` SQLite-specific
+- `datetime DEFAULT` di SCHEMA sudah dihandle `_pg_adapt_schema()` → `NOW()`
+
+---
+
 ## [1.4.1] — 2026-06-20
 ### Bug Fix
 - Fix image resource BookingCore tidak bisa dibuka: `date(col)` SQLite tidak dikenal PostgreSQL

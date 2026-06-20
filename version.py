@@ -1,3 +1,3 @@
-VERSION = "1.4.1"
+VERSION = "1.4.2"
 RELEASE_DATE = "2026-06-20"
-RELEASE_NOTES = "Fix: konversi date(col) SQLite → PostgreSQL, image resource BookingCore bisa dibuka"
+RELEASE_NOTES = "Fix: last_insert_rowid() → lastval() untuk PostgreSQL"
