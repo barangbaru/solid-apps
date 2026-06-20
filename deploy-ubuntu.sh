@@ -87,7 +87,7 @@ if $IS_UPDATE; then
             NEWER_TAGS="$ALL_TAGS"
         fi
 
-        TAG_COUNT=$(echo "$NEWER_TAGS" | grep -c '^v' 2>/dev/null || echo 0)
+        TAG_COUNT=$(echo "$NEWER_TAGS" | grep -c '^v' 2>/dev/null); TAG_COUNT=${TAG_COUNT:-0}
 
         if [ "$TAG_COUNT" -gt 1 ] && [ -z "$TARGET_VERSION" ]; then
             echo ""
@@ -401,12 +401,52 @@ if ! grep -q "$DATA_DIR" /etc/systemd/system/${SERVICE_NAME}.service; then
         /etc/systemd/system/${SERVICE_NAME}.service
 fi
 
-# Install hive-update path/service unit (in-app update trigger)
+# Install hive-update path/service unit + wrapper script
 if [ -f "$APP_DIR/hive-update.path" ]; then
     cp "$APP_DIR/hive-update.path"    /etc/systemd/system/hive-update.path
     cp "$APP_DIR/hive-update.service" /etc/systemd/system/hive-update.service
+
+    # Buat wrapper script yang dipanggil oleh hive-update.service
+    cat > /usr/local/bin/hive-update-run.sh << 'WRAPPER_EOF'
+#!/bin/bash
+TRIGGER=/tmp/hive_update_trigger
+LOG=/tmp/hive_update.log
+DEPLOY=/var/www/evaluasi/deploy-ubuntu.sh
+
+# Baca versi dari trigger file
+VERSION=""
+if [ -f "$TRIGGER" ]; then
+    VERSION=$(cat "$TRIGGER" | tr -d '[:space:]')
+    rm -f "$TRIGGER"
+fi
+
+# Header log
+{
+    echo ""
+    echo "=== Hive Auto Update ==="
+    echo "Target versi : ${VERSION:-latest}"
+    echo "Waktu        : $(date '+%Y-%m-%d %H:%M:%S')"
+    echo ""
+} > "$LOG"
+
+# Jalankan deploy
+if [ -n "$VERSION" ]; then
+    bash "$DEPLOY" --auto --version "$VERSION" >> "$LOG" 2>&1
+else
+    bash "$DEPLOY" --auto >> "$LOG" 2>&1
+fi
+
+if [ $? -eq 0 ]; then
+    echo "HIVE_DEPLOY_DONE" >> "$LOG"
+else
+    echo "HIVE_DEPLOY_FAILED" >> "$LOG"
+fi
+WRAPPER_EOF
+    chmod +x /usr/local/bin/hive-update-run.sh
+
+    systemctl daemon-reload
     systemctl enable hive-update.path
-    systemctl start  hive-update.path
+    systemctl restart hive-update.path
     success "hive-update.path aktif (in-app update trigger siap)."
 fi
 

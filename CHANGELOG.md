@@ -7,6 +7,14 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.8] — 2026-06-20
+### Bug Fix
+- Fix in-app update trigger tidak berjalan: `ExecStartPre` multi-line bash di systemd service file tidak di-parse benar → VERSION kosong, output `date` kacau
+- Solusi: ganti `hive-update.service` agar memanggil wrapper script `/usr/local/bin/hive-update-run.sh` yang di-install otomatis saat `deploy-ubuntu.sh` dijalankan
+- Fix `TAG_COUNT` integer error (line 92): `grep -c` no-match exit 1 menyebabkan double-output `0\n0` → fix dengan `${TAG_COUNT:-0}` terpisah
+
+---
+
 ## [1.4.7] — 2026-06-20
 ### Peningkatan
 - Riwayat Versi: tampilkan 5 versi terbaru saja
