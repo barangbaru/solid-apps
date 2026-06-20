@@ -1,3 +1,3 @@
-VERSION = "1.4.6"
+VERSION = "1.4.7"
 RELEASE_DATE = "2026-06-20"
-RELEASE_NOTES = "Fix: status badge riwayat versi menggunakan perbandingan semver, versi lebih baru dari terpasang tampil 'Belum Terpasang'"
+RELEASE_NOTES = "Riwayat Versi: tampilkan 5 versi terbaru saja"

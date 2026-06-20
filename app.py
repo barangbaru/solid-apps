@@ -6800,7 +6800,7 @@ def portal_update():
                 item['status'] = 'newer'   # lebih baru dari terpasang
             else:
                 item['status'] = 'old'
-        all_tags = _raw
+        all_tags = _raw[:5]
     except Exception:
         all_tags = []
 

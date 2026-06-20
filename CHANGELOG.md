@@ -7,6 +7,12 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.7] — 2026-06-20
+### Peningkatan
+- Riwayat Versi: tampilkan 5 versi terbaru saja
+
+---
+
 ## [1.4.6] — 2026-06-20
 ### Bug Fix
 - Fix status badge Riwayat Versi: sebelumnya semua versi selain `latest_version` dibadge "Lama", padahal bisa saja ada versi lebih baru dari yang terpasang tapi bukan latest
