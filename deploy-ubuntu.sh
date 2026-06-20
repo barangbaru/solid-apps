@@ -1,12 +1,21 @@
 #!/bin/bash
 # deploy-ubuntu.sh — Install & Update Hive di Ubuntu 20.04/22.04/24.04
-# Jalankan sebagai root: sudo bash deploy-ubuntu.sh
+# Jalankan sebagai root: sudo bash deploy-ubuntu.sh [--version vX.Y.Z]
 #
 # Idempotent — aman dijalankan berulang:
 #   Install baru  : setup lengkap dari nol
 #   Update/redeploy: tarik kode baru, update deps, restart — database TIDAK tersentuh
 
 set -e
+
+# ── Parse argumen ─────────────────────────────────────────────────────────────
+TARGET_VERSION=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --version) TARGET_VERSION="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
 
 # ── Warna output ──────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -22,9 +31,18 @@ DATA_DIR="/var/lib/evaluasi"
 SERVICE_NAME="evaluasi"
 REPO_URL="https://github.com/barangbaru/solid-apps.git"
 REPO_SUBDIR="."
+VERSION_FILE="$DATA_DIR/.deployed_version"
 
 IS_UPDATE=false
 [ -f "$APP_DIR/wsgi.py" ] && IS_UPDATE=true
+
+# ── Baca versi yang sudah terinstall ─────────────────────────────────────────
+CURRENT_VERSION="(belum terinstall)"
+if [ -f "$VERSION_FILE" ]; then
+    CURRENT_VERSION=$(cat "$VERSION_FILE")
+elif [ -f "$APP_DIR/version.py" ]; then
+    CURRENT_VERSION=$(grep '^VERSION' "$APP_DIR/version.py" 2>/dev/null | cut -d'"' -f2 || echo "unknown")
+fi
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════╗${NC}"
@@ -36,6 +54,72 @@ echo -e "${BOLD}║         MODE: INSTALL BARU               ║${NC}"
 fi
 echo -e "${BOLD}╚══════════════════════════════════════════╝${NC}"
 echo ""
+
+# ════════════════════════════════════════════════════════════════════════════
+# BAGIAN 0a — Cek versi & pilihan upgrade
+# ════════════════════════════════════════════════════════════════════════════
+if $IS_UPDATE; then
+    header "Cek Versi"
+
+    # Fetch semua tag dari GitHub tanpa clone penuh
+    apt-get install -y git -qq 2>/dev/null || true
+    TMPDIR_VER=$(mktemp -d)
+    git clone --bare --depth=1 "$REPO_URL" "$TMPDIR_VER/bare.git" -q 2>/dev/null || true
+
+    # Ambil semua tag yang ada di repo
+    ALL_TAGS=$(git -C "$TMPDIR_VER/bare.git" tag --sort=version:refname 2>/dev/null | grep '^v' || true)
+    rm -rf "$TMPDIR_VER"
+
+    # Ambil versi latest dari tag
+    LATEST_TAG=$(echo "$ALL_TAGS" | tail -1)
+    LATEST_VERSION=${LATEST_TAG#v}
+
+    info "Versi terinstall : $CURRENT_VERSION"
+    info "Versi terbaru    : ${LATEST_VERSION:-main (no tags)}"
+
+    if [ -n "$ALL_TAGS" ] && [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
+        # Filter tag yang lebih baru dari yang terinstall
+        if [ "$CURRENT_VERSION" != "(belum terinstall)" ] && [ "$CURRENT_VERSION" != "unknown" ]; then
+            NEWER_TAGS=$(echo "$ALL_TAGS" | awk -v cur="v$CURRENT_VERSION" 'BEGIN{found=0} $0==cur{found=1; next} found{print}')
+        else
+            NEWER_TAGS="$ALL_TAGS"
+        fi
+
+        TAG_COUNT=$(echo "$NEWER_TAGS" | grep -c '^v' 2>/dev/null || echo 0)
+
+        if [ "$TAG_COUNT" -gt 1 ] && [ -z "$TARGET_VERSION" ]; then
+            echo ""
+            echo -e "  ${BOLD}Ada $TAG_COUNT versi baru tersedia:${NC}"
+            echo "$NEWER_TAGS" | while read -r tag; do
+                echo -e "    ${CYAN}$tag${NC}"
+            done
+            echo ""
+            echo -e "  ${BOLD}[1]${NC} Upgrade ke versi terbaru sekaligus (${LATEST_TAG})"
+            echo -e "  ${BOLD}[2]${NC} Upgrade bertahap (satu versi per deploy)"
+            echo ""
+            read -rp "  Pilih [1/2] (default: 1): " UPGRADE_CHOICE
+            UPGRADE_CHOICE=${UPGRADE_CHOICE:-1}
+
+            if [ "$UPGRADE_CHOICE" = "2" ]; then
+                # Ambil tag paling awal dari yang lebih baru
+                STEP_TAG=$(echo "$NEWER_TAGS" | head -1)
+                TARGET_VERSION="${STEP_TAG#v}"
+                warn "Mode bertahap — upgrade ke $STEP_TAG dulu."
+                warn "Jalankan deploy ulang untuk versi berikutnya."
+            else
+                TARGET_VERSION="$LATEST_VERSION"
+                info "Upgrade ke versi terbaru: v$TARGET_VERSION"
+            fi
+        elif [ "$TAG_COUNT" -eq 1 ] && [ -z "$TARGET_VERSION" ]; then
+            TARGET_VERSION=$(echo "$NEWER_TAGS" | head -1 | sed 's/^v//')
+            info "Update ke v$TARGET_VERSION"
+        fi
+    else
+        if [ -z "$TARGET_VERSION" ]; then
+            info "Sudah versi terbaru — deploy ulang kode yang sama."
+        fi
+    fi
+fi
 
 # ════════════════════════════════════════════════════════════════════════════
 # BAGIAN 0 — Pilihan Database (hanya saat install baru atau paksa re-config)
@@ -165,9 +249,17 @@ fi
 # ════════════════════════════════════════════════════════════════════════════
 # [2] Tarik kode terbaru
 # ════════════════════════════════════════════════════════════════════════════
-header "[2/7] Tarik kode terbaru dari GitHub"
+header "[2/7] Tarik kode dari GitHub"
 TMPDIR_DEPLOY=$(mktemp -d)
-git clone --depth=1 "$REPO_URL" "$TMPDIR_DEPLOY/repo" -q
+if [ -n "$TARGET_VERSION" ]; then
+    info "Clone tag v$TARGET_VERSION..."
+    git clone --depth=1 --branch "v$TARGET_VERSION" "$REPO_URL" "$TMPDIR_DEPLOY/repo" -q \
+        || { warn "Tag v$TARGET_VERSION tidak ditemukan, clone dari main..."; \
+             git clone --depth=1 "$REPO_URL" "$TMPDIR_DEPLOY/repo" -q; }
+else
+    info "Clone branch main (latest)..."
+    git clone --depth=1 "$REPO_URL" "$TMPDIR_DEPLOY/repo" -q
+fi
 rsync -a --delete \
     --exclude='.env' \
     --exclude='venv/' \
@@ -333,6 +425,14 @@ systemctl restart "$SERVICE_NAME"
 sleep 2
 systemctl status "$SERVICE_NAME" --no-pager -l
 
+# Catat versi yang baru saja di-deploy
+DEPLOYED_VERSION=$(grep '^VERSION' "$APP_DIR/version.py" 2>/dev/null | cut -d'"' -f2 || echo "unknown")
+mkdir -p "$DATA_DIR"
+echo "$DEPLOYED_VERSION" > "$VERSION_FILE"
+# Tambahkan ke history log
+echo "$(date '+%Y-%m-%d %H:%M:%S') | v$DEPLOYED_VERSION | $(hostname)" >> "$DATA_DIR/.deploy_history"
+success "Versi v$DEPLOYED_VERSION tercatat di $VERSION_FILE"
+
 # ════════════════════════════════════════════════════════════════════════════
 # [7] Nginx
 # ════════════════════════════════════════════════════════════════════════════
@@ -384,6 +484,7 @@ fi
 echo -e "${BOLD}╚══════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "  URL       : ${CYAN}http://$(hostname -I | awk '{print $1}')${NC}"
+echo -e "  Versi     : ${CYAN}v$DEPLOYED_VERSION${NC}  (sebelumnya: $CURRENT_VERSION)"
 if [ "$DB_TYPE" = "postgresql" ]; then
 echo -e "  Database  : ${CYAN}PostgreSQL — $PG_USER@$PG_HOST:$PG_PORT/$PG_NAME${NC}"
 else
@@ -391,6 +492,7 @@ echo -e "  Database  : ${CYAN}SQLite — $DATA_DIR/evaluasi.db${NC}"
 fi
 echo -e "  Config    : ${CYAN}$APP_DIR/.env${NC}"
 echo -e "  Log       : ${CYAN}journalctl -u evaluasi -f${NC}"
+echo -e "  History   : ${CYAN}cat $DATA_DIR/.deploy_history${NC}"
 echo -e "  Update    : ${CYAN}sudo bash $APP_DIR/deploy-ubuntu.sh${NC}"
 echo ""
 if ! $IS_UPDATE; then

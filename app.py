@@ -7,6 +7,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, date, timedelta
 from seed_data import ALL_DIVISIONS, ABILITY_ITEMS
+from version import VERSION, RELEASE_DATE, RELEASE_NOTES
 import pyotp, qrcode
 
 app = Flask(__name__)
@@ -1668,6 +1669,8 @@ def inject_globals():
         'portal_apps':      portal_apps,
         'bk_resources':     bk_resources,
         'current_app_slug': session.get('active_app') or 'portal',
+        'app_version':      VERSION,
+        'app_release_date': RELEASE_DATE,
     }
 
 # ─── Auto-set active_app dari URL path ────────────────────────────────────────
