@@ -32,6 +32,21 @@ _default_db = os.path.join(os.path.dirname(__file__), 'evaluasi.db')
 DB_PATH = os.environ.get('DATABASE_PATH', _default_db)
 DIVISI_LIST = list(ALL_DIVISIONS.keys())
 
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+ALLOWED_IMAGE_EXT = {'jpg', 'jpeg', 'png', 'webp', 'gif'}
+
+def _save_upload(file_obj, subfolder=''):
+    import uuid
+    ext = file_obj.filename.rsplit('.', 1)[-1].lower()
+    if ext not in ALLOWED_IMAGE_EXT:
+        return None
+    folder = os.path.join(UPLOAD_FOLDER, subfolder)
+    os.makedirs(folder, exist_ok=True)
+    fname = uuid.uuid4().hex + '.' + ext
+    file_obj.save(os.path.join(folder, fname))
+    return f'/static/uploads/{subfolder}/{fname}' if subfolder else f'/static/uploads/{fname}'
+
 def get_divisi_list(db):
     try:
         rows = db.execute('SELECT name FROM divisions WHERE is_active=1 ORDER BY sort_order, name').fetchall()
@@ -721,6 +736,9 @@ MIGRATIONS = [
     ('ac_licenses',          'updated_at',              "TEXT DEFAULT ''"),
     ('ac_subscriptions',     'updated_at',              "TEXT DEFAULT ''"),
     ('ac_software_requests', 'updated_at',              "TEXT DEFAULT ''"),
+    ('bk_resources',         'image',                   "TEXT DEFAULT ''"),
+    ('bk_resources',         'facilities',              "TEXT DEFAULT ''"),
+    ('bk_resources',         'notes',                   "TEXT DEFAULT ''"),
 ]
 
 SC_TICKET_STATUSES = [
@@ -6565,6 +6583,93 @@ def booking_resource_detail(rid):
         ORDER BY b.start_dt DESC LIMIT 10''', (rid, today)).fetchall()
     return render_template('booking_resource.html', resource=resource,
                            upcoming=upcoming, past=past, today=today)
+
+
+@app.route('/booking/resource/<int:rid>/edit', methods=['GET', 'POST'])
+@login_required
+def booking_resource_edit(rid):
+    redir = _bk_require_access()
+    if redir: return redir
+    db = get_db()
+    resource = db.execute('SELECT * FROM bk_resources WHERE id=?', (rid,)).fetchone()
+    if not resource:
+        flash('Resource tidak ditemukan.', 'danger')
+        return redirect(url_for('booking_index'))
+    if request.method == 'POST':
+        name       = request.form.get('name', '').strip()
+        rtype      = request.form.get('type', 'room')
+        subtype    = request.form.get('subtype', '').strip()
+        capacity   = request.form.get('capacity', 0, type=int)
+        location   = request.form.get('location', '').strip()
+        description= request.form.get('description', '').strip()
+        facilities = request.form.get('facilities', '').strip()
+        notes      = request.form.get('notes', '').strip()
+        color      = request.form.get('color', '#d97706').strip()
+        icon       = request.form.get('icon', 'door-open').strip()
+        sort_order = request.form.get('sort_order', 0, type=int)
+        is_active  = 1 if request.form.get('is_active') else 0
+        image      = resource['image'] or ''
+        # Handle image upload
+        f = request.files.get('image')
+        if f and f.filename:
+            saved = _save_upload(f, 'resources')
+            if saved:
+                image = saved
+            else:
+                flash('Format gambar tidak didukung. Gunakan JPG, PNG, atau WEBP.', 'warning')
+        # Handle remove image
+        if request.form.get('remove_image') == '1':
+            image = ''
+        if not name:
+            flash('Nama resource wajib diisi.', 'danger')
+        else:
+            db.execute('''UPDATE bk_resources SET name=?,type=?,subtype=?,capacity=?,
+                location=?,description=?,facilities=?,notes=?,color=?,icon=?,
+                sort_order=?,is_active=?,image=? WHERE id=?''',
+                (name, rtype, subtype, capacity, location, description,
+                 facilities, notes, color, icon, sort_order, is_active, image, rid))
+            db.commit()
+            flash('Resource berhasil diperbarui.', 'success')
+            return redirect(url_for('booking_resource_detail', rid=rid))
+    return render_template('booking_resource_edit.html', resource=resource)
+
+
+@app.route('/booking/resource/add', methods=['GET', 'POST'])
+@login_required
+def booking_resource_add():
+    redir = _bk_require_access()
+    if redir: return redir
+    db = get_db()
+    if request.method == 'POST':
+        name       = request.form.get('name', '').strip()
+        rtype      = request.form.get('type', 'room')
+        subtype    = request.form.get('subtype', '').strip()
+        capacity   = request.form.get('capacity', 0, type=int)
+        location   = request.form.get('location', '').strip()
+        description= request.form.get('description', '').strip()
+        facilities = request.form.get('facilities', '').strip()
+        notes      = request.form.get('notes', '').strip()
+        color      = request.form.get('color', '#d97706').strip()
+        icon       = request.form.get('icon', 'door-open').strip()
+        sort_order = request.form.get('sort_order', 0, type=int)
+        image      = ''
+        f = request.files.get('image')
+        if f and f.filename:
+            saved = _save_upload(f, 'resources')
+            if saved:
+                image = saved
+        if not name:
+            flash('Nama resource wajib diisi.', 'danger')
+        else:
+            db.execute('''INSERT INTO bk_resources(name,type,subtype,capacity,location,
+                description,facilities,notes,color,icon,sort_order,image)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                (name, rtype, subtype, capacity, location, description,
+                 facilities, notes, color, icon, sort_order, image))
+            db.commit()
+            flash(f'Resource "{name}" berhasil ditambahkan.', 'success')
+            return redirect(url_for('booking_index'))
+    return render_template('booking_resource_edit.html', resource=None)
 
 
 @app.route('/booking/<int:bid>')

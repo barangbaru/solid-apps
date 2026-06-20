@@ -1,0 +1,284 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if resource else 'Tambah' }} Resource — BookingCore{% endblock %}
+{% block page_title %}
+  <span class="breadcrumb-page">{{ 'Edit Resource' if resource else 'Tambah Resource' }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+<div class="col-lg-8 col-xl-7">
+
+<form method="post" enctype="multipart/form-data" id="resForm">
+
+{# ── Info Dasar ── #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header py-2 fw-bold">
+    <i class="bi bi-info-circle text-primary me-1"></i>Informasi Dasar
+  </div>
+  <div class="card-body p-4">
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold small">Nama <span class="text-danger">*</span></label>
+      <input type="text" name="name" class="form-control" required
+             value="{{ resource.name if resource else '' }}" placeholder="Contoh: Ruang Rapat Utama">
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label fw-semibold small">Tipe</label>
+        <select name="type" id="typeSelect" class="form-select" onchange="updateSubtype()">
+          <option value="room"    {{ 'selected' if resource and resource.type=='room' }}>Ruangan</option>
+          <option value="vehicle" {{ 'selected' if resource and resource.type=='vehicle' }}>Kendaraan</option>
+          <option value="other"   {{ 'selected' if resource and resource.type not in ('room','vehicle') }}>Lainnya</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold small">Sub-tipe</label>
+        <select name="subtype" id="subtypeSelect" class="form-select">
+          {# options filled by JS #}
+        </select>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label fw-semibold small">Kapasitas (orang)</label>
+        <input type="number" name="capacity" class="form-control" min="0"
+               value="{{ resource.capacity if resource else 0 }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold small">Lokasi</label>
+        <input type="text" name="location" class="form-control"
+               value="{{ resource.location if resource else '' }}" placeholder="Contoh: Lantai 3">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold small">Deskripsi Singkat</label>
+      <input type="text" name="description" class="form-control"
+             value="{{ resource.description if resource else '' }}"
+             placeholder="Deskripsi singkat tentang resource ini">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold small">Fasilitas</label>
+      <input type="text" name="facilities" class="form-control"
+             value="{{ resource.facilities if resource else '' }}"
+             placeholder="Contoh: AC, Proyektor, Whiteboard, TV 65 inch">
+      <div class="form-text">Pisahkan dengan koma</div>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold small">Catatan Tambahan</label>
+      <textarea name="notes" class="form-control" rows="2"
+                placeholder="Aturan penggunaan, prosedur booking, dll.">{{ resource.notes if resource else '' }}</textarea>
+    </div>
+
+  </div>
+</div>
+
+{# ── Foto / Gambar ── #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header py-2 fw-bold">
+    <i class="bi bi-image text-primary me-1"></i>Foto Ruangan / Kendaraan
+  </div>
+  <div class="card-body p-4">
+
+    {% if resource and resource.image %}
+    <div class="mb-3">
+      <div class="position-relative d-inline-block">
+        <img src="{{ resource.image }}" alt="{{ resource.name }}"
+             class="rounded-3 border" style="max-width:100%;max-height:260px;object-fit:cover">
+        <div class="mt-2">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="remove_image" id="removeImg" value="1"
+                   onchange="document.getElementById('imgPreviewWrap').style.display=this.checked?'none':'block'">
+            <label class="form-check-label small text-danger" for="removeImg">Hapus foto ini</label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <label class="form-label fw-semibold small">Ganti Foto</label>
+    {% else %}
+    <label class="form-label fw-semibold small">Upload Foto</label>
+    {% endif %}
+
+    <div class="border rounded-3 p-3 text-center" id="dropZone"
+         style="border-style:dashed!important;cursor:pointer;background:#f8f9fa"
+         onclick="document.getElementById('imgInput').click()">
+      <i class="bi bi-cloud-upload" style="font-size:2rem;color:#adb5bd"></i>
+      <div class="mt-1 text-muted small">Klik atau drag & drop foto di sini</div>
+      <div class="text-muted" style="font-size:.72rem">JPG, PNG, WEBP — maks. 5 MB</div>
+    </div>
+    <input type="file" name="image" id="imgInput" accept=".jpg,.jpeg,.png,.webp,.gif"
+           class="d-none" onchange="previewImage(this)">
+    <div id="previewBox" class="mt-2 d-none">
+      <img id="previewImg" src="" alt="preview"
+           class="rounded-3 border" style="max-width:100%;max-height:220px;object-fit:cover">
+      <button type="button" class="btn btn-sm btn-outline-danger mt-1"
+              onclick="clearImage()"><i class="bi bi-x-circle me-1"></i>Batal</button>
+    </div>
+
+  </div>
+</div>
+
+{# ── Tampilan & Urutan ── #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header py-2 fw-bold">
+    <i class="bi bi-palette text-primary me-1"></i>Tampilan & Urutan
+  </div>
+  <div class="card-body p-4">
+
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label fw-semibold small">Warna</label>
+        <div class="input-group">
+          <input type="color" name="color" id="colorPick" class="form-control form-control-color"
+                 value="{{ resource.color if resource else '#d97706' }}" title="Pilih warna" onchange="updateColorPreview()">
+          <input type="text" id="colorHex" class="form-control form-control-sm"
+                 value="{{ resource.color if resource else '#d97706' }}"
+                 onchange="document.getElementById('colorPick').value=this.value;updateColorPreview()">
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold small">Icon <span class="text-muted fw-normal">(Bootstrap Icons)</span></label>
+        <div class="input-group">
+          <span class="input-group-text" id="iconPreviewSpan"><i id="iconPreview" class="bi bi-door-open"></i></span>
+          <input type="text" name="icon" id="iconInput" class="form-control"
+                 value="{{ resource.icon if resource else 'door-open' }}"
+                 placeholder="door-open, people-fill, car-front-fill..."
+                 oninput="document.getElementById('iconPreview').className='bi bi-'+this.value">
+        </div>
+        <div class="form-text">
+          <span id="iconSuggestions">
+            {% for ic in ['door-open','people-fill','cup-hot-fill','car-front-fill','building','box-seam','bicycle','truck','camera-video','tv'] %}
+            <a href="#" class="badge bg-light text-dark border me-1 mb-1 text-decoration-none"
+               onclick="setIcon('{{ ic }}');return false"><i class="bi bi-{{ ic }} me-1"></i>{{ ic }}</a>
+            {% endfor %}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label fw-semibold small">Urutan Tampil</label>
+        <input type="number" name="sort_order" class="form-control" min="0"
+               value="{{ resource.sort_order if resource else 0 }}">
+      </div>
+      <div class="col-md-6 d-flex align-items-end">
+        <div class="form-check form-switch mb-1">
+          <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
+                 {{ 'checked' if not resource or resource.is_active }}>
+          <label class="form-check-label fw-semibold small" for="isActive">Resource Aktif</label>
+        </div>
+      </div>
+    </div>
+
+    {# Preview card #}
+    <div class="mt-4">
+      <div class="small fw-bold text-muted text-uppercase mb-2">Preview Card</div>
+      <div class="card border" style="max-width:260px;border-radius:16px!important">
+        <div class="card-body p-4">
+          <div class="d-flex align-items-start justify-content-between mb-3">
+            <div id="prevIconWrap" class="rounded-3 d-flex align-items-center justify-content-center"
+                 style="width:56px;height:56px;flex-shrink:0">
+              <i id="prevCardIcon" class="bi bi-{{ resource.icon if resource else 'door-open' }}"
+                 style="font-size:1.6rem"></i>
+            </div>
+            <i class="bi bi-arrow-right-circle" id="prevArrow" style="font-size:1.15rem;margin-top:.2rem;opacity:.7"></i>
+          </div>
+          <div class="fw-bold mb-1" style="color:#1e2a3a;font-size:1rem">
+            {{ resource.name if resource else 'Nama Resource' }}
+          </div>
+          <div class="text-muted" style="font-size:.82rem">
+            {{ resource.description if resource else 'Deskripsi resource' }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="d-flex gap-2 pb-4">
+  <a href="{{ '/booking/resource/' ~ resource.id if resource else '/booking/' }}"
+     class="btn btn-secondary">Batal</a>
+  <button type="submit" class="btn btn-primary">
+    <i class="bi bi-save me-1"></i>{{ 'Simpan Perubahan' if resource else 'Tambah Resource' }}
+  </button>
+</div>
+
+</form>
+</div>
+</div>
+
+<script>
+const SUBTYPES = {
+  room:    ['meeting','lounge','presentation','prayer','recreation','other'],
+  vehicle: ['car','van','motorcycle','truck','other'],
+  other:   ['other'],
+};
+const currentSubtype = '{{ resource.subtype if resource else "" }}';
+
+function updateSubtype() {
+  const type = document.getElementById('typeSelect').value;
+  const sel  = document.getElementById('subtypeSelect');
+  const opts = SUBTYPES[type] || ['other'];
+  sel.innerHTML = opts.map(o =>
+    `<option value="${o}" ${o===currentSubtype?'selected':''}>${o.charAt(0).toUpperCase()+o.slice(1)}</option>`
+  ).join('');
+}
+updateSubtype();
+
+function updateColorPreview() {
+  const c = document.getElementById('colorPick').value;
+  document.getElementById('colorHex').value = c;
+  document.getElementById('prevIconWrap').style.background = c + '22';
+  document.getElementById('prevIconWrap').style.boxShadow  = '0 4px 16px ' + c + '33';
+  document.getElementById('prevCardIcon').style.color      = c;
+  document.getElementById('prevArrow').style.color         = c;
+}
+updateColorPreview();
+
+document.getElementById('iconInput').addEventListener('input', function() {
+  document.getElementById('prevCardIcon').className = 'bi bi-' + this.value;
+});
+
+function setIcon(ic) {
+  document.getElementById('iconInput').value = ic;
+  document.getElementById('iconPreview').className = 'bi bi-' + ic;
+  document.getElementById('prevCardIcon').className = 'bi bi-' + ic;
+}
+
+function previewImage(input) {
+  if (!input.files || !input.files[0]) return;
+  const box = document.getElementById('previewBox');
+  const img = document.getElementById('previewImg');
+  img.src = URL.createObjectURL(input.files[0]);
+  box.classList.remove('d-none');
+}
+
+function clearImage() {
+  document.getElementById('imgInput').value = '';
+  document.getElementById('previewBox').classList.add('d-none');
+}
+
+// Drag & drop
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background='#e8f4fd'; });
+dz.addEventListener('dragleave', () => { dz.style.background='#f8f9fa'; });
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.style.background = '#f8f9fa';
+  const files = e.dataTransfer.files;
+  if (files.length) {
+    const dt = new DataTransfer();
+    dt.items.add(files[0]);
+    const inp = document.getElementById('imgInput');
+    inp.files = dt.files;
+    previewImage(inp);
+  }
+});
+</script>
+{% endblock %}
