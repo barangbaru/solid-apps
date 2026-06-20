@@ -6786,11 +6786,21 @@ def portal_update():
     all_tags_raw = settings.get('update_all_tags', '[]')
     try:
         _raw = json.loads(all_tags_raw)
-        # Support format lama (list of string) dan baru (list of dict)
         if _raw and isinstance(_raw[0], str):
-            all_tags = [{'tag': t, 'notes': ''} for t in _raw]
-        else:
-            all_tags = _raw
+            _raw = [{'tag': t, 'notes': ''} for t in _raw]
+        def _vp(v):
+            try: return [int(x) for x in v.strip().lstrip('v').split('.')]
+            except: return [0]
+        _cur = _vp(VERSION)
+        for item in _raw:
+            _v = _vp(item.get('tag', ''))
+            if _v == _cur:
+                item['status'] = 'installed'
+            elif _v > _cur:
+                item['status'] = 'newer'   # lebih baru dari terpasang
+            else:
+                item['status'] = 'old'
+        all_tags = _raw
     except Exception:
         all_tags = []
 

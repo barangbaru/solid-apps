@@ -145,10 +145,14 @@
                 {% endif %}
               </td>
               <td>
-                {% if ver == current_version %}
+                {% if item.status == 'installed' %}
                 <span class="badge bg-primary">Terpasang</span>
-                {% elif ver == latest_version %}
+                {% elif item.status == 'newer' %}
+                {% if ver == latest_version %}
                 <span class="badge bg-success">Terbaru</span>
+                {% else %}
+                <span class="badge bg-warning text-dark">Belum Terpasang</span>
+                {% endif %}
                 {% else %}
                 <span class="badge bg-light text-muted border">Lama</span>
                 {% endif %}

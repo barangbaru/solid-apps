@@ -7,6 +7,17 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.6] — 2026-06-20
+### Bug Fix
+- Fix status badge Riwayat Versi: sebelumnya semua versi selain `latest_version` dibadge "Lama", padahal bisa saja ada versi lebih baru dari yang terpasang tapi bukan latest
+- Status sekarang dihitung via perbandingan semver di Python:
+  - `Terpasang` — versi yang sedang berjalan
+  - `Terbaru` — versi terbaru di GitHub (lebih baru dari terpasang)
+  - `Belum Terpasang` — lebih baru dari terpasang tapi bukan yang terbaru (versi antara)
+  - `Lama` — lebih lama dari yang terpasang
+
+---
+
 ## [1.4.5] — 2026-06-20
 ### Peningkatan
 - Riwayat Versi di Update Center: setiap baris tag sekarang dapat diklik untuk melihat release notes dari GitHub Releases
