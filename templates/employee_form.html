@@ -304,22 +304,19 @@
         {% endif %}
       </div>
       <div class="card-body p-3">
+        <form action="/emp/{{ emp.id }}/promote-role" method="post">
 
-        {# ── Sudah punya akun ── #}
-        {% if linked_user %}
-        <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">
-          <i class="bi bi-person-circle text-info fs-5"></i>
-          <div>
-            <span class="fw-semibold small">@{{ linked_user.username }}</span>
-            {% if not linked_user.is_active %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">Nonaktif</span>{% endif %}
+          {# ── Info akun / field buat akun baru ── #}
+          {% if linked_user %}
+          <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">
+            <i class="bi bi-person-circle text-info fs-5"></i>
+            <div>
+              <span class="fw-semibold small">@{{ linked_user.username }}</span>
+              {% if not linked_user.is_active %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">Nonaktif</span>{% endif %}
+            </div>
           </div>
-        </div>
-        <form action="/emp/{{ emp.id }}/promote-role" method="post">
-
-        {# ── Belum punya akun ── #}
-        {% else %}
-        <p class="text-muted small mb-2">Belum memiliki akun aplikasi.</p>
-        <form action="/emp/{{ emp.id }}/promote-role" method="post">
+          {% else %}
+          <p class="text-muted small mb-2">Belum memiliki akun aplikasi.</p>
           <div class="row g-2 mb-3">
             <div class="col-7">
               <label class="form-label small fw-semibold mb-1">Username <span class="text-danger">*</span></label>
@@ -333,74 +330,73 @@
                      placeholder="Password" required>
             </div>
           </div>
-        {% endif %}
+          {% endif %}
 
-        {# ── Akses & Role Aplikasi (sama untuk keduanya) ── #}
-        <div class="small fw-semibold text-muted text-uppercase mb-2" style="letter-spacing:.04em">
-          <i class="bi bi-grid-3x2-gap me-1"></i>Akses & Role Aplikasi
-        </div>
+          {# ── Akses & Role Aplikasi ── #}
+          <div class="small fw-semibold text-muted text-uppercase mb-2" style="letter-spacing:.04em">
+            <i class="bi bi-grid-3x2-gap me-1"></i>Akses & Role Aplikasi
+          </div>
 
-        {# Portal / Manajemen #}
-        {% set portal_role = linked_user.role if linked_user and linked_user.role not in ('viewer','',None) else '' %}
-        {% set portal_checked = portal_role and portal_role != 'viewer' %}
-        <div class="card border mb-2">
-          <div class="card-body py-2 px-3">
-            <div class="d-flex align-items-center justify-content-between gap-2">
-              <div class="form-check mb-0 d-flex align-items-center gap-2">
-                <input class="form-check-input" type="checkbox"
-                       name="access_portal" id="eacc_portal"
-                       value="1" {{ 'checked' if portal_checked }}
-                       onchange="toggleEmpAppRole('portal', this.checked)">
-                <label class="form-check-label fw-semibold small mb-0" for="eacc_portal">
-                  <i class="bi bi-shield-lock me-1 text-primary"></i>Portal / Manajemen
-                  <span class="text-muted fw-normal" style="font-size:.7rem"> — akses panel admin</span>
-                </label>
-              </div>
-              <div id="eroleWrap_portal" style="{{ '' if portal_checked else 'opacity:.4;pointer-events:none' }}">
-                <select name="role" class="form-select form-select-sm" style="min-width:140px">
-                  {% for r in global_roles %}{% if r.name != 'viewer' %}
-                  <option value="{{ r.name }}" {{ 'selected' if portal_role == r.name }}>{{ r.name }}</option>
-                  {% endif %}{% endfor %}
-                </select>
+          {# Portal / Manajemen #}
+          {% set portal_role = linked_user.role if linked_user and linked_user.role not in ('viewer','',None) else '' %}
+          {% set portal_checked = portal_role and portal_role != 'viewer' %}
+          <div class="card border mb-2">
+            <div class="card-body py-2 px-3">
+              <div class="d-flex align-items-center justify-content-between gap-2">
+                <div class="form-check mb-0 d-flex align-items-center gap-2">
+                  <input class="form-check-input" type="checkbox"
+                         name="access_portal" id="eacc_portal"
+                         value="1" {{ 'checked' if portal_checked }}
+                         onchange="toggleEmpAppRole('portal', this.checked)">
+                  <label class="form-check-label fw-semibold small mb-0" for="eacc_portal">
+                    <i class="bi bi-shield-lock me-1 text-primary"></i>Portal / Manajemen
+                    <span class="text-muted fw-normal" style="font-size:.7rem"> — akses panel admin</span>
+                  </label>
+                </div>
+                <div id="eroleWrap_portal" style="{{ '' if portal_checked else 'opacity:.4;pointer-events:none' }}">
+                  <select name="role" class="form-select form-select-sm" style="min-width:140px">
+                    {% for r in global_roles %}{% if r.name != 'viewer' %}
+                    <option value="{{ r.name }}" {{ 'selected' if portal_role == r.name }}>{{ r.name }}</option>
+                    {% endif %}{% endfor %}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {# Per-app access #}
-        {% for a in apps %}
-        {% set cur_role = user_access.get(a.slug, '') %}
-        <div class="card border mb-2">
-          <div class="card-body py-2 px-3">
-            <div class="d-flex align-items-center justify-content-between gap-2">
-              <div class="form-check mb-0 d-flex align-items-center gap-2">
-                <input class="form-check-input" type="checkbox"
-                       name="access_{{ a.slug }}" id="eacc_{{ a.slug }}"
-                       value="1" {{ 'checked' if cur_role }}
-                       onchange="toggleEmpAppRole('{{ a.slug }}', this.checked)">
-                <label class="form-check-label fw-semibold small mb-0" for="eacc_{{ a.slug }}">
-                  <i class="bi bi-{{ a.icon or 'box' }} me-1 text-primary"></i>{{ a.name }}
-                </label>
-              </div>
-              <div id="eroleWrap_{{ a.slug }}" style="{{ '' if cur_role else 'opacity:.4;pointer-events:none' }}">
-                <select name="role_{{ a.slug }}" class="form-select form-select-sm" style="min-width:140px">
-                  {% for r in roles_by_app.get(a.slug, []) %}
-                  <option value="{{ r.name }}" {{ 'selected' if cur_role == r.name }}>{{ r.name }}</option>
-                  {% endfor %}
-                </select>
+          {# Per-app access #}
+          {% for a in apps %}
+          {% set cur_role = user_access.get(a.slug, '') %}
+          <div class="card border mb-2">
+            <div class="card-body py-2 px-3">
+              <div class="d-flex align-items-center justify-content-between gap-2">
+                <div class="form-check mb-0 d-flex align-items-center gap-2">
+                  <input class="form-check-input" type="checkbox"
+                         name="access_{{ a.slug }}" id="eacc_{{ a.slug }}"
+                         value="1" {{ 'checked' if cur_role }}
+                         onchange="toggleEmpAppRole('{{ a.slug }}', this.checked)">
+                  <label class="form-check-label fw-semibold small mb-0" for="eacc_{{ a.slug }}">
+                    <i class="bi bi-{{ a.icon or 'box' }} me-1 text-primary"></i>{{ a.name }}
+                  </label>
+                </div>
+                <div id="eroleWrap_{{ a.slug }}" style="{{ '' if cur_role else 'opacity:.4;pointer-events:none' }}">
+                  <select name="role_{{ a.slug }}" class="form-select form-select-sm" style="min-width:140px">
+                    {% for r in roles_by_app.get(a.slug, []) %}
+                    <option value="{{ r.name }}" {{ 'selected' if cur_role == r.name }}>{{ r.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        {% endfor %}
+          {% endfor %}
 
-        <button type="submit" class="btn btn-sm {{ 'btn-outline-info' if linked_user else 'btn-info' }} w-100 mt-2"
-                onclick="return confirm('{{ 'Perbarui akses akun ini?' if linked_user else 'Buat akun aplikasi untuk ' ~ emp.name ~ '?' }}')">
-          <i class="bi bi-{{ 'arrow-repeat' if linked_user else 'person-plus-fill' }} me-1"></i>
-          {{ 'Update Akses' if linked_user else 'Buat Akun' }}
-        </button>
+          <button type="submit" class="btn btn-sm {{ 'btn-outline-info' if linked_user else 'btn-info' }} w-100 mt-2"
+                  onclick="return confirm('{{ 'Perbarui akses akun ini?' if linked_user else 'Buat akun aplikasi untuk ' ~ emp.name ~ '?' }}')">
+            <i class="bi bi-{{ 'arrow-repeat' if linked_user else 'person-plus-fill' }} me-1"></i>
+            {{ 'Update Akses' if linked_user else 'Buat Akun' }}
+          </button>
         </form>
-        {% endif %}
       </div>
     </div>
     {% endif %}
