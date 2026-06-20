@@ -7,6 +7,13 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.1] — 2026-06-20
+### Bug Fix
+- Fix image resource BookingCore tidak bisa dibuka: `date(col)` SQLite tidak dikenal PostgreSQL
+- Tambah konversi `date(col)` → `(col)::date` di `_DBWrapper._fix()` — berlaku untuk semua query booking yang filter by date
+
+---
+
 ## [1.4.0] — 2026-06-20
 ### Update Center
 - Notifikasi update otomatis: APScheduler cek GitHub tags setiap 6 jam

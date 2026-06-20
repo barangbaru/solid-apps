@@ -1,3 +1,3 @@
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 RELEASE_DATE = "2026-06-20"
-RELEASE_NOTES = "In-app Update Center dengan notifikasi GitHub release & trigger via systemd"
+RELEASE_NOTES = "Fix: konversi date(col) SQLite → PostgreSQL, image resource BookingCore bisa dibuka"

@@ -103,8 +103,10 @@ class _DBWrapper:
             sql, flags=re.IGNORECASE)
         # julianday(col) sisa (standalone)
         sql = re.sub(r"julianday\(([^)]+)\)", r"\1::date", sql, flags=re.IGNORECASE)
-        # date('now') → CURRENT_DATE
+        # date('now') → CURRENT_DATE  (harus sebelum pola date(col) di bawah)
         sql = re.sub(r"date\('now'\)", "CURRENT_DATE", sql, flags=re.IGNORECASE)
+        # date(col_expr) → (col_expr)::date  — konversi SQLite date() ke PostgreSQL cast
+        sql = re.sub(r"\bdate\(([^)]+)\)", r"(\1)::date", sql, flags=re.IGNORECASE)
         # datetime('now','localtime') → NOW()  (di query DML, bukan DDL)
         sql = re.sub(r"datetime\('now',\s*'localtime'\)", "NOW()", sql, flags=re.IGNORECASE)
         # datetime('now') → NOW()
