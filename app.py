@@ -553,6 +553,30 @@ CREATE TABLE IF NOT EXISTS bk_bookings (
     cancelled_by INTEGER DEFAULT NULL,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS bk_resource_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource_id INTEGER NOT NULL REFERENCES bk_resources(id) ON DELETE CASCADE,
+    image TEXT NOT NULL,
+    caption TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS bk_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    category TEXT DEFAULT 'other',
+    description TEXT DEFAULT '',
+    icon TEXT DEFAULT 'box',
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS bk_booking_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id INTEGER NOT NULL REFERENCES bk_bookings(id) ON DELETE CASCADE,
+    item_id INTEGER NOT NULL REFERENCES bk_items(id),
+    qty INTEGER DEFAULT 1,
+    notes TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS ac_assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
@@ -1039,6 +1063,21 @@ def init_db():
         for name, rtype, subtype, cap, desc, loc, color, icon, sort in _resources:
             db.execute('''INSERT INTO bk_resources(name,type,subtype,capacity,description,location,color,icon,sort_order)
                 VALUES(?,?,?,?,?,?,?,?,?)''', (name, rtype, subtype, cap, desc, loc, color, icon, sort))
+    # Seed booking items (minuman, makanan) hanya jika belum ada
+    if db.execute('SELECT COUNT(*) FROM bk_items').fetchone()[0] == 0:
+        _items = [
+            ('Air Mineral', 'minuman', 'Botol air mineral 600ml', 'droplet-fill', 1),
+            ('Kopi', 'minuman', 'Kopi hitam / kopi susu', 'cup-hot-fill', 2),
+            ('Teh', 'minuman', 'Teh hangat / teh manis', 'cup-hot', 3),
+            ('Jus Buah', 'minuman', 'Jus buah segar', 'cup-straw', 4),
+            ('Makanan Ringan', 'makanan', 'Snack / kue ringan', 'bag', 5),
+            ('Lunch Box', 'makanan', 'Makan siang kotak', 'box2', 6),
+            ('Nasi Box', 'makanan', 'Nasi kotak lengkap', 'grid-3x2', 7),
+            ('Buah Potong', 'makanan', 'Buah segar potong', 'basket', 8),
+        ]
+        for name, cat, desc, icon, sort in _items:
+            db.execute('INSERT INTO bk_items(name,category,description,icon,sort_order) VALUES(?,?,?,?,?)',
+                       (name, cat, desc, icon, sort))
     db.commit()
     db.close()
 
@@ -6554,11 +6593,33 @@ def booking_new():
                         session['user_id'], attendees, attendee_count, notes,
                         rec_type, rec_days, rec_until, destination, start_dt, end_dt)
 
+                # Simpan booking items
+                for item_id_str in request.form.getlist('item_ids'):
+                    try:
+                        item_id = int(item_id_str)
+                        qty = int(request.form.get(f'item_qty_{item_id}') or 1)
+                        item_notes = request.form.get(f'item_notes_{item_id}', '')
+                        db.execute('INSERT INTO bk_booking_items(booking_id,item_id,qty,notes) VALUES(?,?,?,?)',
+                                   (parent_id, item_id, qty, item_notes))
+                    except (ValueError, TypeError):
+                        pass
+                db.commit()
                 flash('Booking berhasil dibuat!', 'success')
                 return redirect(url_for('booking_detail', bid=parent_id))
 
     pre_resource = request.args.get('resource', type=int)
-    return render_template('booking_form.html', resources=resources, pre_resource=pre_resource)
+    bk_items = db.execute('SELECT * FROM bk_items WHERE is_active=1 ORDER BY sort_order').fetchall()
+    # load images per resource untuk preview
+    res_images = {}
+    for r in resources:
+        imgs = db.execute('SELECT image FROM bk_resource_images WHERE resource_id=? ORDER BY sort_order LIMIT 5', (r['id'],)).fetchall()
+        all_imgs = []
+        if r['image']:
+            all_imgs.append(r['image'])
+        all_imgs += [i['image'] for i in imgs]
+        res_images[r['id']] = all_imgs
+    return render_template('booking_form.html', resources=resources, pre_resource=pre_resource,
+                           bk_items=bk_items, res_images=res_images)
 
 
 @app.route('/booking/resource/<int:rid>')
@@ -6582,8 +6643,9 @@ def booking_resource_detail(rid):
         JOIN users u ON u.id=b.booked_by
         WHERE b.resource_id=? AND b.status!='cancelled' AND date(b.start_dt)<?
         ORDER BY b.start_dt DESC LIMIT 10''', (rid, today)).fetchall()
+    images = db.execute('SELECT * FROM bk_resource_images WHERE resource_id=? ORDER BY sort_order', (rid,)).fetchall()
     return render_template('booking_resource.html', resource=resource,
-                           upcoming=upcoming, past=past, today=today)
+                           images=images, upcoming=upcoming, past=past, today=today)
 
 
 @app.route('/booking/resource/<int:rid>/edit', methods=['GET', 'POST'])
@@ -6632,7 +6694,8 @@ def booking_resource_edit(rid):
             db.commit()
             flash('Resource berhasil diperbarui.', 'success')
             return redirect(url_for('booking_resource_detail', rid=rid))
-    return render_template('booking_resource_edit.html', resource=resource)
+    images = db.execute('SELECT * FROM bk_resource_images WHERE resource_id=? ORDER BY sort_order', (rid,)).fetchall()
+    return render_template('booking_resource_edit.html', resource=resource, images=images)
 
 
 @app.route('/booking/resource/add', methods=['GET', 'POST'])
@@ -6673,6 +6736,33 @@ def booking_resource_add():
     return render_template('booking_resource_edit.html', resource=None)
 
 
+@app.route('/booking/resource/<int:rid>/images', methods=['POST'])
+@login_required
+def booking_resource_images(rid):
+    """Upload atau hapus gambar tambahan resource."""
+    redir = _bk_require_access()
+    if redir: return redir
+    db = get_db()
+    action = request.form.get('action', 'upload')
+    if action == 'delete':
+        img_id = request.form.get('img_id', type=int)
+        if img_id:
+            db.execute('DELETE FROM bk_resource_images WHERE id=? AND resource_id=?', (img_id, rid))
+            db.commit()
+    else:
+        files = request.files.getlist('images')
+        sort_base = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM bk_resource_images WHERE resource_id=?', (rid,)).fetchone()[0]
+        for i, f in enumerate(files):
+            if f and f.filename:
+                saved = _save_upload(f, 'resources')
+                if saved:
+                    caption = request.form.get(f'caption_{i}', '')
+                    db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
+                               (rid, saved, caption, sort_base + i + 1))
+        db.commit()
+    return redirect(url_for('booking_resource_edit', rid=rid))
+
+
 @app.route('/booking/<int:bid>')
 def booking_detail(bid):
     redir = _bk_require_access()
@@ -6689,7 +6779,10 @@ def booking_detail(bid):
     if b['is_recurring'] and not b['parent_id']:
         children = db.execute('''SELECT * FROM bk_bookings WHERE parent_id=? AND status!='cancelled'
             ORDER BY start_dt LIMIT 50''', (bid,)).fetchall()
-    return render_template('booking_detail.html', b=b, children=children)
+    booking_items = db.execute('''SELECT bi.*,i.name item_name,i.icon item_icon,i.category item_cat
+        FROM bk_booking_items bi JOIN bk_items i ON i.id=bi.item_id
+        WHERE bi.booking_id=? ORDER BY i.sort_order''', (bid,)).fetchall()
+    return render_template('booking_detail.html', b=b, children=children, booking_items=booking_items)
 
 
 @app.route('/booking/<int:bid>/cancel', methods=['POST'])

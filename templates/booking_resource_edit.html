@@ -122,6 +122,77 @@
   </div>
 </div>
 
+{# ── Galeri Foto Tambahan ── #}
+{% if resource %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header py-2 fw-bold">
+    <i class="bi bi-images text-primary me-1"></i>Galeri Foto
+    <span class="text-muted fw-normal small ms-1">— tambah beberapa foto ruangan/kendaraan</span>
+  </div>
+  <div class="card-body p-4">
+
+    {# Foto yang sudah ada #}
+    {% if images %}
+    <div class="row g-2 mb-3">
+      {% for img in images %}
+      <div class="col-6 col-md-4 col-lg-3 position-relative" id="imgItem_{{ img.id }}">
+        <div class="rounded-3 overflow-hidden border" style="height:100px">
+          <img src="{{ img.image }}" alt="{{ img.caption }}"
+               style="width:100%;height:100%;object-fit:cover;cursor:zoom-in"
+               onclick="openGalleryLb('{{ img.image }}')">
+        </div>
+        {% if img.caption %}
+        <div class="text-muted small mt-1 text-truncate">{{ img.caption }}</div>
+        {% endif %}
+        <form action="/booking/resource/{{ resource.id }}/images" method="post" class="d-inline">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="img_id" value="{{ img.id }}">
+          <button type="submit" class="btn btn-danger btn-sm position-absolute"
+                  style="top:4px;right:8px;padding:.15rem .4rem;font-size:.7rem"
+                  onclick="return confirm('Hapus foto ini?')">
+            <i class="bi bi-trash"></i>
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Upload foto baru #}
+    <form action="/booking/resource/{{ resource.id }}/images" method="post" enctype="multipart/form-data">
+      <div class="border rounded-3 p-3 text-center" id="galleryDropZone"
+           style="border-style:dashed!important;cursor:pointer;background:#f8f9fa"
+           onclick="document.getElementById('galleryInput').click()">
+        <i class="bi bi-cloud-upload" style="font-size:1.8rem;color:#adb5bd"></i>
+        <div class="mt-1 text-muted small">Klik atau drag & drop untuk upload beberapa foto sekaligus</div>
+        <div class="text-muted" style="font-size:.72rem">JPG, PNG, WEBP — maks. 5 MB per foto</div>
+      </div>
+      <input type="file" name="images" id="galleryInput" multiple
+             accept=".jpg,.jpeg,.png,.webp" class="d-none"
+             onchange="showGalleryPreview(this)">
+      <div id="galleryPreview" class="row g-2 mt-2"></div>
+      <div id="gallerySubmitWrap" class="mt-2 d-none">
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-cloud-upload me-1"></i>Upload Foto
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm ms-1"
+                onclick="clearGallery()">Batal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Lightbox mini untuk galeri edit #}
+<div id="galleryLb" onclick="this.style.display='none';document.body.style.overflow=''"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;
+            align-items:center;justify-content:center">
+  <img id="galleryLbImg" src="" style="max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px"
+       onclick="event.stopPropagation()">
+  <button onclick="document.getElementById('galleryLb').style.display='none';document.body.style.overflow=''"
+          style="position:absolute;top:12px;right:16px;background:none;border:none;color:#fff;font-size:2rem;cursor:pointer">&times;</button>
+</div>
+{% endif %}
+
 {# ── Tampilan & Urutan ── #}
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header py-2 fw-bold">
@@ -214,6 +285,58 @@
 </div>
 
 <script>
+function openGalleryLb(src) {
+  const lb = document.getElementById('galleryLb');
+  document.getElementById('galleryLbImg').src = src;
+  lb.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function showGalleryPreview(input) {
+  const preview = document.getElementById('galleryPreview');
+  const submitWrap = document.getElementById('gallerySubmitWrap');
+  preview.innerHTML = '';
+  if (!input.files || !input.files.length) return;
+  Array.from(input.files).forEach(file => {
+    const col = document.createElement('div');
+    col.className = 'col-6 col-md-4 col-lg-3';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(file);
+    img.className = 'rounded-3 border';
+    img.style.cssText = 'width:100%;height:90px;object-fit:cover';
+    const name = document.createElement('div');
+    name.className = 'text-muted small mt-1 text-truncate';
+    name.textContent = file.name;
+    col.appendChild(img);
+    col.appendChild(name);
+    preview.appendChild(col);
+  });
+  submitWrap.classList.remove('d-none');
+}
+
+function clearGallery() {
+  document.getElementById('galleryInput').value = '';
+  document.getElementById('galleryPreview').innerHTML = '';
+  document.getElementById('gallerySubmitWrap').classList.add('d-none');
+}
+
+// Drag & drop for gallery
+window.addEventListener('DOMContentLoaded', () => {
+  const dz = document.getElementById('galleryDropZone');
+  if (dz) {
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.style.background='#e8f4fd'; });
+    dz.addEventListener('dragleave', () => { dz.style.background='#f8f9fa'; });
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.style.background='#f8f9fa';
+      const inp = document.getElementById('galleryInput');
+      const dt = new DataTransfer();
+      Array.from(e.dataTransfer.files).forEach(f => dt.items.add(f));
+      inp.files = dt.files;
+      showGalleryPreview(inp);
+    });
+  }
+});
+
 const SUBTYPES = {
   room:    ['meeting','lounge','presentation','prayer','recreation','other'],
   vehicle: ['car','van','motorcycle','truck','other'],

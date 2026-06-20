@@ -5,18 +5,59 @@
 {% block content %}
 {# ── Header resource info ── #}
 <div class="card border-0 shadow-sm mb-4 overflow-hidden">
-  {% if resource.image %}
-  <div style="height:220px;overflow:hidden;position:relative">
-    <img src="{{ resource.image }}" alt="{{ resource.name }}"
-         style="width:100%;height:100%;object-fit:cover">
-    <div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 40%,rgba(0,0,0,.55))"></div>
-    <div style="position:absolute;bottom:0;left:0;right:0;padding:1.25rem 1.5rem">
+  {% set all_images = [] %}
+  {% if resource.image %}{% set _ = all_images.append({'image': resource.image, 'caption': ''}) %}{% endif %}
+  {% for img in images %}{% set _ = all_images.append(img) %}{% endfor %}
+
+  {% if all_images %}
+  <div style="position:relative;overflow:hidden">
+    {# Slider #}
+    <div id="resSlider" style="position:relative;height:260px;background:#000">
+      {% for img in all_images %}
+      <div class="res-slide" style="display:{{ 'block' if loop.first else 'none' }};height:260px">
+        <img src="{{ img.image }}" alt="{{ img.caption or resource.name }}"
+             style="width:100%;height:100%;object-fit:cover;cursor:zoom-in"
+             onclick="openLightbox({{ loop.index0 }})"
+             data-slide="{{ loop.index0 }}">
+      </div>
+      {% endfor %}
+      {% if all_images|length > 1 %}
+      <button onclick="slideMove(-1)" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:none;border-radius:50%;width:36px;height:36px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">&#8249;</button>
+      <button onclick="slideMove(1)"  style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:none;border-radius:50%;width:36px;height:36px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">&#8250;</button>
+      <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:6px" id="sliderDots">
+        {% for img in all_images %}
+        <div class="slide-dot" onclick="goSlide({{ loop.index0 }})"
+             style="width:8px;height:8px;border-radius:50%;background:{{ 'rgba(255,255,255,.95)' if loop.first else 'rgba(255,255,255,.4)' }};cursor:pointer;transition:background .2s"></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div style="position:absolute;bottom:0;left:0;right:0;padding:1.25rem 1.5rem;background:linear-gradient(to top,rgba(0,0,0,.6),transparent);pointer-events:none">
       <h4 class="fw-bold text-white mb-0">{{ resource.name }}</h4>
       <span class="badge mt-1" style="background:{{ resource.color }};font-size:.7rem">
         {{ 'Ruangan' if resource.type == 'room' else 'Kendaraan' }}{% if resource.subtype %} — {{ resource.subtype }}{% endif %}
       </span>
     </div>
+    {% if all_images|length > 1 %}
+    <div style="position:absolute;top:10px;right:10px">
+      <span class="badge" style="background:rgba(0,0,0,.5);font-size:.72rem">
+        <i class="bi bi-images me-1"></i><span id="slideCount">1</span>/{{ all_images|length }}
+      </span>
+    </div>
+    {% endif %}
   </div>
+
+  {# Thumbnail strip #}
+  {% if all_images|length > 1 %}
+  <div class="d-flex gap-2 p-2" style="overflow-x:auto;background:#f8f9fa">
+    {% for img in all_images %}
+    <img src="{{ img.image }}" alt="" onclick="goSlide({{ loop.index0 }})"
+         class="thumb-img" data-idx="{{ loop.index0 }}"
+         style="width:64px;height:48px;object-fit:cover;border-radius:6px;cursor:pointer;
+                border:2px solid {{ resource.color if loop.first else 'transparent' }};flex-shrink:0;transition:border-color .15s">
+    {% endfor %}
+  </div>
+  {% endif %}
   {% endif %}
   <div class="card-body p-4">
     {% if not resource.image %}
@@ -175,4 +216,87 @@
 </div>
 {% endif %}
 
+{# ── Lightbox ── #}
+<div id="lightbox" onclick="closeLightbox()"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;
+            align-items:center;justify-content:center;flex-direction:column">
+  <button onclick="closeLightbox();event.stopPropagation()"
+          style="position:absolute;top:16px;right:20px;background:none;border:none;color:#fff;font-size:2rem;cursor:pointer;line-height:1">&times;</button>
+  <button onclick="lbMove(-1);event.stopPropagation()"
+          style="position:absolute;left:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:50%;width:44px;height:44px;font-size:1.5rem;cursor:pointer">&#8249;</button>
+  <button onclick="lbMove(1);event.stopPropagation()"
+          style="position:absolute;right:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:50%;width:44px;height:44px;font-size:1.5rem;cursor:pointer">&#8250;</button>
+  <img id="lbImg" src="" alt=""
+       style="max-width:90vw;max-height:85vh;object-fit:contain;border-radius:8px"
+       onclick="event.stopPropagation()">
+  <div id="lbCaption" style="color:rgba(255,255,255,.7);margin-top:12px;font-size:.85rem"></div>
+  <div id="lbCounter" style="color:rgba(255,255,255,.5);font-size:.75rem;margin-top:4px"></div>
+</div>
+
+<script>
+const SLIDES = [
+  {% set all_images = [] %}
+  {% if resource.image %}{% set _ = all_images.append({'image': resource.image, 'caption': ''}) %}{% endif %}
+  {% for img in images %}{% set _ = all_images.append(img) %}{% endfor %}
+  {% for img in all_images %}
+  {src: "{{ img.image }}", caption: "{{ (img.caption or '') | e }}"},
+  {% endfor %}
+];
+const ACCENT = "{{ resource.color }}";
+let curSlide = 0;
+
+function goSlide(n) {
+  const slides = document.querySelectorAll('.res-slide');
+  const dots   = document.querySelectorAll('.slide-dot');
+  const thumbs = document.querySelectorAll('.thumb-img');
+  if (!slides.length) return;
+  slides[curSlide].style.display = 'none';
+  if (dots[curSlide]) dots[curSlide].style.background = 'rgba(255,255,255,.4)';
+  if (thumbs[curSlide]) thumbs[curSlide].style.borderColor = 'transparent';
+  curSlide = (n + slides.length) % slides.length;
+  slides[curSlide].style.display = 'block';
+  if (dots[curSlide]) dots[curSlide].style.background = 'rgba(255,255,255,.95)';
+  if (thumbs[curSlide]) thumbs[curSlide].style.borderColor = ACCENT;
+  const cnt = document.getElementById('slideCount');
+  if (cnt) cnt.textContent = curSlide + 1;
+}
+
+function slideMove(dir) { goSlide(curSlide + dir); }
+
+function openLightbox(idx) {
+  curSlide = idx;
+  lbShow(idx);
+  const lb = document.getElementById('lightbox');
+  lb.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function lbShow(idx) {
+  if (!SLIDES.length) return;
+  const i = (idx + SLIDES.length) % SLIDES.length;
+  curSlide = i;
+  document.getElementById('lbImg').src = SLIDES[i].src;
+  document.getElementById('lbCaption').textContent = SLIDES[i].caption || '';
+  document.getElementById('lbCounter').textContent = SLIDES.length > 1 ? (i+1) + ' / ' + SLIDES.length : '';
+}
+
+function lbMove(dir) { lbShow(curSlide + dir); }
+
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  const lb = document.getElementById('lightbox');
+  if (lb.style.display !== 'none') {
+    if (e.key === 'ArrowLeft')  lbMove(-1);
+    if (e.key === 'ArrowRight') lbMove(1);
+    if (e.key === 'Escape')     closeLightbox();
+  } else {
+    if (e.key === 'ArrowLeft')  slideMove(-1);
+    if (e.key === 'ArrowRight') slideMove(1);
+  }
+});
+</script>
 {% endblock %}

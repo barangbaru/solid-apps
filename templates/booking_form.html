@@ -31,17 +31,30 @@
                        class="d-none res-radio"
                        {{ 'checked' if pre_resource == r.id or (loop.first and not pre_resource) }}
                        onchange="onResourceChange({{ r.id }}, '{{ r.type }}')">
-                <label for="res_{{ r.id }}" class="resource-card d-flex align-items-center gap-3 p-3 rounded-3 border cursor-pointer w-100"
+                <label for="res_{{ r.id }}" class="resource-card d-flex flex-column gap-0 rounded-3 border cursor-pointer w-100 overflow-hidden"
                        style="cursor:pointer;transition:all .15s">
-                  <div class="d-flex align-items-center justify-content-center rounded-2 flex-shrink-0"
-                       style="width:40px;height:40px;background:{{ r.color }}22">
-                    <i class="bi bi-{{ r.icon }}" style="color:{{ r.color }};font-size:1.2rem"></i>
+                  {% set rimgs = res_images.get(r.id, []) %}
+                  {% if rimgs %}
+                  <div style="height:90px;overflow:hidden;position:relative">
+                    <img src="{{ rimgs[0] }}" alt="{{ r.name }}"
+                         style="width:100%;height:100%;object-fit:cover">
+                    {% if rimgs|length > 1 %}
+                    <span class="badge" style="position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.5);font-size:.6rem">
+                      <i class="bi bi-images"></i> {{ rimgs|length }}
+                    </span>
+                    {% endif %}
                   </div>
-                  <div class="flex-grow-1">
-                    <div class="fw-semibold" style="font-size:.88rem">{{ r.name }}</div>
-                    <div class="text-muted" style="font-size:.75rem">
-                      {{ r.location }}
-                      {% if r.capacity %} · Kapasitas {{ r.capacity }} orang{% endif %}
+                  {% endif %}
+                  <div class="d-flex align-items-center gap-3 p-3">
+                    <div class="d-flex align-items-center justify-content-center rounded-2 flex-shrink-0"
+                         style="width:36px;height:36px;background:{{ r.color }}22">
+                      <i class="bi bi-{{ r.icon }}" style="color:{{ r.color }};font-size:1.1rem"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                      <div class="fw-semibold" style="font-size:.88rem">{{ r.name }}</div>
+                      <div class="text-muted" style="font-size:.75rem">
+                        {{ r.location }}{% if r.capacity %} · {{ r.capacity }} org{% endif %}
+                      </div>
                     </div>
                   </div>
                 </label>
@@ -141,6 +154,54 @@
         </div>
       </div>
 
+      {% if bk_items %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-semibold py-3">
+          <i class="bi bi-cup-hot me-2 text-warning"></i>Item Tambahan
+          <span class="fw-normal text-muted small ms-1">— minuman, makanan, dll.</span>
+        </div>
+        <div class="card-body">
+          {% set cats = bk_items | groupby('category') %}
+          {% for cat, items in cats %}
+          <div class="mb-3">
+            <div class="small fw-semibold text-muted text-uppercase mb-2">
+              <i class="bi bi-{{ 'cup-hot-fill' if cat=='minuman' else 'bag-fill' }} me-1"></i>{{ cat | capitalize }}
+            </div>
+            <div class="row g-2">
+              {% for item in items %}
+              <div class="col-sm-6">
+                <div class="item-card border rounded-3 p-2 d-flex align-items-center gap-2"
+                     style="cursor:pointer;transition:all .15s" onclick="toggleItem({{ item.id }}, this)">
+                  <input type="checkbox" name="item_ids" value="{{ item.id }}"
+                         id="item_{{ item.id }}" class="form-check-input mt-0 flex-shrink-0"
+                         onclick="event.stopPropagation()">
+                  <i class="bi bi-{{ item.icon }} text-warning flex-shrink-0"></i>
+                  <div class="flex-grow-1">
+                    <div class="fw-semibold" style="font-size:.85rem">{{ item.name }}</div>
+                    {% if item.description %}
+                    <div class="text-muted" style="font-size:.73rem">{{ item.description }}</div>
+                    {% endif %}
+                  </div>
+                  <div class="item-qty-wrap d-none align-items-center gap-1" id="qtyWrap_{{ item.id }}">
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                            style="font-size:.75rem" onclick="changeQty({{ item.id }},-1);event.stopPropagation()">−</button>
+                    <input type="number" name="item_qty_{{ item.id }}" id="qty_{{ item.id }}"
+                           value="1" min="1" max="99"
+                           style="width:38px;text-align:center;border:1px solid #dee2e6;border-radius:4px;font-size:.8rem;padding:1px 2px"
+                           onclick="event.stopPropagation()">
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                            style="font-size:.75rem" onclick="changeQty({{ item.id }},1);event.stopPropagation()">+</button>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <div class="d-flex gap-2">
         <button type="submit" class="btn btn-warning text-white fw-semibold px-4">
           <i class="bi bi-check-circle me-2"></i>Buat Booking
@@ -173,13 +234,21 @@
   box-shadow: 0 0 0 2px #d9770644;
 }
 .day-check:checked + .day-label {
-  background: #d97706;
-  color: #fff;
-  border-color: #d97706;
+  background: #d97706; color: #fff; border-color: #d97706;
+}
+.item-card { background: #fff; user-select: none; }
+.item-card:hover { border-color: #d97706 !important; background: #fffdf5 !important; }
+.item-card.selected {
+  border-color: #d97706 !important;
+  background: #fff8e1 !important;
+  box-shadow: 0 0 0 2px #d9770644;
 }
 </style>
 
 <script>
+// ── Resource change ──────────────────────────────────────────
+const RES_TYPES = { {% for r in resources %}'{{ r.id }}':'{{ r.type }}',{% endfor %} };
+
 function onResourceChange(id, type) {
   document.getElementById('destinationWrap').style.display = type === 'vehicle' ? '' : 'none';
   fetchSlots(id);
@@ -215,15 +284,52 @@ function fetchSlots(resId) {
     }).catch(() => {});
 }
 
-// Init on load
-window.addEventListener('DOMContentLoaded', () => {
-  const checked = document.querySelector('.res-radio:checked');
-  if (checked) {
-    const type = checked.id === 'res_5' ? 'vehicle' : 'room';
-    onResourceChange(parseInt(checked.value), type);
+// ── Item toggle & qty ────────────────────────────────────────
+function toggleItem(itemId, card) {
+  const cb   = document.getElementById('item_' + itemId);
+  const wrap = document.getElementById('qtyWrap_' + itemId);
+  cb.checked = !cb.checked;
+  if (cb.checked) {
+    card.classList.add('selected');
+    wrap.classList.remove('d-none');
+    wrap.classList.add('d-flex');
+  } else {
+    card.classList.remove('selected');
+    wrap.classList.add('d-none');
+    wrap.classList.remove('d-flex');
+    document.getElementById('qty_' + itemId).value = 1;
   }
-  // Set min date to today
-  const now = new Date();
+}
+
+function changeQty(itemId, delta) {
+  const inp = document.getElementById('qty_' + itemId);
+  inp.value = Math.max(1, Math.min(99, parseInt(inp.value || 1) + delta));
+}
+
+// Sync checkbox click with card state
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[id^="item_"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const id   = cb.id.replace('item_', '');
+      const card = cb.closest('.item-card');
+      const wrap = document.getElementById('qtyWrap_' + id);
+      if (cb.checked) {
+        card.classList.add('selected');
+        wrap.classList.remove('d-none'); wrap.classList.add('d-flex');
+      } else {
+        card.classList.remove('selected');
+        wrap.classList.add('d-none'); wrap.classList.remove('d-flex');
+        document.getElementById('qty_' + id).value = 1;
+      }
+    });
+  });
+
+  // Resource init
+  const checked = document.querySelector('.res-radio:checked');
+  if (checked) onResourceChange(parseInt(checked.value), RES_TYPES[checked.value] || 'room');
+
+  // Min datetime
+  const now   = new Date();
   const local = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' +
     String(now.getDate()).padStart(2,'0') + 'T' + String(now.getHours()).padStart(2,'0') + ':00';
   document.getElementById('startDt').min = local;

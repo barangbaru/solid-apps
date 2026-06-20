@@ -92,6 +92,27 @@
           </div>
           {% endif %}
 
+          {% if booking_items %}
+          <div class="col-12">
+            <div class="text-muted small fw-semibold text-uppercase mb-2">
+              <i class="bi bi-cup-hot me-1"></i>Item Tambahan
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              {% for it in booking_items %}
+              <div class="d-flex align-items-center gap-2 px-3 py-2 rounded-3 border"
+                   style="background:#fffdf5;font-size:.82rem">
+                <i class="bi bi-{{ it.item_icon }} text-warning"></i>
+                <span class="fw-semibold">{{ it.item_name }}</span>
+                <span class="badge bg-warning text-dark" style="font-size:.7rem">×{{ it.qty }}</span>
+                {% if it.notes %}
+                <span class="text-muted">— {{ it.notes }}</span>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
           <div class="col-sm-6">
             <div class="text-muted small fw-semibold text-uppercase mb-1">Dipesan Oleh</div>
             <div><i class="bi bi-person me-1 text-warning"></i>{{ b.booker_name or b.booker_username }}</div>
