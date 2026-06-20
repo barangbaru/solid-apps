@@ -3360,8 +3360,21 @@ def emp_edit(emp_id):
                          ORDER BY created_at DESC LIMIT 10''', (emp_id,)).fetchall()
     employees_all = db.execute('SELECT id,name,jabatan,divisi,level FROM employees WHERE is_active=1 AND id!=? ORDER BY name', (emp_id,)).fetchall()
     linked_user = db.execute('SELECT id,username,role,is_active FROM users WHERE id=?', (emp['user_id'],)).fetchone() if emp['user_id'] else None
+    apps = db.execute('SELECT slug, name, icon FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    all_roles    = db.execute("SELECT name, description, app_slug FROM roles ORDER BY is_system DESC, name").fetchall()
+    global_roles = [r for r in all_roles if r['app_slug'] == '']
+    roles_by_app = {}
+    for a in apps:
+        specific = [r for r in all_roles if r['app_slug'] == a['slug']]
+        roles_by_app[a['slug']] = specific if specific else global_roles
+    user_access = {}
+    if emp['user_id']:
+        user_access = {r['app_slug']: r['app_role'] for r in
+                       db.execute('SELECT app_slug,app_role FROM user_app_access WHERE user_id=? AND is_active=1', (emp['user_id'],)).fetchall()}
     return render_template('employee_form.html', emp=emp, logs=logs,
-                           employees_all=employees_all, linked_user=linked_user)
+                           employees_all=employees_all, linked_user=linked_user,
+                           apps=apps, global_roles=global_roles,
+                           roles_by_app=roles_by_app, user_access=user_access)
 
 @app.route('/emp/<int:emp_id>/delete', methods=['POST'])
 @superadmin_required
