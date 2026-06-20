@@ -2457,17 +2457,29 @@ def check_for_updates():
         latest_ver  = latest_tag.lstrip('v')
         now_str     = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-        # Cek release notes dari GitHub releases API
-        rel_resp = req_lib.get(
-            f'https://api.github.com/repos/{repo}/releases/tags/{latest_tag}',
+        # Fetch semua releases sekaligus (lebih efisien dari per-tag)
+        import json
+        rel_all_resp = req_lib.get(
+            f'https://api.github.com/repos/{repo}/releases?per_page=50',
             headers={'Accept': 'application/vnd.github.v3+json'},
             timeout=10)
-        release_notes = ''
-        if rel_resp.status_code == 200:
-            release_notes = rel_resp.json().get('body', '')
+        releases_by_tag = {}
+        if rel_all_resp.status_code == 200:
+            for r in rel_all_resp.json():
+                releases_by_tag[r.get('tag_name', '')] = r.get('body', '') or ''
 
-        import json
-        all_tag_names = [t.get('name','') for t in tags if t.get('name','').startswith('v')]
+        release_notes = releases_by_tag.get(latest_tag, '')
+
+        # Gabungkan tags + release notes jadi satu struktur JSON
+        all_tags_data = []
+        for t in tags:
+            tname = t.get('name', '')
+            if tname.startswith('v'):
+                all_tags_data.append({
+                    'tag':   tname,
+                    'notes': releases_by_tag.get(tname, ''),
+                })
+
         is_newer = _version_gt(latest_ver, VERSION)
         for key, val in [
             ('update_check_last',     now_str),
@@ -2475,7 +2487,7 @@ def check_for_updates():
             ('update_latest_tag',     latest_tag),
             ('update_release_notes',  release_notes),
             ('update_available',      '1' if is_newer else '0'),
-            ('update_all_tags',       json.dumps(all_tag_names)),
+            ('update_all_tags',       json.dumps(all_tags_data)),
         ]:
             db.execute("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, val))
         db.commit()
@@ -6773,7 +6785,12 @@ def portal_update():
     import json
     all_tags_raw = settings.get('update_all_tags', '[]')
     try:
-        all_tags = json.loads(all_tags_raw)
+        _raw = json.loads(all_tags_raw)
+        # Support format lama (list of string) dan baru (list of dict)
+        if _raw and isinstance(_raw[0], str):
+            all_tags = [{'tag': t, 'notes': ''} for t in _raw]
+        else:
+            all_tags = _raw
     except Exception:
         all_tags = []
 

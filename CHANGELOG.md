@@ -7,6 +7,15 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.5] — 2026-06-20
+### Peningkatan
+- Riwayat Versi di Update Center: setiap baris tag sekarang dapat diklik untuk melihat release notes dari GitHub Releases
+- `check_for_updates()`: fetch semua releases sekaligus (`/releases?per_page=50`) lalu gabungkan ke `update_all_tags` sebagai `[{tag, notes}]`
+- Template: collapse row per tag dengan render Markdown (headers, bold, code, list)
+- Backward-compatible: format `update_all_tags` lama (list of string) tetap diproses dengan benar
+
+---
+
 ## [1.4.4] — 2026-06-20
 ### Bug Fix
 - Fix "Memeriksa update..." tidak hilang: cek update dijalankan synchronous (blocking) bukan di thread terpisah, sehingga hasil langsung tersedia saat redirect

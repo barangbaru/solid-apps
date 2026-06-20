@@ -125,17 +125,24 @@
         <table class="table table-hover align-middle mb-0 small">
           <thead class="table-light sticky-top">
             <tr>
-              <th class="ps-3">Tag</th>
+              <th class="ps-3">Versi</th>
               <th>Status</th>
               {% if can_trigger %}<th></th>{% endif %}
             </tr>
           </thead>
           <tbody>
-            {% for tag in all_tags %}
+            {% for item in all_tags %}
+            {% set tag = item.tag %}
             {% set ver = tag.lstrip('v') %}
-            <tr>
+            {% set notes = item.notes %}
+            {% set row_id = 'notes-' ~ loop.index %}
+            <tr class="{% if notes %}cursor-pointer{% endif %}"
+                {% if notes %}data-bs-toggle="collapse" data-bs-target="#{{ row_id }}" style="cursor:pointer"{% endif %}>
               <td class="ps-3 fw-semibold">
                 <i class="bi bi-tag me-1 text-muted"></i>{{ tag }}
+                {% if notes %}
+                <i class="bi bi-chevron-down ms-1 text-muted" style="font-size:.7rem;opacity:.6"></i>
+                {% endif %}
               </td>
               <td>
                 {% if ver == current_version %}
@@ -149,7 +156,8 @@
               {% if can_trigger %}
               <td class="pe-3 text-end">
                 {% if ver != current_version %}
-                <form method="post" action="/portal/update/trigger" style="display:inline">
+                <form method="post" action="/portal/update/trigger" style="display:inline"
+                      onclick="event.stopPropagation()">
                   <input type="hidden" name="version" value="{{ ver }}">
                   <button type="submit" class="btn btn-xs btn-outline-secondary py-0 px-2"
                           style="font-size:.7rem"
@@ -161,6 +169,14 @@
               </td>
               {% endif %}
             </tr>
+            {% if notes %}
+            <tr class="collapse" id="{{ row_id }}">
+              <td colspan="{{ 3 if can_trigger else 2 }}" class="ps-4 pe-3 pb-3 pt-0"
+                  style="background:#f8f9ff;border-top:none">
+                <div class="notes-md small text-muted mt-2" data-notes="{{ notes | e }}"></div>
+              </td>
+            </tr>
+            {% endif %}
             {% endfor %}
           </tbody>
         </table>
@@ -275,21 +291,31 @@ function clearLog() {
   if (logEl) logEl.textContent = '';
 }
 
-// ── Render release notes Markdown (simple) ──────────────────────────────────
+// ── Render Markdown helper ───────────────────────────────────────────────────
+function renderMd(md) {
+  if (!md) return '';
+  md = md.replace(/^### (.+)$/gm, '<h6 class="fw-bold mt-2 mb-1 text-dark">$1</h6>');
+  md = md.replace(/^## (.+)$/gm,  '<h5 class="fw-bold mt-2 mb-1 text-dark">$1</h5>');
+  md = md.replace(/^# (.+)$/gm,   '<h4 class="fw-bold mt-2 mb-1 text-dark">$1</h4>');
+  md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  md = md.replace(/`([^`]+)`/g, '<code class="px-1 rounded" style="background:#eef;font-size:.85em">$1</code>');
+  // List items → wrap consecutive <li> in <ul>
+  md = md.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  md = md.replace(/(<li>[\s\S]*?<\/li>)(?=\n(?!<li>)|$)/g, '<ul class="ps-3 mb-1 mt-1">$1</ul>');
+  md = md.replace(/\n\n/g, '<br>');
+  return md;
+}
+
+// Release notes utama
 const raw = document.getElementById('release-notes-raw');
 const rendered = document.getElementById('release-notes-rendered');
 if (raw && rendered) {
-  let md = raw.textContent;
-  // Simple markdown: headers, bold, code, lists
-  md = md.replace(/^### (.+)$/gm, '<h6 class="fw-bold mt-3 mb-1">$1</h6>');
-  md = md.replace(/^## (.+)$/gm,  '<h5 class="fw-bold mt-3 mb-1">$1</h5>');
-  md = md.replace(/^# (.+)$/gm,   '<h4 class="fw-bold mt-3 mb-1">$1</h4>');
-  md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  md = md.replace(/`([^`]+)`/g, '<code class="bg-light px-1 rounded">$1</code>');
-  md = md.replace(/^- (.+)$/gm, '<li>$1</li>');
-  md = md.replace(/(<li>.*<\/li>)/s, '<ul class="ps-3 mb-2">$1</ul>');
-  md = md.replace(/\n\n/g, '<br>');
-  rendered.innerHTML = md;
+  rendered.innerHTML = renderMd(raw.textContent);
 }
+
+// Notes per-tag di riwayat versi
+document.querySelectorAll('.notes-md[data-notes]').forEach(el => {
+  el.innerHTML = renderMd(el.dataset.notes);
+});
 </script>
 {% endblock %}
