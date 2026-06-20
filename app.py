@@ -1403,6 +1403,57 @@ def auto_set_active_app():
     else:
         session['active_app'] = 'evaluasi'
 
+# ─── Enforce app-level access dari user_app_access ──────────────────────────────
+
+# Prefix path → app_slug. Urutan penting: lebih spesifik di atas.
+_APP_PATH_MAP = [
+    ('/support',  'support'),
+    ('/portal',   'portal'),
+    ('/booking',  'booking'),
+    ('/aset',     'aset'),
+]
+# Path yang bebas diakses tanpa cek app_access
+_APP_ACCESS_EXEMPT = {
+    '/login', '/logout', '/static', '/mfa', '/portal/open',
+    '/reset-password', '/set-password',
+}
+
+@app.before_request
+def enforce_app_access():
+    """Pastikan user hanya bisa akses app yang ada di user_app_access mereka.
+    Superadmin selalu boleh. Evaluasi (TalentCore) juga dicek.
+    """
+    if 'user_id' not in session:
+        return
+    path = request.path
+    if any(path.startswith(p) for p in _APP_ACCESS_EXEMPT):
+        return
+    if request.path.startswith('/static'):
+        return
+    # Tentukan slug app berdasarkan path
+    app_slug = 'evaluasi'
+    for prefix, slug in _APP_PATH_MAP:
+        if path.startswith(prefix):
+            app_slug = slug
+            break
+    # Superadmin bebas
+    if session.get('user_role') == 'superadmin':
+        return
+    # Portal management hanya untuk admin/superadmin (sudah dijaga is_portal_admin)
+    if app_slug == 'portal':
+        return
+    try:
+        db  = get_db()
+        row = db.execute(
+            'SELECT id FROM user_app_access WHERE user_id=? AND app_slug=? AND is_active=1',
+            (session['user_id'], app_slug)
+        ).fetchone()
+        if not row:
+            flash(f'Anda tidak memiliki akses ke aplikasi ini.', 'danger')
+            return redirect(url_for('portal'))
+    except Exception:
+        pass
+
 # ─── Force MFA setup untuk user non-Google ─────────────────────────────────────
 
 @app.before_request
