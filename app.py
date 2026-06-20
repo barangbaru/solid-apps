@@ -2683,17 +2683,17 @@ def profile():
 def portal():
     session.pop('active_app', None)   # clear app saat kembali ke portal
     db   = get_db()
-    role = session.get('user_role', '')
     uid  = session.get('user_id')
+    role = session.get('user_role', '')
+    all_apps = db.execute('SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order, name').fetchall()
     if role == 'superadmin':
-        apps = db.execute('SELECT * FROM superapp_apps WHERE is_active=1 ORDER BY sort_order, name').fetchall()
+        accessible = {a['slug'] for a in all_apps}
     else:
-        apps = db.execute('''
-            SELECT a.* FROM superapp_apps a
-            JOIN user_app_access ua ON ua.app_slug=a.slug AND ua.user_id=? AND ua.is_active=1
-            WHERE a.is_active=1 ORDER BY a.sort_order, a.name
-        ''', (uid,)).fetchall()
-    return render_template('portal.html', apps=apps)
+        rows = db.execute(
+            'SELECT app_slug FROM user_app_access WHERE user_id=? AND is_active=1', (uid,)
+        ).fetchall()
+        accessible = {r['app_slug'] for r in rows}
+    return render_template('portal.html', apps=all_apps, accessible=accessible)
 
 @app.route('/portal/open/<slug>')
 @login_required

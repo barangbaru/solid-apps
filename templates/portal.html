@@ -24,9 +24,10 @@
   {% if apps %}
   <div class="row g-3">
     {% for app in apps %}
+    {% set has_access = app.slug in accessible %}
     <div class="col-sm-6 col-lg-4 col-xl-3">
-      {% if app.is_coming_soon %}
-      <div class="card h-100 portal-card" style="opacity:.7;cursor:default">
+      {% if app.is_coming_soon or not has_access %}
+      <div class="card h-100 portal-card portal-card-locked" style="opacity:{{ '.55' if not has_access else '.7' }};cursor:default">
       {% else %}
       <a href="/portal/open/{{ app.slug }}" class="card h-100 portal-card text-decoration-none app-card">
       {% endif %}
@@ -37,7 +38,12 @@
                         box-shadow:0 4px 16px {{ app.color }}33">
               <i class="bi bi-{{ app.icon }}" style="font-size:1.6rem;color:{{ app.color }}"></i>
             </div>
-            {% if app.is_coming_soon %}
+            {% if not has_access %}
+            <span class="badge d-flex align-items-center gap-1"
+                  style="background:#f1f3f5;color:#868e96;border:1px solid #dee2e6;font-size:.65rem;font-weight:500">
+              <i class="bi bi-lock-fill" style="font-size:.6rem"></i>Tidak Memiliki Akses
+            </span>
+            {% elif app.is_coming_soon %}
             <span class="badge bg-light text-muted border" style="font-size:.68rem">Segera Hadir</span>
             {% else %}
             <i class="bi bi-arrow-right-circle" style="color:{{ app.color }};font-size:1.15rem;margin-top:.2rem;opacity:.7"></i>
@@ -45,8 +51,13 @@
           </div>
           <div class="fw-bold mb-1" style="color:#1e2a3a;font-size:1rem">{{ app.name }}</div>
           <div class="text-muted" style="font-size:.82rem;line-height:1.5">{{ app.description }}</div>
+          {% if not has_access %}
+          <div class="mt-auto pt-2" style="font-size:.73rem;color:#adb5bd">
+            <i class="bi bi-info-circle me-1"></i>Hubungi administrator untuk meminta akses
+          </div>
+          {% endif %}
         </div>
-      {% if app.is_coming_soon %}</div>{% else %}</a>{% endif %}
+      {% if app.is_coming_soon or not has_access %}</div>{% else %}</a>{% endif %}
     </div>
     {% endfor %}
   </div>
