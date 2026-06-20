@@ -833,8 +833,9 @@ SYSTEM_ROLE_DEFAULTS = {
     'admin': ['manage_employees','manage_divisions','manage_evaluations',
               'view_evaluations','send_reminders','manage_template',
               'sc_view','sc_manage_customers','sc_manage_services','sc_manage_types','sc_manage_sla',
-              'sc_manage_apps','sc_manage_contracts','sc_manage_tickets','sc_manage_presales','sc_view_reports'],
-    'viewer': ['view_evaluations','sc_view','sc_view_reports'],
+              'sc_manage_apps','sc_manage_contracts','sc_manage_tickets','sc_manage_presales','sc_view_reports',
+              'ac_view','ac_manage_assets','ac_manage_infra','ac_manage_licenses','ac_manage_subs','ac_manage_requests'],
+    'viewer': ['view_evaluations','sc_view','sc_view_reports','ac_view'],
 }
 
 def init_db():
@@ -2755,7 +2756,7 @@ def portal_settings():
     roles_by_app = {}
     for a in apps:
         app_specific = [r for r in all_roles if r['app_slug'] == a['slug']]
-        roles_by_app[a['slug']] = app_specific if app_specific else global_roles
+        roles_by_app[a['slug']] = global_roles + app_specific
 
     return render_template('portal_settings.html', users=users, apps=apps,
                            access_map=access_map, roles_by_app=roles_by_app)
@@ -2930,7 +2931,7 @@ def portal_user_add():
     roles_by_app = {}
     for a in apps:
         specific = [r for r in all_roles if r['app_slug'] == a['slug']]
-        roles_by_app[a['slug']] = specific if specific else global_roles
+        roles_by_app[a['slug']] = global_roles + specific
 
     if request.method == 'POST':
         username  = request.form.get('username', '').strip()
@@ -2988,7 +2989,7 @@ def portal_user_edit(uid):
     roles_by_app = {}
     for a in apps:
         specific = [r for r in all_roles if r['app_slug'] == a['slug']]
-        roles_by_app[a['slug']] = specific if specific else global_roles
+        roles_by_app[a['slug']] = global_roles + specific
 
     if request.method == 'POST':
         full_name = request.form.get('full_name', '').strip()
@@ -3416,7 +3417,7 @@ def emp_edit(emp_id):
     roles_by_app = {}
     for a in apps:
         specific = [r for r in all_roles if r['app_slug'] == a['slug']]
-        roles_by_app[a['slug']] = specific if specific else global_roles
+        roles_by_app[a['slug']] = global_roles + specific
     user_access = {}
     if emp['user_id']:
         user_access = {r['app_slug']: r['app_role'] for r in
@@ -3824,7 +3825,7 @@ def karyawan():
     roles_by_app = {}
     for a in apps:
         specific = [r for r in all_roles if r['app_slug'] == a['slug']]
-        roles_by_app[a['slug']] = specific if specific else global_roles
+        roles_by_app[a['slug']] = global_roles + specific
     return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, today=today,
                            emp_user_map=emp_user_map, global_roles=global_roles,
                            apps=apps, roles_by_app=roles_by_app)
