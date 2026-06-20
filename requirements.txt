@@ -16,3 +16,4 @@ gunicorn==21.2.0
 pyotp==2.9.0
 qrcode==8.2
 pillow==11.3.0
+psycopg2-binary==2.9.10

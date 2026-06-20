@@ -30,6 +30,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 _default_db = os.path.join(os.path.dirname(__file__), 'evaluasi.db')
 DB_PATH = os.environ.get('DATABASE_PATH', _default_db)
+DB_TYPE = os.environ.get('DB_TYPE', 'sqlite').lower()
 DIVISI_LIST = list(ALL_DIVISIONS.keys())
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
@@ -55,12 +56,191 @@ def get_divisi_list(db):
         return DIVISI_LIST
 
 # ─── DB Helpers ────────────────────────────────────────────────────────────────
+# Thin wrapper sehingga kode SQLite (placeholder "?", row['col']) tetap bekerja
+# tanpa perubahan saat menggunakan PostgreSQL (placeholder "%s", RealDictCursor).
+
+class _DBWrapper:
+    """Wrap koneksi SQLite atau psycopg2 agar keduanya terlihat sama dari luar."""
+    def __init__(self, conn, is_pg=False):
+        self._conn = conn
+        self._is_pg = is_pg
+
+    def _fix(self, sql):
+        """Konversi SQL dialek SQLite → PostgreSQL."""
+        if not self._is_pg:
+            return sql
+        import re
+        sql_stripped = sql.strip()
+        # INSERT OR REPLACE → ON CONFLICT DO UPDATE SET col=EXCLUDED.col, ...
+        m_replace = re.match(
+            r'INSERT\s+OR\s+REPLACE\s+INTO\s+(\w+)\s*\(([^)]+)\)',
+            sql_stripped, re.IGNORECASE | re.DOTALL)
+        if m_replace:
+            cols = [c.strip() for c in m_replace.group(2).split(',')]
+            update_set = ', '.join(f'{c}=EXCLUDED.{c}' for c in cols)
+            sql = re.sub(r'\bINSERT\s+OR\s+REPLACE\s+INTO\b', 'INSERT INTO', sql, flags=re.IGNORECASE)
+            sql = re.sub(r'\?', '%s', sql)
+            sql = sql.rstrip().rstrip(';') + f' ON CONFLICT DO UPDATE SET {update_set}'
+            return sql
+        # INSERT OR IGNORE → ON CONFLICT DO NOTHING (tandai agar execute tahu tidak perlu RETURNING)
+        is_or_ignore = bool(re.search(r'\bINSERT\s+OR\s+IGNORE\b', sql, re.IGNORECASE))
+        sql = re.sub(r'\bINSERT\s+OR\s+IGNORE\s+INTO\b', 'INSERT INTO', sql, flags=re.IGNORECASE)
+        # Placeholder ? → %s
+        sql = re.sub(r'\?', '%s', sql)
+        if is_or_ignore:
+            sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
+        return sql
+
+    @property
+    def _is_or_ignore(self):
+        return False  # placeholder, dipakai di execute
+
+    def execute(self, sql, params=()):
+        if self._is_pg:
+            import re
+            # Cek apakah ini INSERT OR IGNORE (sebelum _fix mengubahnya)
+            is_or_ignore = bool(re.search(r'\bINSERT\s+OR\s+IGNORE\b', sql, re.IGNORECASE))
+            is_or_replace = bool(re.search(r'\bINSERT\s+OR\s+REPLACE\b', sql, re.IGNORECASE))
+            fixed = self._fix(sql)
+            cur = self._conn.cursor()
+            # Untuk INSERT biasa, tambahkan RETURNING id agar lastrowid tersedia
+            is_insert = bool(re.match(r'\s*INSERT\b', fixed, re.IGNORECASE))
+            needs_returning = is_insert and not is_or_ignore and 'RETURNING' not in fixed.upper()
+            if needs_returning:
+                fixed = fixed.rstrip().rstrip(';') + ' RETURNING id'
+            cur.execute(fixed, params if params else None)
+            wrapper = _CursorWrapper(cur, is_pg=True)
+            if needs_returning:
+                row = cur.fetchone()
+                wrapper._last_id = row[0] if row else None
+            elif is_or_replace and 'RETURNING' not in fixed.upper():
+                # ON CONFLICT DO UPDATE SET sudah di fixed, tambahkan RETURNING
+                pass  # lastrowid tidak kritis untuk OR REPLACE
+            return wrapper
+        else:
+            return self._conn.execute(sql, params)
+
+    def executescript(self, sql):
+        if self._is_pg:
+            cur = self._conn.cursor()
+            for stmt in sql.split(';'):
+                stmt = stmt.strip()
+                if stmt:
+                    cur.execute(stmt)
+            return cur
+        return self._conn.executescript(sql)
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+
+class _CursorWrapper:
+    """Wrap psycopg2 cursor agar fetchone()/fetchall() mengembalikan RealDictRow
+    yang dapat diakses dengan row['col'] DAN row[0] seperti sqlite3.Row."""
+    def __init__(self, cur, is_pg=False):
+        self._cur = cur
+        self._is_pg = is_pg
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        if self._is_pg:
+            return _DictRow(row, self._cur.description)
+        return row
+
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        if self._is_pg:
+            desc = self._cur.description
+            return [_DictRow(r, desc) for r in rows]
+        return rows
+
+    @property
+    def lastrowid(self):
+        if self._is_pg:
+            return getattr(self, '_last_id', None)
+        return self._cur.lastrowid
+
+    # Proxy agar sqlite3.Cursor attrs seperti rowcount dll bisa diakses
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+    def __iter__(self):
+        for row in self._cur:
+            if self._is_pg:
+                yield _DictRow(row, self._cur.description)
+            else:
+                yield row
+
+
+class _DictRow:
+    """Row psycopg2 yang bisa diakses via row['col'] atau row[0]."""
+    __slots__ = ('_data', '_keys')
+
+    def __init__(self, row, description):
+        self._keys = [d[0] for d in description]
+        self._data = list(row)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._data[key]
+        return self._data[self._keys.index(key)]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def keys(self):
+        return self._keys
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except (KeyError, ValueError):
+            return default
+
+
+def _pg_connect():
+    """Buat koneksi psycopg2 dari env vars PG_*."""
+    import psycopg2
+    return psycopg2.connect(
+        host=os.environ.get('PG_HOST', 'localhost'),
+        port=int(os.environ.get('PG_PORT', 5432)),
+        dbname=os.environ.get('PG_NAME', 'hive_db'),
+        user=os.environ.get('PG_USER', 'hive'),
+        password=os.environ.get('PG_PASS', ''),
+        options='-c search_path=public',
+    )
+
+
+def _get_raw_db():
+    """Buat koneksi DB baru (untuk background tasks / scheduler di luar request context)."""
+    if DB_TYPE == 'postgresql':
+        conn = _pg_connect()
+        conn.autocommit = False
+        return _DBWrapper(conn, is_pg=True)
+    raw = sqlite3.connect(DB_PATH)
+    raw.row_factory = sqlite3.Row
+    return _DBWrapper(raw, is_pg=False)
+
 
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute('PRAGMA foreign_keys = ON')
+        if DB_TYPE == 'postgresql':
+            conn = _pg_connect()
+            conn.autocommit = False
+            g.db = _DBWrapper(conn, is_pg=True)
+        else:
+            raw = sqlite3.connect(DB_PATH)
+            raw.row_factory = sqlite3.Row
+            raw.execute('PRAGMA foreign_keys = ON')
+            g.db = _DBWrapper(raw, is_pg=False)
     return g.db
 
 @app.teardown_appcontext
@@ -880,14 +1060,51 @@ SYSTEM_ROLE_DEFAULTS = {
     'viewer': ['view_evaluations','sc_view','sc_view_reports','ac_view'],
 }
 
+def _pg_adapt_schema(schema):
+    """Konversi DDL SQLite → PostgreSQL."""
+    import re
+    s = schema
+    # AUTOINCREMENT → SERIAL (untuk kolom id)
+    s = re.sub(r'\bINTEGER PRIMARY KEY AUTOINCREMENT\b', 'SERIAL PRIMARY KEY', s, flags=re.IGNORECASE)
+    # datetime('now','localtime') → NOW()
+    s = re.sub(r"datetime\('now',\s*'localtime'\)", 'NOW()', s, flags=re.IGNORECASE)
+    # SQLite CREATE INDEX IF NOT EXISTS sudah kompatibel dengan PG
+    return s
+
+
+def _pg_column_exists(db, table, col):
+    """Cek apakah kolom ada di PostgreSQL via information_schema."""
+    row = db.execute(
+        "SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name=%s",
+        (table, col)).fetchone()
+    return row is not None
+
+
 def init_db():
-    db = sqlite3.connect(DB_PATH)
-    db.executescript(SCHEMA)
+    if DB_TYPE == 'postgresql':
+        conn = _pg_connect()
+        conn.autocommit = False
+        db = _DBWrapper(conn, is_pg=True)
+    else:
+        raw = sqlite3.connect(DB_PATH)
+        db = _DBWrapper(raw, is_pg=False)
+
+    schema_sql = _pg_adapt_schema(SCHEMA) if DB_TYPE == 'postgresql' else SCHEMA
+    db.executescript(schema_sql)
+    db.commit()
+
     # Migrations
     for table, col, col_def in MIGRATIONS:
-        existing = [r[1] for r in db.execute(f'PRAGMA table_info({table})').fetchall()]
-        if col not in existing:
-            db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {col_def}')
+        if DB_TYPE == 'postgresql':
+            # Konversi tipe kolom SQLite → PostgreSQL jika perlu
+            col_def_pg = col_def.replace('INTEGER', 'INTEGER').replace(
+                "datetime('now','localtime')", 'NOW()')
+            if not _pg_column_exists(db, table, col):
+                db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {col_def_pg}')
+        else:
+            existing = [r[1] for r in db._conn.execute(f'PRAGMA table_info({table})').fetchall()]
+            if col not in existing:
+                db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {col_def}')
     db.commit()
     # Seed evaluation data
     if db.execute('SELECT COUNT(*) FROM skill_categories').fetchone()[0] == 0:
@@ -1868,8 +2085,7 @@ def _send_contract_notification(db, emp, days_left, settings, triggered_by='auto
 
 def run_contract_reminders(triggered_by='auto'):
     """Check contracts and send reminders. Call directly (not in request context)."""
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
+    db = _get_raw_db()
     try:
         settings = get_settings(db)
         if settings.get('reminder_enabled', '1') != '1' and triggered_by == 'auto':
@@ -2038,8 +2254,7 @@ def _notify_asset_change(db, asset, event, old_user, new_user, reason):
 def run_subscription_reminders(triggered_by='auto'):
     """Cek ac_subscriptions yang mendekati expired dan kirim notifikasi.
     Dipanggil dari scheduler (auto) atau route manual (manual)."""
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
+    db = _get_raw_db()
     try:
         settings = get_settings(db)
         if settings.get('ac_sub_reminder_enabled', '1') != '1' and triggered_by == 'auto':
@@ -5716,8 +5931,7 @@ def eval_send_self_link(eval_id):
 @app.route('/assess/<token>', methods=['GET', 'POST'])
 def self_assess(token):
     """Public — no login required. Employee fills self-assessment via token link."""
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
+    db = _get_raw_db()
     try:
         tok = db.execute("SELECT * FROM eval_tokens WHERE token=?", (token,)).fetchone()
         if not tok:

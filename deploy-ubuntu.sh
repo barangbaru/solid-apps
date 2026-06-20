@@ -1,15 +1,24 @@
 #!/bin/bash
-# deploy-ubuntu.sh — Install & Update Evaluasi Kinerja di Ubuntu 20.04/22.04
+# deploy-ubuntu.sh — Install & Update Hive di Ubuntu 20.04/22.04/24.04
 # Jalankan sebagai root: sudo bash deploy-ubuntu.sh
 #
-# Script ini aman dijalankan berulang (idempotent):
-#   - Install baru  : setup lengkap dari nol
-#   - Update/redeploy : tarik kode baru, update deps, restart — database TIDAK tersentuh
+# Idempotent — aman dijalankan berulang:
+#   Install baru  : setup lengkap dari nol
+#   Update/redeploy: tarik kode baru, update deps, restart — database TIDAK tersentuh
 
 set -e
 
+# ── Warna output ──────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+info()    { echo -e "${CYAN}  >>  $*${NC}"; }
+success() { echo -e "${GREEN}  ✓   $*${NC}"; }
+warn()    { echo -e "${YELLOW}  ⚠   $*${NC}"; }
+header()  { echo -e "\n${BOLD}=== $* ===${NC}"; }
+
+# ── Konstanta ─────────────────────────────────────────────────────────────────
 APP_DIR="/var/www/evaluasi"
-DATA_DIR="/var/lib/evaluasi"          # Database di luar app dir — aman saat update
+DATA_DIR="/var/lib/evaluasi"
 SERVICE_NAME="evaluasi"
 REPO_URL="https://github.com/barangbaru/solid-apps.git"
 REPO_SUBDIR="."
@@ -17,92 +26,273 @@ REPO_SUBDIR="."
 IS_UPDATE=false
 [ -f "$APP_DIR/wsgi.py" ] && IS_UPDATE=true
 
+echo ""
+echo -e "${BOLD}╔══════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}║         HIVE — Deploy Script             ║${NC}"
 if $IS_UPDATE; then
-    echo "========================================"
-    echo " MODE: UPDATE APLIKASI"
-    echo "========================================"
+echo -e "${BOLD}║         MODE: UPDATE APLIKASI            ║${NC}"
 else
-    echo "========================================"
-    echo " MODE: INSTALL BARU"
-    echo "========================================"
+echo -e "${BOLD}║         MODE: INSTALL BARU               ║${NC}"
+fi
+echo -e "${BOLD}╚══════════════════════════════════════════╝${NC}"
+echo ""
+
+# ════════════════════════════════════════════════════════════════════════════
+# BAGIAN 0 — Pilihan Database (hanya saat install baru atau paksa re-config)
+# ════════════════════════════════════════════════════════════════════════════
+DB_TYPE="sqlite"
+PG_HOST="localhost"
+PG_PORT="5432"
+PG_NAME="hive_db"
+PG_USER="hive"
+PG_PASS=""
+
+# Cek apakah .env sudah ada dengan config PostgreSQL
+if [ -f "$APP_DIR/.env" ] && grep -q "^DB_TYPE=postgresql" "$APP_DIR/.env" 2>/dev/null; then
+    DB_TYPE="postgresql"
+    PG_HOST=$(grep '^PG_HOST=' "$APP_DIR/.env" | cut -d= -f2-)
+    PG_PORT=$(grep '^PG_PORT=' "$APP_DIR/.env" | cut -d= -f2-)
+    PG_NAME=$(grep '^PG_NAME=' "$APP_DIR/.env" | cut -d= -f2-)
+    PG_USER=$(grep '^PG_USER=' "$APP_DIR/.env" | cut -d= -f2-)
+    PG_PASS=$(grep '^PG_PASS=' "$APP_DIR/.env" | cut -d= -f2-)
+    warn "Config PostgreSQL ditemukan di .env — menggunakan yang sudah ada."
+    warn "  Host: $PG_HOST:$PG_PORT  DB: $PG_NAME  User: $PG_USER"
+else
+
+header "Pilihan Database"
+echo ""
+echo -e "  ${BOLD}[1]${NC} SQLite       — Simple, cocok untuk single-server (default)"
+echo -e "  ${BOLD}[2]${NC} PostgreSQL   — Lebih robust, siap untuk multi-process / scale-up"
+echo ""
+read -rp "  Pilih [1/2] (default: 1): " DB_CHOICE
+DB_CHOICE=${DB_CHOICE:-1}
+
+if [ "$DB_CHOICE" = "2" ]; then
+    DB_TYPE="postgresql"
+    echo ""
+    echo -e "  ${BOLD}[A]${NC} Install & setup PostgreSQL otomatis di server ini"
+    echo -e "  ${BOLD}[B]${NC} Gunakan PostgreSQL yang sudah ada (input parameter)"
+    echo ""
+    read -rp "  Pilih [A/B] (default: A): " PG_SETUP
+    PG_SETUP=${PG_SETUP:-A}
+    PG_SETUP=$(echo "$PG_SETUP" | tr '[:lower:]' '[:upper:]')
+
+    if [ "$PG_SETUP" = "A" ]; then
+        # ── Auto install PostgreSQL ──────────────────────────────────────────
+        header "Install PostgreSQL"
+        apt-get update -qq
+        apt-get install -y postgresql postgresql-contrib
+        systemctl enable postgresql
+        systemctl start postgresql
+
+        # Generate password acak untuk user hive
+        PG_PASS=$(python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(20)))")
+        PG_HOST="localhost"
+        PG_PORT="5432"
+
+        read -rp "  Nama database (default: hive_db): " INPUT_PG_NAME
+        PG_NAME=${INPUT_PG_NAME:-hive_db}
+        read -rp "  Nama user PostgreSQL (default: hive): " INPUT_PG_USER
+        PG_USER=${INPUT_PG_USER:-hive}
+
+        info "Membuat user '$PG_USER' dan database '$PG_NAME'..."
+        # Jalankan sebagai postgres — skip jika sudah ada
+        sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='$PG_USER'" | grep -q 1 || \
+            sudo -u postgres psql -c "CREATE USER $PG_USER WITH PASSWORD '$PG_PASS';"
+        sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='$PG_NAME'" | grep -q 1 || \
+            sudo -u postgres psql -c "CREATE DATABASE $PG_NAME OWNER $PG_USER;"
+        sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $PG_NAME TO $PG_USER;"
+        # PostgreSQL 15+: perlu grant schema public
+        sudo -u postgres psql -d "$PG_NAME" -c "GRANT ALL ON SCHEMA public TO $PG_USER;" 2>/dev/null || true
+
+        success "PostgreSQL siap: $PG_USER@$PG_HOST:$PG_PORT/$PG_NAME"
+        echo ""
+        echo -e "  ${YELLOW}Simpan kredensial ini:${NC}"
+        echo -e "    Host     : $PG_HOST"
+        echo -e "    Port     : $PG_PORT"
+        echo -e "    Database : $PG_NAME"
+        echo -e "    User     : $PG_USER"
+        echo -e "    Password : $PG_PASS"
+        echo ""
+
+    else
+        # ── Input parameter PostgreSQL manual ───────────────────────────────
+        header "Konfigurasi PostgreSQL"
+        echo ""
+        read -rp "  Host PostgreSQL (default: localhost): " INPUT_HOST
+        PG_HOST=${INPUT_HOST:-localhost}
+        read -rp "  Port (default: 5432): " INPUT_PORT
+        PG_PORT=${INPUT_PORT:-5432}
+        read -rp "  Nama Database: " PG_NAME
+        read -rp "  Username: " PG_USER
+        read -srp "  Password: " PG_PASS
+        echo ""
+
+        # Test koneksi
+        info "Menguji koneksi ke PostgreSQL..."
+        apt-get install -y postgresql-client -qq 2>/dev/null || true
+        if PGPASSWORD="$PG_PASS" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_NAME" -c '\q' 2>/dev/null; then
+            success "Koneksi PostgreSQL berhasil!"
+        else
+            warn "Koneksi gagal — pastikan parameter benar dan PostgreSQL bisa diakses."
+            warn "Melanjutkan install, tapi app mungkin tidak bisa start."
+        fi
+    fi
 fi
 
-# ─── [1] Sistem dependencies ──────────────────────────────────────────────────
+fi  # end if .env belum ada
+
+# ════════════════════════════════════════════════════════════════════════════
+# [1] Sistem dependencies
+# ════════════════════════════════════════════════════════════════════════════
+header "[1/7] Install system dependencies"
 if ! $IS_UPDATE; then
-    echo "=== [1/7] Install system dependencies ==="
     apt-get update -qq
-    apt-get install -y python3 python3-pip python3-venv nginx git rsync
+    PKGS="python3 python3-pip python3-venv nginx git rsync"
+    if [ "$DB_TYPE" = "postgresql" ]; then
+        PKGS="$PKGS libpq-dev python3-dev"
+    fi
+    apt-get install -y $PKGS
+    success "System dependencies terpasang."
 else
-    echo "=== [1/7] Lewati install system (mode update) ==="
+    # Pastikan libpq-dev ada jika PostgreSQL
+    if [ "$DB_TYPE" = "postgresql" ]; then
+        apt-get install -y libpq-dev python3-dev -qq
+    fi
+    info "Mode update — sistem dependencies dilewati."
 fi
 
-# ─── [2] Tarik kode terbaru ───────────────────────────────────────────────────
-echo "=== [2/7] Tarik kode terbaru dari GitHub ==="
-TMPDIR=$(mktemp -d)
-git clone --depth=1 "$REPO_URL" "$TMPDIR/repo" -q
-
-# rsync: salin kode baru, tapi JANGAN sentuh .env dan venv
+# ════════════════════════════════════════════════════════════════════════════
+# [2] Tarik kode terbaru
+# ════════════════════════════════════════════════════════════════════════════
+header "[2/7] Tarik kode terbaru dari GitHub"
+TMPDIR_DEPLOY=$(mktemp -d)
+git clone --depth=1 "$REPO_URL" "$TMPDIR_DEPLOY/repo" -q
 rsync -a --delete \
     --exclude='.env' \
     --exclude='venv/' \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
-    "$TMPDIR/repo/$REPO_SUBDIR/" "$APP_DIR/"
+    --exclude='*.db' \
+    "$TMPDIR_DEPLOY/repo/$REPO_SUBDIR/" "$APP_DIR/"
+rm -rf "$TMPDIR_DEPLOY"
+success "Kode berhasil diperbarui."
 
-rm -rf "$TMPDIR"
-echo "  >> Kode berhasil diperbarui."
-
-# ─── [3] Virtual environment & dependencies ───────────────────────────────────
-echo "=== [3/7] Update virtual environment ==="
+# ════════════════════════════════════════════════════════════════════════════
+# [3] Virtual environment & dependencies
+# ════════════════════════════════════════════════════════════════════════════
+header "[3/7] Update virtual environment"
 cd "$APP_DIR"
 python3 -m venv venv
 venv/bin/pip install --upgrade pip -q
-venv/bin/pip install -r requirements.txt -q
-echo "  >> Dependencies up to date."
 
-# ─── [4] File .env ────────────────────────────────────────────────────────────
-echo "=== [4/7] Konfigurasi .env ==="
+# Tambahkan psycopg2-binary ke requirements jika PostgreSQL
+if [ "$DB_TYPE" = "postgresql" ]; then
+    if ! grep -q "psycopg2" requirements.txt 2>/dev/null; then
+        echo "psycopg2-binary" >> requirements.txt
+    fi
+fi
+
+venv/bin/pip install -r requirements.txt -q
+success "Dependencies up to date."
+
+# ════════════════════════════════════════════════════════════════════════════
+# [4] File .env
+# ════════════════════════════════════════════════════════════════════════════
+header "[4/7] Konfigurasi .env"
 if [ ! -f "$APP_DIR/.env" ]; then
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     sed -i "s|GANTI_DENGAN_RANDOM_STRING_PANJANG_DI_PRODUCTION|$SECRET|g" "$APP_DIR/.env"
-    sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$DATA_DIR/evaluasi.db|g" "$APP_DIR/.env"
-    echo "  >> .env baru dibuat. Edit $APP_DIR/.env untuk SMTP/Telegram."
-else
-    echo "  >> .env sudah ada."
-    # Pastikan DATABASE_PATH mengarah ke DATA_DIR (migrasi dari install lama)
-    CURRENT_DB=$(grep '^DATABASE_PATH=' "$APP_DIR/.env" | cut -d= -f2- || true)
-    if [ -n "$CURRENT_DB" ] && [ "$CURRENT_DB" != "$DATA_DIR/evaluasi.db" ]; then
-        echo "  >> DATABASE_PATH lama: $CURRENT_DB — migrasi ke $DATA_DIR/evaluasi.db"
-        mkdir -p "$DATA_DIR"
-        # Pindahkan file database lama jika ada dan belum dipindahkan
-        if [ -f "$CURRENT_DB" ]; then
-            mv "$CURRENT_DB" "$DATA_DIR/evaluasi.db"
-            echo "  >> Database dipindahkan: $CURRENT_DB → $DATA_DIR/evaluasi.db"
-        fi
-        sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$DATA_DIR/evaluasi.db|g" "$APP_DIR/.env"
-        echo "  >> DATABASE_PATH diperbarui di .env"
+
+    if [ "$DB_TYPE" = "postgresql" ]; then
+        # Hapus/update DATABASE_PATH untuk PostgreSQL
+        sed -i "s|^DATABASE_PATH=.*|# DATABASE_PATH tidak digunakan saat DB_TYPE=postgresql|g" "$APP_DIR/.env"
+        cat >> "$APP_DIR/.env" << PGENV
+
+# ─── PostgreSQL ───────────────────────────────────────────────────────────────
+DB_TYPE=postgresql
+PG_HOST=$PG_HOST
+PG_PORT=$PG_PORT
+PG_NAME=$PG_NAME
+PG_USER=$PG_USER
+PG_PASS=$PG_PASS
+PGENV
+        success ".env baru dibuat dengan konfigurasi PostgreSQL."
     else
-        echo "  >> DATABASE_PATH sudah benar ($DATA_DIR/evaluasi.db), dilewati."
+        sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$DATA_DIR/evaluasi.db|g" "$APP_DIR/.env"
+        echo "DB_TYPE=sqlite" >> "$APP_DIR/.env"
+        success ".env baru dibuat dengan SQLite."
+    fi
+    warn "Edit $APP_DIR/.env untuk SMTP/Telegram/konfigurasi lainnya."
+else
+    success ".env sudah ada — tidak diubah."
+
+    # Jika user sebelumnya SQLite dan sekarang pilih PostgreSQL, tambahkan config PG
+    if [ "$DB_TYPE" = "postgresql" ] && ! grep -q "^DB_TYPE=postgresql" "$APP_DIR/.env"; then
+        warn "Menambahkan konfigurasi PostgreSQL ke .env yang sudah ada..."
+        cat >> "$APP_DIR/.env" << PGENV
+
+# ─── PostgreSQL (ditambahkan oleh deploy script) ──────────────────────────────
+DB_TYPE=postgresql
+PG_HOST=$PG_HOST
+PG_PORT=$PG_PORT
+PG_NAME=$PG_NAME
+PG_USER=$PG_USER
+PG_PASS=$PG_PASS
+PGENV
+        success "Konfigurasi PostgreSQL ditambahkan ke .env."
+    fi
+
+    # Migrasi DATABASE_PATH lama (SQLite) ke DATA_DIR jika masih ada
+    if [ "$DB_TYPE" = "sqlite" ]; then
+        CURRENT_DB=$(grep '^DATABASE_PATH=' "$APP_DIR/.env" | cut -d= -f2- || true)
+        if [ -n "$CURRENT_DB" ] && [ "$CURRENT_DB" != "$DATA_DIR/evaluasi.db" ]; then
+            mkdir -p "$DATA_DIR"
+            [ -f "$CURRENT_DB" ] && mv "$CURRENT_DB" "$DATA_DIR/evaluasi.db" && \
+                info "Database dipindahkan: $CURRENT_DB → $DATA_DIR/evaluasi.db"
+            sed -i "s|DATABASE_PATH=.*|DATABASE_PATH=$DATA_DIR/evaluasi.db|g" "$APP_DIR/.env"
+            success "DATABASE_PATH diperbarui."
+        fi
     fi
 fi
 
-# ─── [5] Direktori data & permission ──────────────────────────────────────────
-echo "=== [5/7] Setup direktori & permission ==="
+# ════════════════════════════════════════════════════════════════════════════
+# [4b] Migrasi SQLite → PostgreSQL (jika ada file lama)
+# ════════════════════════════════════════════════════════════════════════════
+if [ "$DB_TYPE" = "postgresql" ] && [ -f "$DATA_DIR/evaluasi.db" ]; then
+    echo ""
+    warn "Ditemukan database SQLite lama: $DATA_DIR/evaluasi.db"
+    warn "Hive akan menggunakan PostgreSQL dan membuat schema baru via init_db()."
+    warn "Data lama di SQLite TIDAK otomatis dimigrasikan."
+    echo ""
+    read -rp "  Backup SQLite lama ke $DATA_DIR/evaluasi.db.bak? [Y/n]: " DO_BACKUP
+    DO_BACKUP=${DO_BACKUP:-Y}
+    if [[ "$DO_BACKUP" =~ ^[Yy] ]]; then
+        cp "$DATA_DIR/evaluasi.db" "$DATA_DIR/evaluasi.db.bak"
+        success "Backup disimpan: $DATA_DIR/evaluasi.db.bak"
+    fi
+fi
+
+# ════════════════════════════════════════════════════════════════════════════
+# [5] Direktori data & permission
+# ════════════════════════════════════════════════════════════════════════════
+header "[5/7] Setup direktori & permission"
 mkdir -p "$DATA_DIR"
 mkdir -p /var/log/evaluasi
+mkdir -p "$APP_DIR/static/uploads"
 chown -R www-data:www-data "$APP_DIR"
 chown -R www-data:www-data "$DATA_DIR"
 chmod 750 "$DATA_DIR"
-# Pastikan venv tetap executable setelah chown
 find "$APP_DIR/venv/bin" -type f -exec chmod +x {} \;
-echo "  >> Data dir: $DATA_DIR (database di sini, aman saat update)"
+success "Direktori & permission siap."
 
-# ─── [6] Systemd service ──────────────────────────────────────────────────────
-echo "=== [6/7] Install & restart service ==="
+# ════════════════════════════════════════════════════════════════════════════
+# [6] Systemd service
+# ════════════════════════════════════════════════════════════════════════════
+header "[6/7] Install & restart service"
 cp "$APP_DIR/evaluasi.service" /etc/systemd/system/${SERVICE_NAME}.service
 
-# Tambah ReadWritePaths untuk DATA_DIR di service jika belum ada
 if ! grep -q "$DATA_DIR" /etc/systemd/system/${SERVICE_NAME}.service; then
     sed -i "s|ReadWritePaths=.*|ReadWritePaths=$APP_DIR $DATA_DIR /var/log/evaluasi|" \
         /etc/systemd/system/${SERVICE_NAME}.service
@@ -114,15 +304,17 @@ systemctl restart "$SERVICE_NAME"
 sleep 2
 systemctl status "$SERVICE_NAME" --no-pager -l
 
-# ─── [7] Nginx ────────────────────────────────────────────────────────────────
-echo "=== [7/7] Konfigurasi Nginx ==="
+# ════════════════════════════════════════════════════════════════════════════
+# [7] Nginx
+# ════════════════════════════════════════════════════════════════════════════
+header "[7/7] Konfigurasi Nginx"
 if [ ! -f /etc/nginx/sites-available/evaluasi ]; then
     cat > /etc/nginx/sites-available/evaluasi << 'NGINXCONF'
 server {
     listen 80;
     server_name _;
 
-    client_max_body_size 10M;
+    client_max_body_size 20M;
 
     location / {
         proxy_pass         http://unix:/run/evaluasi/evaluasi.sock;
@@ -141,35 +333,43 @@ server {
 }
 NGINXCONF
     ln -sf /etc/nginx/sites-available/evaluasi /etc/nginx/sites-enabled/evaluasi
-    [ -f /etc/nginx/sites-enabled/default ] && rm /etc/nginx/sites-enabled/default && echo "  >> Site 'default' dinonaktifkan."
-    echo "  >> Config Nginx baru dibuat."
+    [ -f /etc/nginx/sites-enabled/default ] && rm /etc/nginx/sites-enabled/default && \
+        info "Site 'default' dinonaktifkan."
+    success "Config Nginx baru dibuat."
 else
-    echo "  >> Config Nginx sudah ada, dilewati."
+    info "Config Nginx sudah ada, dilewati."
 fi
 nginx -t && systemctl reload nginx
-echo "  >> Nginx reloaded."
+success "Nginx reloaded."
 
-# ─── Ringkasan ────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# Ringkasan
+# ════════════════════════════════════════════════════════════════════════════
 echo ""
-echo "========================================"
+echo -e "${BOLD}╔══════════════════════════════════════════╗${NC}"
 if $IS_UPDATE; then
-    echo " UPDATE SELESAI"
+echo -e "${BOLD}║      ✓  UPDATE SELESAI                   ║${NC}"
 else
-    echo " INSTALL SELESAI"
+echo -e "${BOLD}║      ✓  INSTALL SELESAI                  ║${NC}"
 fi
-echo "========================================"
-echo " URL          : http://$(hostname -I | awk '{print $1}')"
-echo " Database     : $DATA_DIR/evaluasi.db"
-echo " Config .env  : $APP_DIR/.env"
-echo " Log          : journalctl -u evaluasi -f"
-echo " Update app   : sudo bash $APP_DIR/deploy-ubuntu.sh"
-echo "========================================"
+echo -e "${BOLD}╚══════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "  URL       : ${CYAN}http://$(hostname -I | awk '{print $1}')${NC}"
+if [ "$DB_TYPE" = "postgresql" ]; then
+echo -e "  Database  : ${CYAN}PostgreSQL — $PG_USER@$PG_HOST:$PG_PORT/$PG_NAME${NC}"
+else
+echo -e "  Database  : ${CYAN}SQLite — $DATA_DIR/evaluasi.db${NC}"
+fi
+echo -e "  Config    : ${CYAN}$APP_DIR/.env${NC}"
+echo -e "  Log       : ${CYAN}journalctl -u evaluasi -f${NC}"
+echo -e "  Update    : ${CYAN}sudo bash $APP_DIR/deploy-ubuntu.sh${NC}"
+echo ""
 if ! $IS_UPDATE; then
-    echo " LOGIN AWAL:"
-    echo "   Username : superadmin"
-    echo "   Password : Admin@123"
-    echo " !! Segera ganti password setelah login !!"
-    echo "========================================"
-    echo " PENTING: Edit .env untuk SMTP & Telegram!"
-    echo "========================================"
+    echo -e "  ${YELLOW}LOGIN AWAL:${NC}"
+    echo -e "    Username : superadmin"
+    echo -e "    Password : Admin@123"
+    echo -e "  ${RED}!! Segera ganti password setelah login !!${NC}"
+    echo ""
+    echo -e "  ${YELLOW}PENTING: Edit .env untuk SMTP & Telegram!${NC}"
 fi
+echo ""
