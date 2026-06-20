@@ -194,8 +194,8 @@
               <td class="text-center small fw-semibold">{{ emp.contract_end or '—' }}</td>
               <td class="text-center">
                 {% if dl is none %}<span class="text-muted">—</span>
-                {% elif dl < 0 %}<span class="fw-bold text-secondary">{{ dl | abs }} hari lalu</span>
-                {% elif dl == 0 %}<span class="fw-bold text-danger">Hari ini!</span>
+                {% elif dl < 0 %}<span class="fw-bold text-secondary">0</span>
+                {% elif dl == 0 %}<span class="fw-bold text-danger">0</span>
                 {% else %}
                   <span class="fw-bold {% if dl <= 14 %}text-danger{% elif dl <= 30 %}text-warning{% else %}text-success{% endif %}">
                     {{ dl | int }} hari
