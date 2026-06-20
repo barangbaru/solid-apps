@@ -135,9 +135,20 @@ class _DBWrapper:
             # Untuk INSERT biasa, tambahkan RETURNING id agar lastrowid tersedia
             is_insert = bool(re.match(r'\s*INSERT\b', fixed, re.IGNORECASE))
             needs_returning = is_insert and not is_or_ignore and 'RETURNING' not in fixed.upper()
+            fixed_exec = fixed
             if needs_returning:
-                fixed = fixed.rstrip().rstrip(';') + ' RETURNING id'
-            cur.execute(fixed, params if params else None)
+                fixed_exec = fixed.rstrip().rstrip(';') + ' RETURNING id'
+            try:
+                cur.execute(fixed_exec, params if params else None)
+            except Exception as e:
+                if needs_returning and 'column "id" does not exist' in str(e):
+                    # Tabel ini tidak punya kolom id (misal app_settings pakai key)
+                    self._conn.rollback()
+                    cur = self._conn.cursor()
+                    cur.execute(fixed, params if params else None)
+                    needs_returning = False
+                else:
+                    raise
             wrapper = _CursorWrapper(cur, is_pg=True)
             if needs_returning:
                 row = cur.fetchone()

@@ -7,6 +7,14 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.3] — 2026-06-20
+### Bug Fix
+- Fix error `column "id" does not exist` saat INSERT ke tabel tanpa kolom `id` (misal `app_settings` yang pakai `key` sebagai PK)
+- `_DBWrapper.execute()`: jika `RETURNING id` gagal karena tabel tidak punya kolom `id`, retry otomatis tanpa `RETURNING id`
+- Memperbaiki fitur Update Center (cek update manual/otomatis) yang gagal karena `app_settings` tidak punya kolom `id`
+
+---
+
 ## [1.4.2] — 2026-06-20
 ### Bug Fix
 - Fix `last_insert_rowid()` SQLite → `lastval()` PostgreSQL di `_fix()`
