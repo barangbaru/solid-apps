@@ -258,19 +258,48 @@ PGENV
 fi
 
 # ════════════════════════════════════════════════════════════════════════════
-# [4b] Migrasi SQLite → PostgreSQL (jika ada file lama)
+# [4b] Migrasi SQLite → PostgreSQL (otomatis, sekali saja)
 # ════════════════════════════════════════════════════════════════════════════
+MIGRATION_FLAG="$DATA_DIR/.pg_migration_done"
+
 if [ "$DB_TYPE" = "postgresql" ] && [ -f "$DATA_DIR/evaluasi.db" ]; then
-    echo ""
-    warn "Ditemukan database SQLite lama: $DATA_DIR/evaluasi.db"
-    warn "Hive akan menggunakan PostgreSQL dan membuat schema baru via init_db()."
-    warn "Data lama di SQLite TIDAK otomatis dimigrasikan."
-    echo ""
-    read -rp "  Backup SQLite lama ke $DATA_DIR/evaluasi.db.bak? [Y/n]: " DO_BACKUP
-    DO_BACKUP=${DO_BACKUP:-Y}
-    if [[ "$DO_BACKUP" =~ ^[Yy] ]]; then
+    if [ -f "$MIGRATION_FLAG" ]; then
+        info "Migrasi SQLite→PostgreSQL sudah pernah dijalankan — dilewati."
+        info "  (hapus $MIGRATION_FLAG untuk paksa migrasi ulang)"
+    else
+        echo ""
+        header "[4b] Migrasi data SQLite → PostgreSQL"
+        warn "Ditemukan database SQLite: $DATA_DIR/evaluasi.db"
+        warn "Data akan dimigrasikan ke PostgreSQL secara otomatis."
+        echo ""
+
+        # Backup dulu
         cp "$DATA_DIR/evaluasi.db" "$DATA_DIR/evaluasi.db.bak"
         success "Backup disimpan: $DATA_DIR/evaluasi.db.bak"
+
+        # Jalankan migrate_to_pg.py dengan venv
+        info "Menjalankan migrasi data..."
+        cd "$APP_DIR"
+
+        # Export PG env vars agar migrate_to_pg.py bisa baca
+        export PG_HOST PG_PORT PG_NAME PG_USER PG_PASS
+
+        if "$APP_DIR/venv/bin/python3" "$APP_DIR/migrate_to_pg.py" \
+            --sqlite "$DATA_DIR/evaluasi.db" \
+            --truncate \
+            --skip-errors; then
+            touch "$MIGRATION_FLAG"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') Migrated from $DATA_DIR/evaluasi.db" >> "$MIGRATION_FLAG"
+            success "Migrasi selesai! Flag disimpan: $MIGRATION_FLAG"
+        else
+            echo ""
+            warn "Migrasi selesai dengan beberapa error."
+            warn "Cek $APP_DIR/migrate_errors.log untuk detail."
+            warn "App tetap akan dijalankan — data yang berhasil sudah di PostgreSQL."
+            touch "$MIGRATION_FLAG"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') Migrated with errors from $DATA_DIR/evaluasi.db" >> "$MIGRATION_FLAG"
+        fi
+        echo ""
     fi
 fi
 
