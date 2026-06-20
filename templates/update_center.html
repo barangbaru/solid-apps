@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+{% block title %}Update Center — Hive{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Update Center</span>{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  {# ── Status versi ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center gap-4 flex-wrap">
+          <div class="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+               style="width:56px;height:56px;background:#f0f4ff">
+            <i class="bi bi-arrow-up-circle" style="font-size:1.8rem;color:#4361ee"></i>
+          </div>
+          <div class="flex-grow-1">
+            <h5 class="fw-bold mb-1">Update Center</h5>
+            <div class="d-flex gap-3 flex-wrap">
+              <span class="small text-muted">
+                <i class="bi bi-box me-1"></i>
+                Versi terpasang: <strong class="text-dark">v{{ current_version }}</strong>
+              </span>
+              {% if latest_version %}
+              <span class="small text-muted">
+                <i class="bi bi-cloud me-1"></i>
+                Versi terbaru: <strong class="{{ 'text-success' if update_available else 'text-dark' }}">v{{ latest_version }}</strong>
+              </span>
+              {% endif %}
+              {% if check_last %}
+              <span class="small text-muted">
+                <i class="bi bi-clock me-1"></i>Dicek: {{ check_last }}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <form method="post" action="/portal/update/check">
+              <button type="submit" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-clockwise me-1"></i>Cek Sekarang
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {# Status badge #}
+        <div class="mt-3">
+          {% if deploy_running and not deploy_done %}
+          <div class="alert alert-warning d-flex align-items-center gap-2 mb-0 py-2">
+            <div class="spinner-border spinner-border-sm text-warning" role="status"></div>
+            <strong>Deploy sedang berjalan</strong> — pantau progress di bawah.
+            <form method="post" action="/portal/update/cancel" class="ms-auto">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Batalkan Trigger</button>
+            </form>
+          </div>
+          {% elif update_available %}
+          <div class="alert alert-info d-flex align-items-center gap-2 mb-0 py-2">
+            <i class="bi bi-info-circle-fill text-info"></i>
+            <span>Update tersedia: <strong>v{{ latest_version }}</strong></span>
+            {% if can_trigger %}
+            <form method="post" action="/portal/update/trigger" class="ms-auto d-flex gap-2 align-items-center">
+              <input type="hidden" name="version" value="{{ latest_version }}">
+              <button type="submit" class="btn btn-sm btn-primary"
+                      onclick="return confirm('Update ke v{{ latest_version }}?\nServer akan restart setelah update selesai.')">
+                <i class="bi bi-download me-1"></i>Update ke v{{ latest_version }}
+              </button>
+            </form>
+            {% endif %}
+          </div>
+          {% else %}
+          <div class="alert alert-success d-flex align-items-center gap-2 mb-0 py-2">
+            <i class="bi bi-check-circle-fill text-success"></i>
+            Hive sudah menggunakan versi terbaru.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Log deploy realtime ── #}
+  {% if deploy_running or log_tail %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-terminal me-1"></i>Log Deploy</span>
+        <div class="d-flex gap-2">
+          <span id="log-status" class="badge bg-warning text-dark">Berjalan...</span>
+          <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">Bersihkan</button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <pre id="deploy-log"
+             style="background:#0d1117;color:#e6edf3;padding:1rem;margin:0;
+                    height:400px;overflow-y:auto;font-size:.78rem;line-height:1.6;
+                    border-radius:0 0 .5rem .5rem">{{ log_tail }}</pre>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Release notes ── #}
+  {% if release_notes %}
+  <div class="col-12 col-lg-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-journal-text me-1"></i>Release Notes — v{{ latest_version }}
+      </div>
+      <div class="card-body" style="max-height:480px;overflow-y:auto">
+        <div class="markdown-body" id="release-notes-raw" style="display:none">{{ release_notes }}</div>
+        <div id="release-notes-rendered" class="small"></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Riwayat versi / semua tag ── #}
+  <div class="col-12 {% if release_notes %}col-lg-5{% endif %}">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-tags me-1"></i>Riwayat Versi</span>
+      </div>
+      <div class="card-body p-0" style="max-height:480px;overflow-y:auto">
+        {% if all_tags %}
+        <table class="table table-hover align-middle mb-0 small">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th class="ps-3">Tag</th>
+              <th>Status</th>
+              {% if can_trigger %}<th></th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for tag in all_tags %}
+            {% set ver = tag.lstrip('v') %}
+            <tr>
+              <td class="ps-3 fw-semibold">
+                <i class="bi bi-tag me-1 text-muted"></i>{{ tag }}
+              </td>
+              <td>
+                {% if ver == current_version %}
+                <span class="badge bg-primary">Terpasang</span>
+                {% elif ver == latest_version %}
+                <span class="badge bg-success">Terbaru</span>
+                {% else %}
+                <span class="badge bg-light text-muted border">Lama</span>
+                {% endif %}
+              </td>
+              {% if can_trigger %}
+              <td class="pe-3 text-end">
+                {% if ver != current_version %}
+                <form method="post" action="/portal/update/trigger" style="display:inline">
+                  <input type="hidden" name="version" value="{{ ver }}">
+                  <button type="submit" class="btn btn-xs btn-outline-secondary py-0 px-2"
+                          style="font-size:.7rem"
+                          onclick="return confirm('Pasang versi {{ tag }}?')">
+                    Pasang
+                  </button>
+                </form>
+                {% endif %}
+              </td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-4 small">
+          <i class="bi bi-tags" style="font-size:1.8rem;opacity:.3"></i>
+          <div class="mt-2">Klik "Cek Sekarang" untuk memuat daftar versi.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Konfigurasi ── #}
+  {% if can_trigger %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold">
+        <i class="bi bi-gear me-1"></i>Konfigurasi Update
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Role yang dapat notifikasi</label>
+            <input type="text" class="form-control form-control-sm"
+                   value="{{ settings.get('update_notify_roles','superadmin,admin') }}"
+                   id="cfg-notify-roles" readonly>
+            <div class="form-text">Ubah di Pengaturan Sistem</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Role yang bisa trigger update</label>
+            <input type="text" class="form-control form-control-sm"
+                   value="{{ settings.get('update_trigger_roles','superadmin') }}"
+                   id="cfg-trigger-roles" readonly>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">GitHub Repository</label>
+            <input type="text" class="form-control form-control-sm"
+                   value="{{ settings.get('github_repo','barangbaru/solid-apps') }}"
+                   readonly>
+          </div>
+        </div>
+        <div class="mt-3 p-3 rounded" style="background:#fff8e1;border:1px solid #ffc10733">
+          <div class="small fw-semibold mb-1"><i class="bi bi-info-circle me-1 text-warning"></i>Cara kerja update</div>
+          <div class="small text-muted">
+            Tombol <strong>Update</strong> menulis file trigger ke server.
+            Systemd <code>hive-update.path</code> mendeteksi file tersebut dan menjalankan
+            <code>deploy-ubuntu.sh --auto --version X.Y.Z</code> sebagai <strong>root</strong>.
+            Progress deploy ditampilkan di log di atas secara realtime.
+            Server akan <strong>restart otomatis</strong> di akhir proses — koneksi Anda akan terputus sebentar.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+// ── SSE Log Stream ──────────────────────────────────────────────────────────
+{% if deploy_running and not deploy_done %}
+const logEl = document.getElementById('deploy-log');
+const statusEl = document.getElementById('log-status');
+const evtSource = new EventSource('/portal/update/log-stream');
+
+function ansiToHtml(text) {
+  return text
+    .replace(/\033\[32m/g, '<span style="color:#3fb950">')
+    .replace(/\033\[33m/g, '<span style="color:#d29922">')
+    .replace(/\033\[31m/g, '<span style="color:#f85149">')
+    .replace(/\033\[36m/g, '<span style="color:#79c0ff">')
+    .replace(/\033\[1m/g,  '<span style="font-weight:bold">')
+    .replace(/\033\[0m/g,  '</span>')
+    .replace(/\033\[\d+m/g, '');
+}
+
+evtSource.onmessage = function(e) {
+  const line = e.data;
+  if (line === '{{ UPDATE_DONE_MARKER }}') {
+    statusEl.textContent = '✓ Selesai';
+    statusEl.className = 'badge bg-success';
+    evtSource.close();
+    setTimeout(() => location.reload(), 3000);
+    return;
+  }
+  if (line === '{{ UPDATE_FAIL_MARKER }}' || line === 'TIMEOUT') {
+    statusEl.textContent = '✗ Gagal';
+    statusEl.className = 'badge bg-danger';
+    evtSource.close();
+    return;
+  }
+  logEl.innerHTML += ansiToHtml(line) + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+};
+
+evtSource.onerror = function() {
+  // Koneksi putus = server mungkin restart → reload setelah 5 detik
+  statusEl.textContent = 'Server restart...';
+  statusEl.className = 'badge bg-info';
+  evtSource.close();
+  setTimeout(() => location.reload(), 5000);
+};
+{% elif log_tail %}
+// Scroll log ke bawah
+const logEl = document.getElementById('deploy-log');
+if (logEl) logEl.scrollTop = logEl.scrollHeight;
+{% endif %}
+
+function clearLog() {
+  const logEl = document.getElementById('deploy-log');
+  if (logEl) logEl.textContent = '';
+}
+
+// ── Render release notes Markdown (simple) ──────────────────────────────────
+const raw = document.getElementById('release-notes-raw');
+const rendered = document.getElementById('release-notes-rendered');
+if (raw && rendered) {
+  let md = raw.textContent;
+  // Simple markdown: headers, bold, code, lists
+  md = md.replace(/^### (.+)$/gm, '<h6 class="fw-bold mt-3 mb-1">$1</h6>');
+  md = md.replace(/^## (.+)$/gm,  '<h5 class="fw-bold mt-3 mb-1">$1</h5>');
+  md = md.replace(/^# (.+)$/gm,   '<h4 class="fw-bold mt-3 mb-1">$1</h4>');
+  md = md.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  md = md.replace(/`([^`]+)`/g, '<code class="bg-light px-1 rounded">$1</code>');
+  md = md.replace(/^- (.+)$/gm, '<li>$1</li>');
+  md = md.replace(/(<li>.*<\/li>)/s, '<ul class="ps-3 mb-2">$1</ul>');
+  md = md.replace(/\n\n/g, '<br>');
+  rendered.innerHTML = md;
+}
+</script>
+{% endblock %}

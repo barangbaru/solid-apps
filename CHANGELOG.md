@@ -7,6 +7,20 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.4.0] — 2026-06-20
+### Update Center
+- Notifikasi update otomatis: APScheduler cek GitHub tags setiap 6 jam
+- Badge "NEW" di topbar & sidebar untuk role yang berhak (superadmin/admin)
+- Halaman `/portal/update`: status versi, release notes, daftar semua tag
+- Trigger update dari dalam app — tulis flag file → systemd `hive-update.path` deteksi → jalankan `deploy-ubuntu.sh --auto` sebagai root
+- Log deploy streaming realtime via SSE (Server-Sent Events) ke browser
+- Browser auto-reload saat deploy selesai / server restart
+- Role control: `update_notify_roles` (siapa lihat notif) & `update_trigger_roles` (siapa bisa trigger)
+- Systemd unit files: `hive-update.path` + `hive-update.service` (di-install otomatis via deploy script)
+- `deploy-ubuntu.sh --auto`: skip semua prompt interaktif untuk triggered update
+
+---
+
 ## [1.3.0] — 2026-06-20
 ### Migrasi & Infrastruktur
 - Migrasi database dari SQLite ke PostgreSQL

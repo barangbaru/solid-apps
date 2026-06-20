@@ -1,0 +1,11 @@
+[Unit]
+Description=Hive Update Trigger Watcher
+Documentation=https://github.com/barangbaru/solid-apps
+
+[Path]
+PathExists=/tmp/hive_update_trigger
+Unit=hive-update.service
+MakeDirectory=no
+
+[Install]
+WantedBy=multi-user.target

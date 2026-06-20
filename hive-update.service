@@ -1,0 +1,32 @@
+[Unit]
+Description=Hive Auto Update Service
+After=network.target evaluasi.service
+Documentation=https://github.com/barangbaru/solid-apps
+
+[Service]
+Type=oneshot
+# Baca versi target dari trigger file, hapus file sebelum deploy dimulai
+ExecStartPre=/bin/bash -c 'VERSION=$(cat /tmp/hive_update_trigger 2>/dev/null | tr -d "\n "); \
+    echo "" > /tmp/hive_update.log; \
+    echo "=== Hive Auto Update ===" >> /tmp/hive_update.log; \
+    echo "Target versi : ${VERSION}" >> /tmp/hive_update.log; \
+    echo "Waktu        : $(date +"%Y-%m-%d %H:%M:%S")" >> /tmp/hive_update.log; \
+    echo "" >> /tmp/hive_update.log; \
+    rm -f /tmp/hive_update_trigger; \
+    echo "${VERSION}" > /tmp/hive_update_version'
+
+ExecStart=/bin/bash -c '\
+    VERSION=$(cat /tmp/hive_update_version 2>/dev/null | tr -d "\n "); \
+    rm -f /tmp/hive_update_version; \
+    bash /var/www/evaluasi/deploy-ubuntu.sh --auto \
+         $([ -n "$VERSION" ] && echo "--version $VERSION") \
+    >> /tmp/hive_update.log 2>&1 \
+    && echo "HIVE_DEPLOY_DONE" >> /tmp/hive_update.log \
+    || echo "HIVE_DEPLOY_FAILED" >> /tmp/hive_update.log'
+
+StandardOutput=append:/tmp/hive_update.log
+StandardError=append:/tmp/hive_update.log
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

@@ -10,9 +10,11 @@ set -e
 
 # ── Parse argumen ─────────────────────────────────────────────────────────────
 TARGET_VERSION=""
+AUTO_MODE=false   # --auto: skip semua prompt, pakai config .env yang ada
 while [[ $# -gt 0 ]]; do
     case $1 in
         --version) TARGET_VERSION="$2"; shift 2 ;;
+        --auto)    AUTO_MODE=true; shift ;;
         *) shift ;;
     esac
 done
@@ -94,21 +96,25 @@ if $IS_UPDATE; then
                 echo -e "    ${CYAN}$tag${NC}"
             done
             echo ""
-            echo -e "  ${BOLD}[1]${NC} Upgrade ke versi terbaru sekaligus (${LATEST_TAG})"
-            echo -e "  ${BOLD}[2]${NC} Upgrade bertahap (satu versi per deploy)"
-            echo ""
-            read -rp "  Pilih [1/2] (default: 1): " UPGRADE_CHOICE
-            UPGRADE_CHOICE=${UPGRADE_CHOICE:-1}
-
-            if [ "$UPGRADE_CHOICE" = "2" ]; then
-                # Ambil tag paling awal dari yang lebih baru
-                STEP_TAG=$(echo "$NEWER_TAGS" | head -1)
-                TARGET_VERSION="${STEP_TAG#v}"
-                warn "Mode bertahap — upgrade ke $STEP_TAG dulu."
-                warn "Jalankan deploy ulang untuk versi berikutnya."
-            else
+            if $AUTO_MODE; then
+                # Auto mode: langsung ambil versi terbaru
                 TARGET_VERSION="$LATEST_VERSION"
-                info "Upgrade ke versi terbaru: v$TARGET_VERSION"
+                info "Auto mode — upgrade ke versi terbaru: v$TARGET_VERSION"
+            else
+                echo -e "  ${BOLD}[1]${NC} Upgrade ke versi terbaru sekaligus (${LATEST_TAG})"
+                echo -e "  ${BOLD}[2]${NC} Upgrade bertahap (satu versi per deploy)"
+                echo ""
+                read -rp "  Pilih [1/2] (default: 1): " UPGRADE_CHOICE
+                UPGRADE_CHOICE=${UPGRADE_CHOICE:-1}
+                if [ "$UPGRADE_CHOICE" = "2" ]; then
+                    STEP_TAG=$(echo "$NEWER_TAGS" | head -1)
+                    TARGET_VERSION="${STEP_TAG#v}"
+                    warn "Mode bertahap — upgrade ke $STEP_TAG dulu."
+                    warn "Jalankan deploy ulang untuk versi berikutnya."
+                else
+                    TARGET_VERSION="$LATEST_VERSION"
+                    info "Upgrade ke versi terbaru: v$TARGET_VERSION"
+                fi
             fi
         elif [ "$TAG_COUNT" -eq 1 ] && [ -z "$TARGET_VERSION" ]; then
             TARGET_VERSION=$(echo "$NEWER_TAGS" | head -1 | sed 's/^v//')
@@ -141,6 +147,10 @@ if [ -f "$APP_DIR/.env" ] && grep -q "^DB_TYPE=postgresql" "$APP_DIR/.env" 2>/de
     PG_PASS=$(grep '^PG_PASS=' "$APP_DIR/.env" | cut -d= -f2-)
     warn "Config PostgreSQL ditemukan di .env — menggunakan yang sudah ada."
     warn "  Host: $PG_HOST:$PG_PORT  DB: $PG_NAME  User: $PG_USER"
+elif $AUTO_MODE; then
+    # Auto mode: tidak ada .env PostgreSQL & tidak interaktif → pakai SQLite
+    info "Auto mode — tidak ada config DB di .env, gunakan SQLite."
+
 else
 
 header "Pilihan Database"
@@ -162,65 +172,37 @@ if [ "$DB_CHOICE" = "2" ]; then
     PG_SETUP=$(echo "$PG_SETUP" | tr '[:lower:]' '[:upper:]')
 
     if [ "$PG_SETUP" = "A" ]; then
-        # ── Auto install PostgreSQL ──────────────────────────────────────────
         header "Install PostgreSQL"
         apt-get update -qq
         apt-get install -y postgresql postgresql-contrib
         systemctl enable postgresql
         systemctl start postgresql
-
-        # Generate password acak untuk user hive
         PG_PASS=$(python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(20)))")
-        PG_HOST="localhost"
-        PG_PORT="5432"
-
+        PG_HOST="localhost"; PG_PORT="5432"
         read -rp "  Nama database (default: hive_db): " INPUT_PG_NAME
         PG_NAME=${INPUT_PG_NAME:-hive_db}
         read -rp "  Nama user PostgreSQL (default: hive): " INPUT_PG_USER
         PG_USER=${INPUT_PG_USER:-hive}
-
         info "Membuat user '$PG_USER' dan database '$PG_NAME'..."
-        # Jalankan sebagai postgres — skip jika sudah ada
         sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='$PG_USER'" | grep -q 1 || \
             sudo -u postgres psql -c "CREATE USER $PG_USER WITH PASSWORD '$PG_PASS';"
         sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='$PG_NAME'" | grep -q 1 || \
             sudo -u postgres psql -c "CREATE DATABASE $PG_NAME OWNER $PG_USER;"
         sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $PG_NAME TO $PG_USER;"
-        # PostgreSQL 15+: perlu grant schema public
         sudo -u postgres psql -d "$PG_NAME" -c "GRANT ALL ON SCHEMA public TO $PG_USER;" 2>/dev/null || true
-
         success "PostgreSQL siap: $PG_USER@$PG_HOST:$PG_PORT/$PG_NAME"
-        echo ""
-        echo -e "  ${YELLOW}Simpan kredensial ini:${NC}"
-        echo -e "    Host     : $PG_HOST"
-        echo -e "    Port     : $PG_PORT"
-        echo -e "    Database : $PG_NAME"
-        echo -e "    User     : $PG_USER"
-        echo -e "    Password : $PG_PASS"
-        echo ""
-
+        echo -e "\n  ${YELLOW}Kredensial: user=$PG_USER pass=$PG_PASS db=$PG_NAME${NC}\n"
     else
-        # ── Input parameter PostgreSQL manual ───────────────────────────────
         header "Konfigurasi PostgreSQL"
-        echo ""
-        read -rp "  Host PostgreSQL (default: localhost): " INPUT_HOST
-        PG_HOST=${INPUT_HOST:-localhost}
-        read -rp "  Port (default: 5432): " INPUT_PORT
-        PG_PORT=${INPUT_PORT:-5432}
+        read -rp "  Host (default: localhost): " INPUT_HOST; PG_HOST=${INPUT_HOST:-localhost}
+        read -rp "  Port (default: 5432): "      INPUT_PORT; PG_PORT=${INPUT_PORT:-5432}
         read -rp "  Nama Database: " PG_NAME
-        read -rp "  Username: " PG_USER
-        read -srp "  Password: " PG_PASS
-        echo ""
-
-        # Test koneksi
-        info "Menguji koneksi ke PostgreSQL..."
+        read -rp "  Username: "      PG_USER
+        read -srp "  Password: "    PG_PASS; echo ""
         apt-get install -y postgresql-client -qq 2>/dev/null || true
-        if PGPASSWORD="$PG_PASS" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_NAME" -c '\q' 2>/dev/null; then
-            success "Koneksi PostgreSQL berhasil!"
-        else
-            warn "Koneksi gagal — pastikan parameter benar dan PostgreSQL bisa diakses."
-            warn "Melanjutkan install, tapi app mungkin tidak bisa start."
-        fi
+        PGPASSWORD="$PG_PASS" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_NAME" -c '\q' 2>/dev/null \
+            && success "Koneksi PostgreSQL berhasil!" \
+            || warn "Koneksi gagal — lanjutkan dengan hati-hati."
     fi
 fi
 
@@ -357,7 +339,7 @@ MIGRATION_FLAG="$DATA_DIR/.pg_migration_done"
 if [ "$DB_TYPE" = "postgresql" ] && [ -f "$DATA_DIR/evaluasi.db" ]; then
     if [ -f "$MIGRATION_FLAG" ]; then
         info "Migrasi SQLite→PostgreSQL sudah pernah dijalankan — dilewati."
-        info "  (hapus $MIGRATION_FLAG untuk paksa migrasi ulang)"
+        $AUTO_MODE || info "  (hapus $MIGRATION_FLAG untuk paksa migrasi ulang)"
     else
         echo ""
         header "[4b] Migrasi data SQLite → PostgreSQL"
@@ -417,6 +399,15 @@ cp "$APP_DIR/evaluasi.service" /etc/systemd/system/${SERVICE_NAME}.service
 if ! grep -q "$DATA_DIR" /etc/systemd/system/${SERVICE_NAME}.service; then
     sed -i "s|ReadWritePaths=.*|ReadWritePaths=$APP_DIR $DATA_DIR /var/log/evaluasi|" \
         /etc/systemd/system/${SERVICE_NAME}.service
+fi
+
+# Install hive-update path/service unit (in-app update trigger)
+if [ -f "$APP_DIR/hive-update.path" ]; then
+    cp "$APP_DIR/hive-update.path"    /etc/systemd/system/hive-update.path
+    cp "$APP_DIR/hive-update.service" /etc/systemd/system/hive-update.service
+    systemctl enable hive-update.path
+    systemctl start  hive-update.path
+    success "hive-update.path aktif (in-app update trigger siap)."
 fi
 
 systemctl daemon-reload

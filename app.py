@@ -1045,6 +1045,16 @@ DEFAULT_SETTINGS = {
     'ac_notification_emails': '',
     'ac_notification_telegram_ids': '',
     'ac_notification_wa_phones': '',
+    # Update Center
+    'update_check_enabled':  '1',           # cek update otomatis
+    'update_notify_roles':   'superadmin,admin',  # role yang dapat notifikasi
+    'update_trigger_roles':  'superadmin',  # role yang bisa trigger update
+    'update_available':      '0',
+    'update_latest_version': '',
+    'update_latest_tag':     '',
+    'update_release_notes':  '',
+    'update_check_last':     '',
+    'github_repo':           'barangbaru/solid-apps',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -1628,6 +1638,27 @@ def superadmin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def _get_update_badge(sess):
+    """Return info update jika tersedia dan user berhak lihat, else None."""
+    role = sess.get('user_role', '')
+    if not role:
+        return None
+    try:
+        db = get_db()
+        settings = get_settings(db)
+        notify_roles = [r.strip() for r in settings.get('update_notify_roles', 'superadmin,admin').split(',')]
+        if role not in notify_roles:
+            return None
+        if settings.get('update_available', '0') != '1':
+            return None
+        return {
+            'latest_version': settings.get('update_latest_version', ''),
+            'latest_tag':     settings.get('update_latest_tag', ''),
+        }
+    except Exception:
+        return None
+
+
 @app.context_processor
 def inject_globals():
     pending    = 0
@@ -1668,9 +1699,10 @@ def inject_globals():
         'ALL_PERMISSIONS': ALL_PERMISSIONS,
         'portal_apps':      portal_apps,
         'bk_resources':     bk_resources,
-        'current_app_slug': session.get('active_app') or 'portal',
-        'app_version':      VERSION,
-        'app_release_date': RELEASE_DATE,
+        'current_app_slug':    session.get('active_app') or 'portal',
+        'app_version':         VERSION,
+        'app_release_date':    RELEASE_DATE,
+        'update_badge':        _get_update_badge(session),
     }
 
 # ─── Auto-set active_app dari URL path ────────────────────────────────────────
@@ -2380,6 +2412,75 @@ def run_subscription_reminders(triggered_by='auto'):
 
 # ─── APScheduler ───────────────────────────────────────────────────────────────
 
+# ─── Update Center ─────────────────────────────────────────────────────────────
+
+UPDATE_TRIGGER_FILE = '/tmp/hive_update_trigger'
+UPDATE_LOG_FILE     = '/tmp/hive_update.log'
+UPDATE_DONE_MARKER  = 'HIVE_DEPLOY_DONE'
+UPDATE_FAIL_MARKER  = 'HIVE_DEPLOY_FAILED'
+
+
+def check_for_updates():
+    """Cek GitHub untuk release terbaru. Dipanggil dari scheduler."""
+    db = _get_raw_db()
+    try:
+        settings = get_settings(db)
+        if settings.get('update_check_enabled', '1') != '1':
+            return
+        repo = settings.get('github_repo', 'barangbaru/solid-apps')
+        resp = req_lib.get(
+            f'https://api.github.com/repos/{repo}/tags',
+            headers={'Accept': 'application/vnd.github.v3+json'},
+            timeout=10)
+        if resp.status_code != 200:
+            return
+        tags = resp.json()
+        if not tags:
+            return
+        # Ambil tag terbaru (urutan dari API sudah descending by creation)
+        latest_tag  = tags[0].get('name', '')
+        latest_ver  = latest_tag.lstrip('v')
+        now_str     = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Cek release notes dari GitHub releases API
+        rel_resp = req_lib.get(
+            f'https://api.github.com/repos/{repo}/releases/tags/{latest_tag}',
+            headers={'Accept': 'application/vnd.github.v3+json'},
+            timeout=10)
+        release_notes = ''
+        if rel_resp.status_code == 200:
+            release_notes = rel_resp.json().get('body', '')
+
+        import json
+        all_tag_names = [t.get('name','') for t in tags if t.get('name','').startswith('v')]
+        is_newer = _version_gt(latest_ver, VERSION)
+        for key, val in [
+            ('update_check_last',     now_str),
+            ('update_latest_version', latest_ver),
+            ('update_latest_tag',     latest_tag),
+            ('update_release_notes',  release_notes),
+            ('update_available',      '1' if is_newer else '0'),
+            ('update_all_tags',       json.dumps(all_tag_names)),
+        ]:
+            db.execute("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, val))
+        db.commit()
+        print(f" Cek update: {'update tersedia ' + latest_tag if is_newer else 'sudah terbaru'} (terpasang v{VERSION})")
+    except Exception as e:
+        print(f" Cek update gagal: {e}")
+    finally:
+        db.close()
+
+
+def _version_gt(a, b):
+    """Return True jika versi a > b (semantic versioning)."""
+    def parts(v):
+        try:
+            return [int(x) for x in v.strip().split('.')]
+        except Exception:
+            return [0]
+    return parts(a) > parts(b)
+
+
 def start_scheduler():
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -2390,10 +2491,16 @@ def start_scheduler():
         scheduler.add_job(lambda: run_subscription_reminders('auto'),
                           'cron', hour=8, minute=5,
                           id='sub_reminder', replace_existing=True)
+        scheduler.add_job(check_for_updates,
+                          'interval', hours=6,
+                          id='update_check', replace_existing=True)
         scheduler.start()
         import atexit
         atexit.register(scheduler.shutdown)
-        print(" Scheduler aktif: cek kontrak 08:00, cek subscription 08:05")
+        print(" Scheduler aktif: cek kontrak 08:00, cek subscription 08:05, cek update setiap 6 jam")
+        # Cek update saat startup (non-blocking, delay 30 detik)
+        import threading
+        threading.Timer(30, check_for_updates).start()
     except Exception as e:
         print(f" Scheduler gagal: {e}")
 
@@ -6633,6 +6740,147 @@ def err_500(e):
     except Exception:
         pass
     return render_template('error.html', code=500, msg='Terjadi kesalahan server'), 500
+
+# ─── Portal: Update Center ─────────────────────────────────────────────────────
+
+@app.route('/portal/update')
+@login_required
+def portal_update():
+    role = session.get('user_role', '')
+    db   = get_db()
+    settings = get_settings(db)
+    notify_roles  = [r.strip() for r in settings.get('update_notify_roles',  'superadmin,admin').split(',')]
+    trigger_roles = [r.strip() for r in settings.get('update_trigger_roles', 'superadmin').split(',')]
+    if role not in notify_roles:
+        abort(403)
+
+    # Semua tag tersedia dari GitHub (cache di app_settings sebagai JSON)
+    import json
+    all_tags_raw = settings.get('update_all_tags', '[]')
+    try:
+        all_tags = json.loads(all_tags_raw)
+    except Exception:
+        all_tags = []
+
+    # Status deploy sedang berjalan
+    deploy_running = os.path.exists(UPDATE_TRIGGER_FILE)
+    deploy_done    = False
+    if os.path.exists(UPDATE_LOG_FILE):
+        with open(UPDATE_LOG_FILE, 'r', errors='replace') as f:
+            log_tail = f.read()
+        deploy_done = UPDATE_DONE_MARKER in log_tail or UPDATE_FAIL_MARKER in log_tail
+    else:
+        log_tail = ''
+
+    return render_template('update_center.html',
+        settings       = settings,
+        current_version= VERSION,
+        latest_version = settings.get('update_latest_version', ''),
+        latest_tag     = settings.get('update_latest_tag', ''),
+        update_available = settings.get('update_available', '0') == '1',
+        release_notes  = settings.get('update_release_notes', ''),
+        check_last     = settings.get('update_check_last', ''),
+        all_tags       = all_tags,
+        can_trigger    = role in trigger_roles,
+        deploy_running = deploy_running,
+        deploy_done    = deploy_done,
+        log_tail       = log_tail[-8000:] if log_tail else '',
+    )
+
+
+@app.route('/portal/update/check', methods=['POST'])
+@login_required
+def portal_update_check():
+    role = session.get('user_role', '')
+    settings = get_settings(get_db())
+    notify_roles = [r.strip() for r in settings.get('update_notify_roles', 'superadmin,admin').split(',')]
+    if role not in notify_roles:
+        abort(403)
+    import threading
+    threading.Thread(target=check_for_updates, daemon=True).start()
+    flash('Memeriksa update dari GitHub...', 'info')
+    return redirect(url_for('portal_update'))
+
+
+@app.route('/portal/update/trigger', methods=['POST'])
+@login_required
+def portal_update_trigger():
+    role = session.get('user_role', '')
+    db   = get_db()
+    settings = get_settings(db)
+    trigger_roles = [r.strip() for r in settings.get('update_trigger_roles', 'superadmin').split(',')]
+    if role not in trigger_roles:
+        abort(403)
+
+    target_version = request.form.get('version', '').strip()
+    if not target_version:
+        flash('Versi tidak valid.', 'danger')
+        return redirect(url_for('portal_update'))
+
+    # Tulis trigger file — systemd path unit akan mendeteksi dan menjalankan deploy
+    try:
+        # Bersihkan log lama
+        if os.path.exists(UPDATE_LOG_FILE):
+            os.remove(UPDATE_LOG_FILE)
+        with open(UPDATE_TRIGGER_FILE, 'w') as f:
+            f.write(f'{target_version}\n')
+        flash(f'Update ke v{target_version} dimulai! Pantau progress di bawah.', 'success')
+    except Exception as e:
+        flash(f'Gagal memulai update: {e}', 'danger')
+
+    return redirect(url_for('portal_update'))
+
+
+@app.route('/portal/update/log-stream')
+@login_required
+def portal_update_log_stream():
+    """SSE stream untuk memantau log deploy secara realtime."""
+    role = session.get('user_role', '')
+    settings = get_settings(get_db())
+    notify_roles = [r.strip() for r in settings.get('update_notify_roles', 'superadmin,admin').split(',')]
+    if role not in notify_roles:
+        abort(403)
+
+    def generate():
+        import time
+        pos = 0
+        timeout = 600  # max 10 menit
+        start   = time.time()
+        while time.time() - start < timeout:
+            if os.path.exists(UPDATE_LOG_FILE):
+                with open(UPDATE_LOG_FILE, 'r', errors='replace') as f:
+                    f.seek(pos)
+                    chunk = f.read(4096)
+                    if chunk:
+                        pos = f.tell()
+                        for line in chunk.splitlines():
+                            yield f'data: {line}\n\n'
+                        if UPDATE_DONE_MARKER in chunk:
+                            yield f'data: {UPDATE_DONE_MARKER}\n\n'
+                            return
+                        if UPDATE_FAIL_MARKER in chunk:
+                            yield f'data: {UPDATE_FAIL_MARKER}\n\n'
+                            return
+            time.sleep(1)
+        yield f'data: TIMEOUT\n\n'
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+@app.route('/portal/update/cancel', methods=['POST'])
+@login_required
+def portal_update_cancel():
+    role = session.get('user_role', '')
+    settings = get_settings(get_db())
+    trigger_roles = [r.strip() for r in settings.get('update_trigger_roles', 'superadmin').split(',')]
+    if role not in trigger_roles:
+        abort(403)
+    if os.path.exists(UPDATE_TRIGGER_FILE):
+        os.remove(UPDATE_TRIGGER_FILE)
+        flash('Trigger dibatalkan (jika deploy sudah berjalan, tidak bisa dihentikan di tengah jalan).', 'warning')
+    return redirect(url_for('portal_update'))
+
 
 # ─── Portal: Audit Trail ───────────────────────────────────────────────────────
 
