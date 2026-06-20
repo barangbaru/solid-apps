@@ -1000,7 +1000,7 @@ def init_db():
     if sa:
         for _slug in ['evaluasi', 'aset', 'support', 'booking']:
             db.execute('''INSERT OR IGNORE INTO user_app_access(user_id,app_slug,app_role,is_active)
-                VALUES(?,?,?,1)''', (sa['id'], _slug, 'superadmin'))
+                VALUES(?,?,?,1)''', (sa[0], _slug, 'superadmin'))
     db.commit()
     # Database indexes untuk kolom yang sering di-WHERE/JOIN
     _indexes = [
