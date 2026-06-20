@@ -122,11 +122,30 @@ class _DBWrapper:
 
     def executescript(self, sql):
         if self._is_pg:
+            # PostgreSQL: eksekusi per-statement dengan retry multi-pass
+            # agar FK ordering di schema tidak masalah (misal sc_ticket_history
+            # di-CREATE sebelum sc_tickets karena SQLite tidak enforce FK order)
+            stmts = [s.strip() for s in sql.split(';') if s.strip()]
+            pending = stmts
             cur = self._conn.cursor()
-            for stmt in sql.split(';'):
-                stmt = stmt.strip()
-                if stmt:
-                    cur.execute(stmt)
+            max_passes = len(stmts) + 1
+            for _ in range(max_passes):
+                if not pending:
+                    break
+                still_pending = []
+                for stmt in pending:
+                    try:
+                        cur.execute(stmt)
+                        self._conn.commit()
+                    except Exception:
+                        self._conn.rollback()
+                        cur = self._conn.cursor()
+                        still_pending.append(stmt)
+                if len(still_pending) == len(pending):
+                    # Tidak ada kemajuan — statement benar-benar error
+                    # Eksekusi sekali lagi agar exception muncul dengan jelas
+                    cur.execute(still_pending[0])
+                pending = still_pending
             return cur
         return self._conn.executescript(sql)
 
