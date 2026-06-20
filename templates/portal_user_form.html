@@ -81,12 +81,15 @@
                  value="{{ user.full_name if user else '' }}" placeholder="Nama lengkap">
         </div>
         <div class="col-md-6">
-          <label class="form-label fw-semibold small">Role <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold small">Role Portal <span class="text-danger">*</span></label>
           <select name="role" class="form-select">
-            <option value="admin"      {{ 'selected' if user and user.role=='admin' }}>Admin</option>
-            <option value="superadmin" {{ 'selected' if user and user.role=='superadmin' }}>Superadmin</option>
-            <option value="viewer"     {{ 'selected' if user and user.role=='viewer' }}>Viewer</option>
+            {% for r in global_roles %}
+            <option value="{{ r.name }}" {{ 'selected' if user and user.role == r.name }}>
+              {{ r.name }}{% if r.description %} — {{ r.description }}{% endif %}
+            </option>
+            {% endfor %}
           </select>
+          <div class="form-text">Role di level portal (login & manajemen).</div>
         </div>
       </div>
 
@@ -159,6 +162,42 @@
         </div>
       </div>
 
+      <hr class="my-3">
+
+      <div class="small fw-bold text-muted text-uppercase mb-2">
+        <i class="bi bi-grid-3x2-gap me-1"></i>Akses Aplikasi
+      </div>
+      <div class="mb-3">
+        {% for a in apps %}
+        {% set cur_role = user_access.get(a.slug, '') %}
+        <div class="card border mb-2">
+          <div class="card-body py-2 px-3">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+              <div class="form-check mb-0 d-flex align-items-center gap-2">
+                <input class="form-check-input" type="checkbox"
+                       name="access_{{ a.slug }}" id="acc_{{ a.slug }}"
+                       value="1" {{ 'checked' if cur_role }}
+                       onchange="toggleAppRole('{{ a.slug }}', this.checked)">
+                <label class="form-check-label fw-semibold small mb-0" for="acc_{{ a.slug }}">
+                  <i class="bi bi-{{ a.icon or 'box' }} me-1 text-primary"></i>{{ a.name }}
+                </label>
+              </div>
+              <div id="roleWrap_{{ a.slug }}" style="{{ '' if cur_role else 'opacity:.4;pointer-events:none' }}">
+                <select name="role_{{ a.slug }}" class="form-select form-select-sm" style="min-width:130px">
+                  {% for r in roles_by_app.get(a.slug, []) %}
+                  <option value="{{ r.name }}" {{ 'selected' if cur_role == r.name }}>{{ r.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+        {% if not apps %}
+        <div class="text-muted small">Belum ada aplikasi aktif.</div>
+        {% endif %}
+      </div>
+
       <div class="d-flex gap-2">
         <a href="/portal/users" class="btn btn-secondary">Batal</a>
         <button type="submit" class="btn btn-primary">
@@ -173,6 +212,13 @@
 </div>
 
 <script>
+function toggleAppRole(slug, enabled) {
+  const wrap = document.getElementById('roleWrap_' + slug);
+  if (!wrap) return;
+  wrap.style.opacity = enabled ? '1' : '0.4';
+  wrap.style.pointerEvents = enabled ? '' : 'none';
+}
+
 function togglePass() {
   const inp = document.getElementById('passInput');
   const ico = document.getElementById('passIcon');

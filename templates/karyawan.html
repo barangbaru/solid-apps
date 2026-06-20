@@ -397,39 +397,70 @@
 <!-- Promote Role Modal -->
 {% if current_user and current_user.role == 'superadmin' %}
 <div class="modal fade" id="promoteModal" tabindex="-1">
-  <div class="modal-dialog modal-sm">
+  <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header py-2">
-        <h6 class="modal-title fw-bold"><i class="bi bi-person-lock me-1"></i> Akun Aplikasi</h6>
+        <h6 class="modal-title fw-bold"><i class="bi bi-person-lock me-1"></i> Akun & Akses Aplikasi</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form id="promoteForm" method="post">
         <div class="modal-body">
-          <p class="small mb-3"><strong id="promoteEmpName"></strong></p>
+          <p class="small text-muted mb-3">Karyawan: <strong id="promoteEmpName"></strong></p>
+
           <div id="promoteNewFields">
-            <div class="mb-2">
-              <label class="form-label small fw-semibold">Username</label>
-              <input type="text" name="username" id="promoteUsername" class="form-control form-control-sm" required>
+            <div class="row g-2 mb-2">
+              <div class="col-7">
+                <label class="form-label small fw-semibold">Username</label>
+                <input type="text" name="username" id="promoteUsername" class="form-control form-control-sm" required>
+              </div>
+              <div class="col-5">
+                <label class="form-label small fw-semibold">Role Portal</label>
+                <select name="role" id="promoteRole" class="form-select form-select-sm">
+                  {% for r in global_roles %}
+                  <option value="{{ r.name }}">{{ r.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
             </div>
-            <div class="mb-2" id="promotePassField">
+            <div class="mb-3" id="promotePassField">
               <label class="form-label small fw-semibold">Password</label>
-              <input type="password" name="password" id="promotePassword" class="form-control form-control-sm">
-              <div class="form-text">Kosongkan jika username sudah ada (akan di-link)</div>
+              <input type="password" name="password" id="promotePassword" class="form-control form-control-sm"
+                     placeholder="Kosongkan untuk link ke akun yang sudah ada">
             </div>
           </div>
-          <div class="mb-0">
-            <label class="form-label small fw-semibold">Role</label>
-            <select name="role" id="promoteRole" class="form-select form-select-sm">
-              {% for r in evaluasi_roles %}
-              <option value="{{ r.name }}">{{ r.name }}</option>
-              {% endfor %}
-            </select>
+
+          <div class="small fw-bold text-muted text-uppercase mb-2">
+            <i class="bi bi-grid-3x2-gap me-1"></i>Akses per Aplikasi
           </div>
+          {% for a in apps %}
+          <div class="card border mb-2">
+            <div class="card-body py-2 px-3">
+              <div class="d-flex align-items-center justify-content-between gap-2">
+                <div class="form-check mb-0 d-flex align-items-center gap-2">
+                  <input class="form-check-input" type="checkbox"
+                         name="access_{{ a.slug }}" id="pacc_{{ a.slug }}"
+                         value="1"
+                         onchange="togglePAppRole('{{ a.slug }}', this.checked)">
+                  <label class="form-check-label fw-semibold small mb-0" for="pacc_{{ a.slug }}">
+                    <i class="bi bi-{{ a.icon or 'box' }} me-1 text-primary"></i>{{ a.name }}
+                  </label>
+                </div>
+                <div id="proleWrap_{{ a.slug }}" style="opacity:.4;pointer-events:none">
+                  <select name="role_{{ a.slug }}" class="form-select form-select-sm" style="min-width:130px">
+                    {% for r in roles_by_app.get(a.slug, []) %}
+                    <option value="{{ r.name }}">{{ r.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
         </div>
         <div class="modal-footer py-2">
           <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Batal</button>
-          <button type="submit" class="btn btn-sm btn-info">
-            <i class="bi bi-check-circle me-1"></i> Simpan
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check-circle me-1"></i> Simpan Akses
           </button>
         </div>
       </form>
@@ -497,6 +528,13 @@ function saveSalary() {
   });
 }
 
+function togglePAppRole(slug, enabled) {
+  const wrap = document.getElementById('proleWrap_' + slug);
+  if (!wrap) return;
+  wrap.style.opacity = enabled ? '1' : '0.4';
+  wrap.style.pointerEvents = enabled ? '' : 'none';
+}
+
 function openPromote(empId, name, username, role) {
   document.getElementById('promoteEmpName').textContent = name;
   document.getElementById('promoteForm').action = '/emp/' + empId + '/promote-role';
@@ -513,6 +551,11 @@ function openPromote(empId, name, username, role) {
   }
   const roleSelect = document.getElementById('promoteRole');
   if (role) roleSelect.value = role;
+  // Reset semua app checkbox
+  document.querySelectorAll('[id^="pacc_"]').forEach(cb => {
+    cb.checked = false;
+    togglePAppRole(cb.id.replace('pacc_', ''), false);
+  });
   new bootstrap.Modal(document.getElementById('promoteModal')).show();
 }
 </script>

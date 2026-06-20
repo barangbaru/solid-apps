@@ -2873,8 +2873,15 @@ def portal_user_add():
     if not is_portal_admin():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
-    db = get_db()
-    apps = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    db   = get_db()
+    apps = db.execute('SELECT slug, name, icon FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    all_roles    = db.execute("SELECT name, description, app_slug FROM roles ORDER BY is_system DESC, name").fetchall()
+    global_roles = [r for r in all_roles if r['app_slug'] == '']
+    roles_by_app = {}
+    for a in apps:
+        specific = [r for r in all_roles if r['app_slug'] == a['slug']]
+        roles_by_app[a['slug']] = specific if specific else global_roles
+
     if request.method == 'POST':
         username  = request.form.get('username', '').strip()
         full_name = request.form.get('full_name', '').strip()
@@ -2895,22 +2902,24 @@ def portal_user_add():
                     (username, generate_password_hash(password, method='pbkdf2:sha256'),
                      full_name, role, email, phone, telegram))
                 new_uid = cur.lastrowid
-                # Link ke karyawan jika dipilih
                 if emp_id:
                     db.execute('UPDATE employees SET user_id=? WHERE id=? AND user_id IS NULL', (new_uid, emp_id))
-                # Seed akses app default
-                db.execute('INSERT OR IGNORE INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)',
-                           (new_uid, 'evaluasi', role))
+                # Simpan per-app access dari form
+                for a in apps:
+                    if request.form.get(f'access_{a["slug"]}'):
+                        app_role = request.form.get(f'role_{a["slug"]}', 'admin')
+                        db.execute('INSERT OR REPLACE INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)',
+                                   (new_uid, a['slug'], app_role))
                 db.commit()
                 flash(f'User {username} berhasil dibuat', 'success')
                 return redirect(url_for('portal_users'))
             except sqlite3.IntegrityError:
                 flash('Username sudah digunakan', 'danger')
-    # Karyawan yang belum punya user (untuk employee picker)
     free_emps = db.execute(
         'SELECT id,name,jabatan,divisi FROM employees WHERE is_active=1 AND user_id IS NULL ORDER BY name'
     ).fetchall()
-    return render_template('portal_user_form.html', user=None, apps=apps, free_emps=free_emps)
+    return render_template('portal_user_form.html', user=None, apps=apps, free_emps=free_emps,
+                           global_roles=global_roles, roles_by_app=roles_by_app, user_access={})
 
 @app.route('/portal/users/<int:uid>/edit', methods=['GET', 'POST'])
 @login_required
@@ -2923,7 +2932,14 @@ def portal_user_edit(uid):
     if not user:
         flash('User tidak ditemukan', 'danger')
         return redirect(url_for('portal_users'))
-    apps = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    apps = db.execute('SELECT slug, name, icon FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    all_roles    = db.execute("SELECT name, description, app_slug FROM roles ORDER BY is_system DESC, name").fetchall()
+    global_roles = [r for r in all_roles if r['app_slug'] == '']
+    roles_by_app = {}
+    for a in apps:
+        specific = [r for r in all_roles if r['app_slug'] == a['slug']]
+        roles_by_app[a['slug']] = specific if specific else global_roles
+
     if request.method == 'POST':
         full_name = request.form.get('full_name', '').strip()
         role      = request.form.get('role', user['role'])
@@ -2932,16 +2948,18 @@ def portal_user_edit(uid):
         phone     = request.form.get('phone', '').strip()
         telegram  = request.form.get('telegram_id', '').strip()
         new_pass  = request.form.get('password', '').strip()
-        # Validasi email unik
         if email:
             dup = db.execute("SELECT id FROM users WHERE LOWER(email)=? AND is_active=1 AND id!=?",
                              (email.lower(), uid)).fetchone()
             if dup:
                 flash(f'Email {email} sudah digunakan oleh user lain.', 'danger')
                 linked_emp = db.execute('SELECT id,name,email,phone,telegram_id FROM employees WHERE user_id=? AND is_active=1', (uid,)).fetchone()
+                user_access = {r['app_slug']: r['app_role'] for r in
+                               db.execute('SELECT app_slug,app_role FROM user_app_access WHERE user_id=? AND is_active=1',(uid,)).fetchall()}
                 return render_template('portal_user_form.html', user=user, apps=apps,
-                                       linked_emp=linked_emp,
-                                       free_emps=db.execute('SELECT id,name,jabatan,divisi FROM employees WHERE is_active=1 AND (user_id IS NULL OR user_id=?) ORDER BY name',(uid,)).fetchall())
+                                       linked_emp=linked_emp, free_emps=[],
+                                       global_roles=global_roles, roles_by_app=roles_by_app,
+                                       user_access=user_access)
         if new_pass:
             db.execute('UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=?,password_hash=? WHERE id=?',
                        (full_name, role, is_active, email, phone, telegram,
@@ -2949,17 +2967,28 @@ def portal_user_edit(uid):
         else:
             db.execute('UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=? WHERE id=?',
                        (full_name, role, is_active, email, phone, telegram, uid))
+        # Update per-app access: hapus lama, insert baru
+        db.execute('DELETE FROM user_app_access WHERE user_id=?', (uid,))
+        for a in apps:
+            if request.form.get(f'access_{a["slug"]}'):
+                app_role = request.form.get(f'role_{a["slug"]}', 'admin')
+                db.execute('INSERT INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)',
+                           (uid, a['slug'], app_role))
         db.commit()
         if uid == session['user_id']:
             session['user_name'] = full_name or session['username']
             session['user_role'] = role
         flash('User diperbarui', 'success')
         return redirect(url_for('portal_users'))
-    linked_emp = db.execute(
+    linked_emp  = db.execute(
         'SELECT id,name,email,phone,telegram_id FROM employees WHERE user_id=? AND is_active=1', (uid,)
     ).fetchone()
+    user_access = {r['app_slug']: r['app_role'] for r in
+                   db.execute('SELECT app_slug,app_role FROM user_app_access WHERE user_id=? AND is_active=1',(uid,)).fetchall()}
     return render_template('portal_user_form.html', user=user, apps=apps,
-                           linked_emp=linked_emp, free_emps=[])
+                           linked_emp=linked_emp, free_emps=[],
+                           global_roles=global_roles, roles_by_app=roles_by_app,
+                           user_access=user_access)
 
 @app.route('/portal/users/<int:uid>/delete', methods=['POST'])
 @login_required
@@ -3726,11 +3755,16 @@ def karyawan():
         FROM employees e JOIN users u ON u.id = e.user_id
         WHERE e.is_active=1
     ''').fetchall()}
-    evaluasi_roles = db.execute(
-        "SELECT name FROM roles WHERE app_slug='evaluasi' OR app_slug='' ORDER BY is_system DESC, name"
-    ).fetchall()
+    apps = db.execute('SELECT slug, name, icon FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    all_roles    = db.execute("SELECT name, description, app_slug FROM roles ORDER BY is_system DESC, name").fetchall()
+    global_roles = [r for r in all_roles if r['app_slug'] == '']
+    roles_by_app = {}
+    for a in apps:
+        specific = [r for r in all_roles if r['app_slug'] == a['slug']]
+        roles_by_app[a['slug']] = specific if specific else global_roles
     return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, today=today,
-                           emp_user_map=emp_user_map, evaluasi_roles=evaluasi_roles)
+                           emp_user_map=emp_user_map, global_roles=global_roles,
+                           apps=apps, roles_by_app=roles_by_app)
 
 @app.route('/contracts')
 @login_required
@@ -5810,15 +5844,21 @@ def emp_promote_role(emp_id):
         return redirect(url_for('karyawan'))
 
     role = request.form.get('role', 'admin')
-    if role not in ('admin', 'superadmin'):
-        flash('Role tidak valid', 'danger')
-        return redirect(url_for('karyawan'))
+    apps = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1').fetchall()
+
+    def _save_app_access(uid):
+        db.execute('DELETE FROM user_app_access WHERE user_id=?', (uid,))
+        for a in apps:
+            if request.form.get(f'access_{a["slug"]}'):
+                app_role = request.form.get(f'role_{a["slug"]}', role)
+                db.execute('INSERT INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)',
+                           (uid, a['slug'], app_role))
 
     if emp['user_id']:
-        # Update existing linked user's role
         db.execute('UPDATE users SET role=? WHERE id=?', (role, emp['user_id']))
+        _save_app_access(emp['user_id'])
         db.commit()
-        flash(f'Role {emp["name"]} diupdate ke {role.upper()}', 'success')
+        flash(f'Role & akses {emp["name"]} diperbarui', 'success')
     else:
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
@@ -5830,8 +5870,9 @@ def emp_promote_role(emp_id):
             db.execute('UPDATE employees SET user_id=? WHERE id=?', (existing['id'], emp_id))
             db.execute('UPDATE users SET role=?, full_name=?, is_active=1 WHERE id=?',
                        (role, emp['name'], existing['id']))
+            _save_app_access(existing['id'])
             db.commit()
-            flash(f'{emp["name"]} dihubungkan ke akun "{username}" sebagai {role.upper()}', 'success')
+            flash(f'{emp["name"]} dihubungkan ke akun "{username}"', 'success')
         else:
             if not password:
                 flash('Password diperlukan untuk akun baru', 'danger')
@@ -5841,8 +5882,9 @@ def emp_promote_role(emp_id):
                 (username, generate_password_hash(password), emp['name'], role)
             ).lastrowid
             db.execute('UPDATE employees SET user_id=? WHERE id=?', (new_uid, emp_id))
+            _save_app_access(new_uid)
             db.commit()
-            flash(f'Akun "{username}" dibuat untuk {emp["name"]} sebagai {role.upper()}', 'success')
+            flash(f'Akun "{username}" dibuat untuk {emp["name"]}', 'success')
     return redirect(url_for('karyawan'))
 
 
