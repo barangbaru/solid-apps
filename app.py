@@ -1448,7 +1448,7 @@ def set_security_headers(response):
     response.headers['X-XSS-Protection']         = '1; mode=block'
     response.headers['Referrer-Policy']           = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy']        = 'geolocation=(), microphone=(), camera=()'
-    response.headers['Server']                    = 'super-us'
+    response.headers['Server']                    = 'Hive'
     return response
 
 
@@ -3299,7 +3299,7 @@ def portal_test_email():
     to_email = request.form.get('test_email', '').strip()
     if not to_email:
         return jsonify({'ok': False, 'msg': 'Masukkan alamat email tujuan test'})
-    ok, err = send_email(cfg, to_email, 'Test Email — super-us',
+    ok, err = send_email(cfg, to_email, 'Test Email — Hive',
                          '<h3>Test berhasil!</h3><p>Konfigurasi email sudah benar.</p>')
     return jsonify({'ok': ok, 'msg': 'Email berhasil dikirim' if ok else str(err)})
 
@@ -3333,7 +3333,7 @@ def portal_test_whatsapp():
     if not wa_url or not phone:
         return jsonify({'ok': False, 'msg': 'URL OpenWA dan nomor HP harus diisi'})
     app_label  = {'evaluasi': 'TalentCore', 'support': 'SupportCore',
-                  'booking': 'BookingCore', 'aset': 'AssetCore'}.get(test_app, 'super-us')
+                  'booking': 'BookingCore', 'aset': 'AssetCore'}.get(test_app, 'Hive')
     ok, err = send_whatsapp(wa_url, wa_key, wa_session, phone,
                             f'✅ *Test berhasil!*\n\nSesi: `{wa_session}`\nAplikasi: {app_label}')
     chat_id = normalize_phone_wa(phone)

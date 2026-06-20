@@ -6,84 +6,145 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h5 class="fw-bold mb-0"><i class="bi bi-speedometer2 text-primary me-2"></i>Master Kategori SLA</h5>
-    <div class="text-muted small mt-1">Prioritas & target waktu response/resolusi</div>
+    <div class="text-muted small mt-1">Prioritas & target waktu response / workaround / solusi final</div>
   </div>
   <a href="/support/sla-categories/add" class="btn btn-primary btn-sm">
     <i class="bi bi-plus-circle me-1"></i>Tambah Kategori SLA
   </a>
 </div>
 
+{% macro fmt_hours(h) %}
+  {%- if h is none or h == '' -%}—
+  {%- elif h < 1 -%}{{ (h * 60) | int }} mnt
+  {%- elif h >= 24 and h % 24 == 0 -%}{{ (h / 24) | int }} hr
+  {%- elif h == h | int -%}{{ h | int }} jam
+  {%- else -%}{{ h }} jam
+  {%- endif %}
+{% endmacro %}
+
+{# Group by maintenance_type #}
+{% set groups = [
+  ('corrective', 'Corrective Maintenance', 'danger',  'bug',           'Penanganan gangguan & bug — dibedakan workaround cepat vs solusi final permanen'),
+  ('preventive', 'Preventive Maintenance', 'warning', 'shield-check',  'Pemeliharaan terjadwal: patch, update, optimasi'),
+  ('onsite',     'Onsite Support',         'info',    'geo-alt-fill',  'Kunjungan langsung ke lokasi customer'),
+] %}
+
+{% for mtype, mlabel, mcls, micon, mdesc in groups %}
+{% set grp = rows | selectattr('maintenance_type','equalto', mtype) | list %}
+{% if grp %}
+<div class="mb-4">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <span class="badge bg-{{ mcls }} {{ 'text-dark' if mcls == 'warning' else '' }}">
+      <i class="bi bi-{{ micon }} me-1"></i>{{ mlabel }}
+    </span>
+    <span class="text-muted small">{{ mdesc }}</span>
+  </div>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3" style="width:110px">Kode</th>
+            <th>Nama Kategori</th>
+            <th class="text-center" style="width:100px">Prioritas</th>
+            <th class="text-center" style="width:110px">
+              <i class="bi bi-bell text-warning me-1"></i>Response
+            </th>
+            {% if mtype == 'corrective' %}
+            <th class="text-center" style="width:120px">
+              <i class="bi bi-tools text-primary me-1"></i>Workaround
+            </th>
+            {% endif %}
+            <th class="text-center" style="width:120px">
+              <i class="bi bi-check-circle text-success me-1"></i>Solusi Final
+            </th>
+            <th>Deskripsi</th>
+            <th class="text-center" style="width:70px">Status</th>
+            <th style="width:80px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in grp | sort(attribute='priority') %}
+          {% set p_styles = {
+            'Critical': ('bg-danger',   'text-danger'),
+            'High':     ('bg-warning text-dark', 'text-warning'),
+            'Medium':   ('bg-primary',  'text-primary'),
+            'Low':      ('bg-secondary','text-secondary'),
+          } %}
+          {% set badge_cls, text_cls = p_styles.get(r.priority, ('bg-secondary','text-muted')) %}
+          <tr class="{{ '' if r.is_active else 'table-secondary text-muted opacity-75' }}">
+            <td class="ps-3">
+              <span class="badge bg-light border text-dark fw-semibold font-monospace" style="font-size:.75rem">{{ r.code }}</span>
+            </td>
+            <td class="fw-semibold small">{{ r.name }}</td>
+            <td class="text-center">
+              <span class="badge {{ badge_cls }}" style="font-size:.7rem">{{ r.priority }}</span>
+            </td>
+            <td class="text-center small fw-semibold {{ text_cls }}">
+              {{ fmt_hours(r.response_time_hours) }}
+            </td>
+            {% if mtype == 'corrective' %}
+            <td class="text-center small">
+              {% if r.workaround_time_hours %}
+              <span class="text-primary fw-semibold">{{ fmt_hours(r.workaround_time_hours) }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            {% endif %}
+            <td class="text-center small fw-semibold text-success">
+              {{ fmt_hours(r.resolution_time_hours) }}
+            </td>
+            <td class="small text-muted" style="max-width:260px">
+              <span title="{{ r.description or '' }}" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+                {{ r.description or '—' }}
+              </span>
+            </td>
+            <td class="text-center">
+              <span class="badge {{ 'bg-success' if r.is_active else 'bg-secondary' }}" style="font-size:.65rem">
+                {{ 'Aktif' if r.is_active else 'Off' }}
+              </span>
+            </td>
+            <td class="text-end pe-3">
+              <a href="/support/sla-categories/{{ r.id }}/edit" class="btn btn-sm btn-outline-secondary py-0 px-2">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form action="/support/sla-categories/{{ r.id }}/delete" method="post" class="d-inline"
+                    onsubmit="return confirm('Nonaktifkan kategori SLA {{ r.name | e }}?')">
+                <button class="btn btn-sm btn-outline-danger py-0 px-2"><i class="bi bi-x-circle"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if not rows %}
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0 align-middle">
-      <thead class="table-light">
-        <tr>
-          <th class="ps-3" style="width:100px">Kode</th>
-          <th>Nama Kategori</th>
-          <th class="text-center" style="width:110px">Prioritas</th>
-          <th class="text-center" style="width:130px">Response Time</th>
-          <th class="text-center" style="width:130px">Resolution Time</th>
-          <th>Deskripsi</th>
-          <th class="text-center">Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in rows %}
-        {% set p_styles = {
-          'Critical': ('bg-danger',   'text-danger'),
-          'High':     ('bg-warning text-dark', 'text-warning'),
-          'Medium':   ('bg-primary',  'text-primary'),
-          'Low':      ('bg-secondary','text-secondary'),
-        } %}
-        {% set badge_cls, text_cls = p_styles.get(r.priority, ('bg-secondary','text-muted')) %}
-        <tr class="{{ '' if r.is_active else 'table-secondary text-muted' }}">
-          <td class="ps-3">
-            <span class="badge bg-light border text-dark fw-semibold" style="font-size:.75rem">{{ r.code }}</span>
-          </td>
-          <td class="fw-semibold">{{ r.name }}</td>
-          <td class="text-center">
-            <span class="badge {{ badge_cls }}" style="font-size:.72rem">{{ r.priority }}</span>
-          </td>
-          <td class="text-center small">
-            <i class="bi bi-clock me-1 {{ text_cls }}"></i>
-            {% set rh = r.response_time_hours %}
-            {% if rh < 1 %}{{ (rh * 60) | int }} menit
-            {% elif rh == rh | int %}{{ rh | int }} jam
-            {% else %}{{ rh }} jam{% endif %}
-          </td>
-          <td class="text-center small">
-            <i class="bi bi-check-circle me-1 text-success"></i>
-            {% set rsh = r.resolution_time_hours %}
-            {% if rsh >= 24 and rsh % 24 == 0 %}{{ (rsh / 24) | int }} hari
-            {% elif rsh == rsh | int %}{{ rsh | int }} jam
-            {% else %}{{ rsh }} jam{% endif %}
-          </td>
-          <td class="small text-muted">{{ r.description or '—' }}</td>
-          <td class="text-center">
-            <span class="badge {{ 'bg-success' if r.is_active else 'bg-secondary' }}">
-              {{ 'Aktif' if r.is_active else 'Nonaktif' }}
-            </span>
-          </td>
-          <td class="text-end pe-3">
-            <a href="/support/sla-categories/{{ r.id }}/edit" class="btn btn-sm btn-outline-secondary">
-              <i class="bi bi-pencil"></i>
-            </a>
-            <form action="/support/sla-categories/{{ r.id }}/delete" method="post" class="d-inline"
-                  data-confirm="Nonaktifkan kategori SLA {{ r.name | e }}?"
-                  onsubmit="return confirm(this.dataset.confirm)">
-              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle"></i></button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="8" class="text-center text-muted py-4">
-          <i class="bi bi-speedometer2" style="font-size:2rem;opacity:.3"></i>
-          <div class="mt-2">Belum ada kategori SLA. <a href="/support/sla-categories/add">Tambah sekarang</a>.</div>
-        </td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-speedometer2" style="font-size:2.5rem;opacity:.3"></i>
+    <div class="mt-2">Belum ada kategori SLA. <a href="/support/sla-categories/add">Tambah sekarang</a>.</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="alert alert-light border mt-3 small">
+  <div class="row g-2">
+    <div class="col-md-4">
+      <strong><i class="bi bi-bell text-warning me-1"></i>Response Time</strong><br>
+      <span class="text-muted">Waktu maksimal tim mulai merespons sejak tiket masuk.</span>
+    </div>
+    <div class="col-md-4">
+      <strong><i class="bi bi-tools text-primary me-1"></i>Workaround</strong><br>
+      <span class="text-muted">Solusi sementara agar user bisa beroperasi kembali. Khusus Corrective.</span>
+    </div>
+    <div class="col-md-4">
+      <strong><i class="bi bi-check-circle text-success me-1"></i>Solusi Final</strong><br>
+      <span class="text-muted">Penyelesaian permanen — root cause teridentifikasi & diperbaiki.</span>
+    </div>
   </div>
 </div>
 {% endblock %}
