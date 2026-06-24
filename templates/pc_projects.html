@@ -21,7 +21,7 @@
           <div>
             <span class="badge mb-1" style="background:{{ p.color }}20;color:{{ p.color }};border:1px solid {{ p.color }}40">{{ p.code }}</span>
             <h6 class="fw-bold mb-0">{{ p.name }}</h6>
-            {% if p.client %}<div class="text-muted small">{{ p.client }}</div>{% endif %}
+            {% if p.customer_name %}<div class="text-muted small"><i class="bi bi-building me-1"></i>{{ p.customer_name }}</div>{% endif %}
           </div>
           <span class="badge {{ 'bg-success' if p.status == 'active' else ('bg-secondary' if p.status == 'completed' else ('bg-warning text-dark' if p.status == 'on_hold' else 'bg-light text-muted border')) }}" style="font-size:.68rem">
             {{ {'active':'Aktif','completed':'Selesai','on_hold':'Hold','archived':'Arsip'}.get(p.status, p.status) }}
