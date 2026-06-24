@@ -937,6 +937,109 @@ CREATE TABLE IF NOT EXISTS ac_maintenance_log (
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS pc_projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    client TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    status TEXT DEFAULT 'active',
+    start_date TEXT DEFAULT NULL,
+    end_date TEXT DEFAULT NULL,
+    pic_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL,
+    color TEXT DEFAULT '#0ea5e9',
+    created_by INTEGER DEFAULT NULL REFERENCES users(id),
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS pc_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
+    employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    role TEXT DEFAULT 'developer',
+    UNIQUE(project_id, employee_id)
+);
+CREATE TABLE IF NOT EXISTS pc_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
+    issue_no TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    role TEXT DEFAULT '',
+    menu TEXT DEFAULT '',
+    stage TEXT DEFAULT '',
+    solution_type TEXT DEFAULT '',
+    priority TEXT DEFAULT 'Medium',
+    severity TEXT DEFAULT 'Medium',
+    difficulty TEXT DEFAULT 'Normal',
+    issued_type TEXT DEFAULT 'Bugs',
+    issued_date TEXT DEFAULT NULL,
+    issued_by TEXT DEFAULT '',
+    pic_programmer_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL,
+    pic_tester_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL,
+    md_days REAL DEFAULT NULL,
+    plan_hours REAL DEFAULT NULL,
+    bobot_plan REAL DEFAULT 0,
+    bobot_actual REAL DEFAULT 0,
+    status_programmer TEXT DEFAULT 'New',
+    status_testing TEXT DEFAULT '',
+    testing_date TEXT DEFAULT NULL,
+    resolved_date TEXT DEFAULT NULL,
+    notes TEXT DEFAULT '',
+    redmine TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS pc_issue_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_id INTEGER NOT NULL REFERENCES pc_issues(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    old_value TEXT DEFAULT '',
+    new_value TEXT DEFAULT '',
+    changed_by INTEGER DEFAULT NULL REFERENCES users(id),
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS pc_milestones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    due_date TEXT NOT NULL,
+    status TEXT DEFAULT 'upcoming',
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS pc_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
+    milestone_id INTEGER DEFAULT NULL REFERENCES pc_milestones(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT DEFAULT 'backlog',
+    priority TEXT DEFAULT 'Medium',
+    due_date TEXT DEFAULT NULL,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS pc_task_assignees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES pc_tasks(id) ON DELETE CASCADE,
+    employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    UNIQUE(task_id, employee_id)
+);
+CREATE TABLE IF NOT EXISTS pc_proposed_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    module TEXT DEFAULT '',
+    pekerjaan TEXT DEFAULT '',
+    impact TEXT DEFAULT 'Medium',
+    difficulty TEXT DEFAULT 'Normal',
+    status TEXT DEFAULT 'proposed',
+    tester TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 MIGRATIONS = [
@@ -1029,6 +1132,52 @@ SC_MEDIA_LAPOR = [
     ('email',       'Email'),
     ('telegram',    'Telegram'),
     ('wa_pic',      'WA Pribadi PIC Helpdesk'),
+]
+
+PC_ISSUE_STATUSES_PRG = [
+    ('New',           'New',            'secondary'),
+    ('In Progress',   'In Progress',    'primary'),
+    ('Done',          'Done',           'success'),
+    ('Ready to Test', 'Ready to Test',  'info'),
+    ('Need Deploy',   'Need Deploy',    'warning'),
+    ('Hold',          'Hold',           'dark'),
+    ('Feedback',      'Feedback',       'danger'),
+]
+PC_ISSUE_STATUSES_TEST = [
+    ('',         '—',        'light'),
+    ('Testing',  'Testing',  'primary'),
+    ('Done',     'Done',     'success'),
+    ('Feedback', 'Feedback', 'warning'),
+    ('Reject',   'Reject',   'danger'),
+]
+PC_PRIORITIES  = ['Low', 'Medium', 'High', 'Critical']
+PC_SEVERITIES  = ['Low', 'Medium', 'High', 'Critical']
+PC_DIFFICULTIES= ['Easy', 'Normal', 'Hard', 'Very Hard']
+PC_ISSUED_TYPES= ['Bugs', 'New Feature', 'Enhancement', 'Change Request']
+PC_SOLUTION_TYPES = ['Coding', 'Config', 'DB', 'Design', 'Documentation', 'Other']
+PC_TASK_STATUSES = [
+    ('backlog',     'Backlog',     '#6b7280'),
+    ('todo',        'To Do',       '#3b82f6'),
+    ('in_progress', 'In Progress', '#f59e0b'),
+    ('review',      'Review',      '#8b5cf6'),
+    ('done',        'Done',        '#10b981'),
+]
+PC_MILESTONE_STATUSES = [
+    ('upcoming',     'Upcoming',     'secondary'),
+    ('in_progress',  'In Progress',  'primary'),
+    ('completed',    'Completed',    'success'),
+    ('delayed',      'Delayed',      'danger'),
+]
+PC_PROPOSED_STATUSES = [
+    ('proposed',    'Proposed',     'secondary'),
+    ('approved',    'Approved',     'success'),
+    ('in_progress', 'In Progress',  'primary'),
+    ('done',        'Done',         'success'),
+    ('rejected',    'Rejected',     'danger'),
+    ('hold',        'Hold',         'warning'),
+]
+PC_PROJECT_COLORS = [
+    '#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#0d9488','#6366f1',
 ]
 
 DEFAULT_SETTINGS = {
@@ -8205,6 +8354,503 @@ def ac_request_delete(rid):
     if not ac_require('ac_manage_requests'): return redirect(url_for('ac_requests'))
     get_db().execute('DELETE FROM ac_software_requests WHERE id=?', (rid,)); get_db().commit()
     flash('Request dihapus.', 'success'); return redirect(url_for('ac_requests'))
+
+# ─── ProjectCore ───────────────────────────────────────────────────────────────
+
+def _pc_next_issue_no(db, project_id):
+    last = db.execute(
+        "SELECT issue_no FROM pc_issues WHERE project_id=? ORDER BY id DESC LIMIT 1", (project_id,)
+    ).fetchone()
+    proj = db.execute("SELECT code FROM pc_projects WHERE id=?", (project_id,)).fetchone()
+    prefix = proj['code'].upper() if proj else 'PC'
+    if not last:
+        return f"{prefix}-001"
+    try:
+        n = int(last['issue_no'].rsplit('-', 1)[-1]) + 1
+    except Exception:
+        n = 1
+    return f"{prefix}-{n:03d}"
+
+def _pc_log_issue(db, issue_id, action, old_val, new_val, notes=''):
+    uid = session.get('user_id')
+    db.execute(
+        "INSERT INTO pc_issue_history(issue_id,action,old_value,new_value,changed_by,notes) VALUES(?,?,?,?,?,?)",
+        (issue_id, action, old_val or '', new_val or '', uid, notes)
+    )
+
+def _pc_members(db, project_id):
+    return db.execute(
+        '''SELECT e.id, e.name, e.jabatan, e.divisi, pm.role
+           FROM pc_members pm JOIN employees e ON e.id=pm.employee_id
+           WHERE pm.project_id=? ORDER BY e.divisi, e.name''', (project_id,)
+    ).fetchall()
+
+@app.route('/project/')
+@app.route('/project')
+@login_required
+def pc_index():
+    db = get_db()
+    projects = db.execute(
+        '''SELECT p.*, e.name as pic_name,
+                  (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
+                  (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer='Done') as done_issues,
+                  (SELECT COUNT(*) FROM pc_tasks WHERE project_id=p.id) as total_tasks,
+                  (SELECT COUNT(*) FROM pc_tasks WHERE project_id=p.id AND status='done') as done_tasks
+           FROM pc_projects p
+           LEFT JOIN employees e ON e.id=p.pic_id
+           WHERE p.status != 'archived'
+           ORDER BY p.created_at DESC'''
+    ).fetchall()
+    counts = {
+        'projects': len(projects),
+        'open_issues': db.execute(
+            "SELECT COUNT(*) FROM pc_issues WHERE status_programmer NOT IN ('Done','Hold')"
+        ).fetchone()[0],
+        'pending_tasks': db.execute(
+            "SELECT COUNT(*) FROM pc_tasks WHERE status NOT IN ('done')"
+        ).fetchone()[0],
+        'milestones': db.execute(
+            "SELECT COUNT(*) FROM pc_milestones WHERE status='in_progress'"
+        ).fetchone()[0],
+    }
+    return render_template('pc_index.html', projects=projects, counts=counts)
+
+@app.route('/project/projects')
+@login_required
+def pc_projects():
+    db  = get_db()
+    rows = db.execute(
+        '''SELECT p.*, e.name as pic_name,
+                  (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
+                  (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues
+           FROM pc_projects p LEFT JOIN employees e ON e.id=p.pic_id
+           ORDER BY p.status, p.created_at DESC'''
+    ).fetchall()
+    return render_template('pc_projects.html', rows=rows)
+
+@app.route('/project/projects/add', methods=['GET','POST'])
+@login_required
+def pc_project_add():
+    db   = get_db()
+    emps = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
+    if request.method == 'POST':
+        code = request.form.get('code','').strip().upper()
+        name = request.form.get('name','').strip()
+        if not code or not name:
+            flash('Kode dan nama wajib diisi', 'danger')
+            return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r={})
+        if db.execute("SELECT id FROM pc_projects WHERE code=?", (code,)).fetchone():
+            flash(f'Kode proyek {code} sudah dipakai', 'danger')
+            return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r={})
+        db.execute(
+            '''INSERT INTO pc_projects(code,name,client,description,status,start_date,end_date,pic_id,color,created_by)
+               VALUES(?,?,?,?,?,?,?,?,?,?)''',
+            (code, name,
+             request.form.get('client','').strip(),
+             request.form.get('description','').strip(),
+             request.form.get('status','active'),
+             request.form.get('start_date') or None,
+             request.form.get('end_date') or None,
+             request.form.get('pic_id') or None,
+             request.form.get('color','#0ea5e9'),
+             session.get('user_id'))
+        )
+        db.commit()
+        flash(f'Proyek {name} berhasil dibuat', 'success')
+        return redirect(url_for('pc_projects'))
+    return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r={})
+
+@app.route('/project/projects/<int:pid>/edit', methods=['GET','POST'])
+@login_required
+def pc_project_edit(pid):
+    db   = get_db()
+    proj = db.execute("SELECT * FROM pc_projects WHERE id=?", (pid,)).fetchone()
+    if not proj: abort(404)
+    emps = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
+    if request.method == 'POST':
+        db.execute(
+            '''UPDATE pc_projects SET name=?,client=?,description=?,status=?,
+               start_date=?,end_date=?,pic_id=?,color=? WHERE id=?''',
+            (request.form.get('name','').strip(),
+             request.form.get('client','').strip(),
+             request.form.get('description','').strip(),
+             request.form.get('status','active'),
+             request.form.get('start_date') or None,
+             request.form.get('end_date') or None,
+             request.form.get('pic_id') or None,
+             request.form.get('color','#0ea5e9'),
+             pid)
+        )
+        db.commit()
+        flash('Proyek diperbarui', 'success')
+        return redirect(url_for('pc_project_detail', pid=pid))
+    return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r=proj)
+
+@app.route('/project/projects/<int:pid>')
+@login_required
+def pc_project_detail(pid):
+    db   = get_db()
+    proj = db.execute(
+        'SELECT p.*, e.name as pic_name FROM pc_projects p LEFT JOIN employees e ON e.id=p.pic_id WHERE p.id=?', (pid,)
+    ).fetchone()
+    if not proj: abort(404)
+    issues = db.execute(
+        '''SELECT i.*, ep.name as pic_prog_name, et.name as pic_test_name
+           FROM pc_issues i
+           LEFT JOIN employees ep ON ep.id=i.pic_programmer_id
+           LEFT JOIN employees et ON et.id=i.pic_tester_id
+           WHERE i.project_id=? ORDER BY i.id DESC''', (pid,)
+    ).fetchall()
+    tasks = db.execute(
+        '''SELECT t.*, GROUP_CONCAT(e.name, ', ') as assignees
+           FROM pc_tasks t
+           LEFT JOIN pc_task_assignees ta ON ta.task_id=t.id
+           LEFT JOIN employees e ON e.id=ta.employee_id
+           WHERE t.project_id=? GROUP BY t.id ORDER BY t.sort_order, t.id''', (pid,)
+    ).fetchall()
+    milestones = db.execute(
+        "SELECT * FROM pc_milestones WHERE project_id=? ORDER BY due_date, sort_order", (pid,)
+    ).fetchall()
+    proposed = db.execute(
+        "SELECT * FROM pc_proposed_changes WHERE project_id=? ORDER BY id", (pid,)
+    ).fetchall()
+    members  = _pc_members(db, pid)
+    emps     = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
+    stats = {
+        'total_issues': len(issues),
+        'open_issues':  sum(1 for i in issues if i['status_programmer'] not in ('Done','Hold')),
+        'done_issues':  sum(1 for i in issues if i['status_programmer'] == 'Done'),
+        'total_tasks':  len(tasks),
+        'done_tasks':   sum(1 for t in tasks if t['status'] == 'done'),
+    }
+    kanban = {s: [t for t in tasks if t['status'] == s] for s, _, _ in PC_TASK_STATUSES}
+    return render_template('pc_project_detail.html',
+        proj=proj, issues=issues, tasks=tasks, milestones=milestones,
+        proposed=proposed, members=members, emps=emps, stats=stats, kanban=kanban,
+        task_statuses=PC_TASK_STATUSES, milestone_statuses=PC_MILESTONE_STATUSES,
+        proposed_statuses=PC_PROPOSED_STATUSES,
+        priorities=PC_PRIORITIES, difficulties=PC_DIFFICULTIES)
+
+@app.route('/project/projects/<int:pid>/members', methods=['POST'])
+@login_required
+def pc_member_add(pid):
+    db  = get_db()
+    eid = request.form.get('employee_id')
+    role= request.form.get('role','developer')
+    if eid:
+        try:
+            db.execute("INSERT OR IGNORE INTO pc_members(project_id,employee_id,role) VALUES(?,?,?)", (pid, eid, role))
+            db.commit()
+        except Exception:
+            pass
+    return redirect(url_for('pc_project_detail', pid=pid) + '#members')
+
+@app.route('/project/projects/<int:pid>/members/<int:eid>/delete', methods=['POST'])
+@login_required
+def pc_member_delete(pid, eid):
+    db = get_db()
+    db.execute("DELETE FROM pc_members WHERE project_id=? AND employee_id=?", (pid, eid))
+    db.commit()
+    return redirect(url_for('pc_project_detail', pid=pid) + '#members')
+
+# ── Issues ─────────────────────────────────────────────────────────────────────
+
+@app.route('/project/projects/<int:pid>/issues/add', methods=['GET','POST'])
+@login_required
+def pc_issue_add(pid):
+    db   = get_db()
+    proj = db.execute("SELECT * FROM pc_projects WHERE id=?", (pid,)).fetchone()
+    if not proj: abort(404)
+    emps = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
+    if request.method == 'POST':
+        issue_no = _pc_next_issue_no(db, pid)
+        db.execute(
+            '''INSERT INTO pc_issues
+               (project_id,issue_no,title,description,role,menu,stage,solution_type,
+                priority,severity,difficulty,issued_type,issued_date,issued_by,
+                pic_programmer_id,pic_tester_id,md_days,plan_hours,
+                status_programmer,notes,redmine)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (pid, issue_no,
+             request.form.get('title','').strip(),
+             request.form.get('description','').strip(),
+             request.form.get('role','').strip(),
+             request.form.get('menu','').strip(),
+             request.form.get('stage','').strip(),
+             request.form.get('solution_type',''),
+             request.form.get('priority','Medium'),
+             request.form.get('severity','Medium'),
+             request.form.get('difficulty','Normal'),
+             request.form.get('issued_type','Bugs'),
+             request.form.get('issued_date') or None,
+             request.form.get('issued_by','').strip(),
+             request.form.get('pic_programmer_id') or None,
+             request.form.get('pic_tester_id') or None,
+             request.form.get('md_days') or None,
+             request.form.get('plan_hours') or None,
+             'New',
+             request.form.get('notes','').strip(),
+             request.form.get('redmine','').strip())
+        )
+        iid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        _pc_log_issue(db, iid, 'created', '', 'New', f'Issue {issue_no} dibuat')
+        db.commit()
+        flash(f'Issue {issue_no} berhasil ditambahkan', 'success')
+        return redirect(url_for('pc_project_detail', pid=pid) + '#issues')
+    return render_template('pc_issue_form.html', proj=proj, emps=emps,
+        priorities=PC_PRIORITIES, severities=PC_SEVERITIES,
+        difficulties=PC_DIFFICULTIES, issued_types=PC_ISSUED_TYPES,
+        solution_types=PC_SOLUTION_TYPES, r={})
+
+@app.route('/project/issues/<int:iid>')
+@login_required
+def pc_issue_detail(iid):
+    db    = get_db()
+    issue = db.execute(
+        '''SELECT i.*, p.name as project_name, p.id as project_id, p.code as project_code,
+                  ep.name as pic_prog_name, et.name as pic_test_name
+           FROM pc_issues i
+           JOIN pc_projects p ON p.id=i.project_id
+           LEFT JOIN employees ep ON ep.id=i.pic_programmer_id
+           LEFT JOIN employees et ON et.id=i.pic_tester_id
+           WHERE i.id=?''', (iid,)
+    ).fetchone()
+    if not issue: abort(404)
+    history = db.execute(
+        '''SELECT h.*, u.username as changed_by_name
+           FROM pc_issue_history h LEFT JOIN users u ON u.id=h.changed_by
+           WHERE h.issue_id=? ORDER BY h.id DESC''', (iid,)
+    ).fetchall()
+    emps = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
+    return render_template('pc_issue_detail.html', issue=issue, history=history, emps=emps,
+        prg_statuses=PC_ISSUE_STATUSES_PRG, test_statuses=PC_ISSUE_STATUSES_TEST,
+        priorities=PC_PRIORITIES, severities=PC_SEVERITIES,
+        difficulties=PC_DIFFICULTIES, solution_types=PC_SOLUTION_TYPES)
+
+@app.route('/project/issues/<int:iid>/edit', methods=['GET','POST'])
+@login_required
+def pc_issue_edit(iid):
+    db    = get_db()
+    issue = db.execute("SELECT * FROM pc_issues WHERE id=?", (iid,)).fetchone()
+    if not issue: abort(404)
+    proj  = db.execute("SELECT * FROM pc_projects WHERE id=?", (issue['project_id'],)).fetchone()
+    emps  = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
+    if request.method == 'POST':
+        old_status = issue['status_programmer']
+        new_status = request.form.get('status_programmer', old_status)
+        db.execute(
+            '''UPDATE pc_issues SET title=?,description=?,role=?,menu=?,stage=?,solution_type=?,
+               priority=?,severity=?,difficulty=?,issued_type=?,issued_date=?,issued_by=?,
+               pic_programmer_id=?,pic_tester_id=?,md_days=?,plan_hours=?,
+               status_programmer=?,status_testing=?,testing_date=?,resolved_date=?,
+               notes=?,redmine=? WHERE id=?''',
+            (request.form.get('title','').strip(),
+             request.form.get('description','').strip(),
+             request.form.get('role','').strip(),
+             request.form.get('menu','').strip(),
+             request.form.get('stage','').strip(),
+             request.form.get('solution_type',''),
+             request.form.get('priority','Medium'),
+             request.form.get('severity','Medium'),
+             request.form.get('difficulty','Normal'),
+             request.form.get('issued_type','Bugs'),
+             request.form.get('issued_date') or None,
+             request.form.get('issued_by','').strip(),
+             request.form.get('pic_programmer_id') or None,
+             request.form.get('pic_tester_id') or None,
+             request.form.get('md_days') or None,
+             request.form.get('plan_hours') or None,
+             new_status,
+             request.form.get('status_testing',''),
+             request.form.get('testing_date') or None,
+             request.form.get('resolved_date') or None,
+             request.form.get('notes','').strip(),
+             request.form.get('redmine','').strip(),
+             iid)
+        )
+        if old_status != new_status:
+            _pc_log_issue(db, iid, 'status_change', old_status, new_status)
+        else:
+            _pc_log_issue(db, iid, 'update', '', '', 'Data issue diperbarui')
+        db.commit()
+        flash('Issue diperbarui', 'success')
+        return redirect(url_for('pc_issue_detail', iid=iid))
+    return render_template('pc_issue_form.html', proj=proj, emps=emps,
+        priorities=PC_PRIORITIES, severities=PC_SEVERITIES,
+        difficulties=PC_DIFFICULTIES, issued_types=PC_ISSUED_TYPES,
+        solution_types=PC_SOLUTION_TYPES, r=issue, is_edit=True)
+
+@app.route('/project/issues/<int:iid>/status', methods=['POST'])
+@login_required
+def pc_issue_status(iid):
+    db    = get_db()
+    issue = db.execute("SELECT * FROM pc_issues WHERE id=?", (iid,)).fetchone()
+    if not issue: abort(404)
+    new_prg  = request.form.get('status_programmer', issue['status_programmer'])
+    new_test = request.form.get('status_testing', issue['status_testing'] or '')
+    notes    = request.form.get('notes','').strip()
+    if new_prg != issue['status_programmer']:
+        _pc_log_issue(db, iid, 'status_change', issue['status_programmer'], new_prg, notes)
+    resolved_date = issue['resolved_date']
+    if new_prg == 'Done' and not resolved_date:
+        resolved_date = datetime.now().strftime('%Y-%m-%d')
+    db.execute(
+        "UPDATE pc_issues SET status_programmer=?,status_testing=?,resolved_date=? WHERE id=?",
+        (new_prg, new_test, resolved_date, iid)
+    )
+    db.commit()
+    flash('Status diperbarui', 'success')
+    return redirect(url_for('pc_issue_detail', iid=iid))
+
+@app.route('/project/issues/<int:iid>/delete', methods=['POST'])
+@login_required
+def pc_issue_delete(iid):
+    db    = get_db()
+    issue = db.execute("SELECT * FROM pc_issues WHERE id=?", (iid,)).fetchone()
+    if not issue: abort(404)
+    pid   = issue['project_id']
+    db.execute("DELETE FROM pc_issues WHERE id=?", (iid,))
+    db.commit()
+    flash('Issue dihapus', 'warning')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#issues')
+
+# ── Tasks / Kanban ─────────────────────────────────────────────────────────────
+
+@app.route('/project/projects/<int:pid>/tasks/add', methods=['POST'])
+@login_required
+def pc_task_add(pid):
+    db = get_db()
+    title = request.form.get('title','').strip()
+    if title:
+        status = request.form.get('status','backlog')
+        max_order = db.execute(
+            "SELECT COALESCE(MAX(sort_order),0) FROM pc_tasks WHERE project_id=? AND status=?", (pid, status)
+        ).fetchone()[0]
+        db.execute(
+            '''INSERT INTO pc_tasks(project_id,milestone_id,title,description,status,priority,due_date,sort_order)
+               VALUES(?,?,?,?,?,?,?,?)''',
+            (pid, request.form.get('milestone_id') or None,
+             title, request.form.get('description','').strip(),
+             status, request.form.get('priority','Medium'),
+             request.form.get('due_date') or None, max_order + 1)
+        )
+        tid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        for eid in request.form.getlist('assignee_ids'):
+            db.execute("INSERT OR IGNORE INTO pc_task_assignees(task_id,employee_id) VALUES(?,?)", (tid, eid))
+        db.commit()
+        flash('Task ditambahkan', 'success')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#kanban')
+
+@app.route('/project/tasks/<int:tid>/move', methods=['POST'])
+@login_required
+def pc_task_move(tid):
+    db  = get_db()
+    new_status = request.json.get('status') if request.is_json else request.form.get('status')
+    if new_status:
+        db.execute("UPDATE pc_tasks SET status=? WHERE id=?", (new_status, tid))
+        db.commit()
+    return jsonify({'ok': True})
+
+@app.route('/project/tasks/<int:tid>/delete', methods=['POST'])
+@login_required
+def pc_task_delete(tid):
+    db   = get_db()
+    task = db.execute("SELECT project_id FROM pc_tasks WHERE id=?", (tid,)).fetchone()
+    if not task: abort(404)
+    pid  = task['project_id']
+    db.execute("DELETE FROM pc_tasks WHERE id=?", (tid,))
+    db.commit()
+    flash('Task dihapus', 'warning')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#kanban')
+
+# ── Milestones ─────────────────────────────────────────────────────────────────
+
+@app.route('/project/projects/<int:pid>/milestones/add', methods=['POST'])
+@login_required
+def pc_milestone_add(pid):
+    db    = get_db()
+    title = request.form.get('title','').strip()
+    due   = request.form.get('due_date','').strip()
+    if title and due:
+        db.execute(
+            "INSERT INTO pc_milestones(project_id,title,description,due_date,status) VALUES(?,?,?,?,?)",
+            (pid, title, request.form.get('description','').strip(), due, 'upcoming')
+        )
+        db.commit()
+        flash('Milestone ditambahkan', 'success')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#milestones')
+
+@app.route('/project/milestones/<int:mid>/status', methods=['POST'])
+@login_required
+def pc_milestone_status(mid):
+    db = get_db()
+    ms = db.execute("SELECT project_id FROM pc_milestones WHERE id=?", (mid,)).fetchone()
+    if not ms: abort(404)
+    db.execute("UPDATE pc_milestones SET status=? WHERE id=?", (request.form.get('status','upcoming'), mid))
+    db.commit()
+    flash('Status milestone diperbarui', 'success')
+    return redirect(url_for('pc_project_detail', pid=ms['project_id']) + '#milestones')
+
+@app.route('/project/milestones/<int:mid>/delete', methods=['POST'])
+@login_required
+def pc_milestone_delete(mid):
+    db = get_db()
+    ms = db.execute("SELECT project_id FROM pc_milestones WHERE id=?", (mid,)).fetchone()
+    if not ms: abort(404)
+    pid = ms['project_id']
+    db.execute("DELETE FROM pc_milestones WHERE id=?", (mid,))
+    db.commit()
+    flash('Milestone dihapus', 'warning')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#milestones')
+
+# ── Proposed Changes ───────────────────────────────────────────────────────────
+
+@app.route('/project/projects/<int:pid>/proposed/add', methods=['POST'])
+@login_required
+def pc_proposed_add(pid):
+    db = get_db()
+    title = request.form.get('title','').strip()
+    if title:
+        db.execute(
+            '''INSERT INTO pc_proposed_changes
+               (project_id,title,description,module,pekerjaan,impact,difficulty,status,tester,notes)
+               VALUES(?,?,?,?,?,?,?,?,?,?)''',
+            (pid, title,
+             request.form.get('description','').strip(),
+             request.form.get('module','').strip(),
+             request.form.get('pekerjaan','').strip(),
+             request.form.get('impact','Medium'),
+             request.form.get('difficulty','Normal'),
+             'proposed',
+             request.form.get('tester','').strip(),
+             request.form.get('notes','').strip())
+        )
+        db.commit()
+        flash('Proposed change ditambahkan', 'success')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#proposed')
+
+@app.route('/project/proposed/<int:cid>/status', methods=['POST'])
+@login_required
+def pc_proposed_status(cid):
+    db = get_db()
+    pc = db.execute("SELECT project_id FROM pc_proposed_changes WHERE id=?", (cid,)).fetchone()
+    if not pc: abort(404)
+    db.execute("UPDATE pc_proposed_changes SET status=? WHERE id=?",
+               (request.form.get('status','proposed'), cid))
+    db.commit()
+    return redirect(url_for('pc_project_detail', pid=pc['project_id']) + '#proposed')
+
+@app.route('/project/proposed/<int:cid>/delete', methods=['POST'])
+@login_required
+def pc_proposed_delete(cid):
+    db = get_db()
+    pc = db.execute("SELECT project_id FROM pc_proposed_changes WHERE id=?", (cid,)).fetchone()
+    if not pc: abort(404)
+    pid = pc['project_id']
+    db.execute("DELETE FROM pc_proposed_changes WHERE id=?", (cid,))
+    db.commit()
+    flash('Proposed change dihapus', 'warning')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#proposed')
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 

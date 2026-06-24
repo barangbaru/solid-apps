@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block title %}ProjectCore — Dashboard{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Dashboard</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div class="d-flex align-items-center gap-2">
+    <div style="width:38px;height:38px;border-radius:10px;background:#0ea5e9;display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-kanban text-white fs-5"></i>
+    </div>
+    <div>
+      <h5 class="fw-bold mb-0">ProjectCore</h5>
+      <div class="text-muted small">Manajemen proyek, issue tracker & kanban board</div>
+    </div>
+  </div>
+  <a href="/project/projects/add" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>Buat Proyek
+  </a>
+</div>
+
+<div class="row g-3 mb-4">
+  {% for val, label, icon, color, bg in [
+    (counts.projects,     'Total Proyek',     'folder2-open',   '#0ea5e9', '#e0f2fe'),
+    (counts.open_issues,  'Issue Open',       'bug',            '#ef4444', '#fee2e2'),
+    (counts.pending_tasks,'Task Pending',     'check2-square',  '#f59e0b', '#fef3c7'),
+    (counts.milestones,   'Milestone Aktif',  'flag',           '#8b5cf6', '#ede9fe'),
+  ] %}
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100" style="border-left:4px solid {{ color }} !important">
+      <div class="card-body d-flex align-items-center gap-3">
+        <div style="width:44px;height:44px;border-radius:12px;background:{{ bg }};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="bi bi-{{ icon }} fs-5" style="color:{{ color }}"></i>
+        </div>
+        <div>
+          <div class="fw-bold fs-4 lh-1" style="color:{{ color }}">{{ val }}</div>
+          <div class="text-muted small">{{ label }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="fw-bold"><i class="bi bi-folder2 me-1 text-primary"></i>Proyek Aktif</span>
+        <a href="/project/projects" class="btn btn-sm btn-outline-secondary">Semua Proyek</a>
+      </div>
+      {% if projects %}
+      <div class="list-group list-group-flush">
+        {% for p in projects %}
+        {% set pct = ((p.done_issues / p.total_issues * 100) | int) if p.total_issues > 0 else 0 %}
+        <a href="/project/projects/{{ p.id }}" class="list-group-item list-group-item-action py-3">
+          <div class="d-flex align-items-start gap-3">
+            <div style="width:10px;min-width:10px;height:10px;border-radius:50%;background:{{ p.color }};margin-top:5px"></div>
+            <div class="flex-grow-1 min-w-0">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <span class="badge me-1" style="background:{{ p.color }}15;color:{{ p.color }};border:1px solid {{ p.color }}40;font-size:.68rem">{{ p.code }}</span>
+                  <span class="fw-semibold">{{ p.name }}</span>
+                  {% if p.client %}<span class="text-muted small ms-1">— {{ p.client }}</span>{% endif %}
+                </div>
+                <span class="badge {{ 'bg-success' if p.status == 'active' else ('bg-secondary' if p.status == 'completed' else 'bg-warning text-dark') }} ms-2 flex-shrink-0" style="font-size:.68rem">
+                  {{ p.status | capitalize }}
+                </span>
+              </div>
+              <div class="d-flex align-items-center gap-3 mt-2">
+                <div class="flex-grow-1">
+                  <div class="progress" style="height:4px">
+                    <div class="progress-bar" style="width:{{ pct }}%;background:{{ p.color }}"></div>
+                  </div>
+                </div>
+                <span class="text-muted" style="font-size:.72rem;white-space:nowrap">
+                  {{ p.done_issues }}/{{ p.total_issues }} issue · {{ p.done_tasks }}/{{ p.total_tasks }} task
+                </span>
+              </div>
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-folder2-open opacity-25" style="font-size:2.5rem"></i>
+        <div class="mt-2">Belum ada proyek. <a href="/project/projects/add">Buat proyek pertama</a>.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-rocket-takeoff me-1 text-warning"></i>Fitur ProjectCore</div>
+      <div class="card-body">
+        <div class="d-flex flex-column gap-2">
+          {% for status, label, desc in [
+            ('done', 'Master Proyek',       'Buat & kelola proyek dengan tim & warna'),
+            ('done', 'Issue Tracker',       'Catat bug/fitur: priority, severity, effort, PIC, MD'),
+            ('done', 'Status Workflow',     'New → In Progress → Done → Ready to Test → Closed'),
+            ('done', 'Kanban Board',        'Drag & drop task per kolom: Backlog, Todo, In Progress, Review, Done'),
+            ('done', 'Milestone Timeline',  'Tracking milestone dengan due date & status'),
+            ('done', 'Proposed Changes',    'Kelola change request dengan impact & difficulty'),
+            ('done', 'Tim Proyek',          'Assign anggota tim per proyek'),
+            ('done', 'Audit Trail',         'Riwayat perubahan status setiap issue'),
+            ('soon', 'Notifikasi',          'Telegram & WA saat issue diassign atau status berubah'),
+            ('soon', 'Laporan PDF',         'Export rekap issue & progress per proyek'),
+          ] %}
+          <div class="d-flex align-items-start gap-2">
+            <span class="badge mt-1 {{ 'bg-success' if status == 'done' else 'bg-light text-muted border' }}" style="font-size:.65rem;min-width:44px">
+              {{ '✓ Done' if status == 'done' else 'Soon' }}
+            </span>
+            <div>
+              <div class="fw-semibold small">{{ label }}</div>
+              <div class="text-muted" style="font-size:.74rem">{{ desc }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

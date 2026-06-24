@@ -1,0 +1,233 @@
+{% extends 'base.html' %}
+{% block title %}{{ issue.issue_no }} — ProjectCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Detail Issue</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <span class="badge" style="font-size:.8rem;background:#0ea5e915;color:#0ea5e9;border:1px solid #0ea5e940">{{ issue.project_code }}</span>
+      <h5 class="fw-bold mb-0">{{ issue.issue_no }}</h5>
+      {% set prg_colors = {'New':'secondary','In Progress':'primary','Done':'success','Ready to Test':'info','Need Deploy':'warning','Hold':'dark','Feedback':'danger'} %}
+      <span class="badge bg-{{ prg_colors.get(issue.status_programmer,'secondary') }}">{{ issue.status_programmer }}</span>
+    </div>
+    <div class="text-muted small">
+      <a href="/project/projects/{{ issue.project_id }}" class="text-decoration-none">{{ issue.project_name }}</a>
+      {% if issue.menu %} › {{ issue.menu }}{% if issue.stage %} › {{ issue.stage }}{% endif %}{% endif %}
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/project/issues/{{ issue.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
+    <a href="/project/projects/{{ issue.project_id }}#issues" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Kembali</a>
+  </div>
+</div>
+
+<div class="row g-3">
+
+  {# ── Kolom kiri: Status & Info Singkat ── #}
+  <div class="col-lg-4">
+
+    {# Quick Status Update #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-activity me-1"></i>Update Status
+      </div>
+      <div class="card-body">
+        <form action="/project/issues/{{ issue.id }}/status" method="post">
+          <div class="mb-2">
+            <label class="form-label small text-muted mb-1">Status Programmer</label>
+            <select name="status_programmer" class="form-select form-select-sm">
+              {% for v,l,c in prg_statuses %}
+              <option value="{{ v }}" {{ 'selected' if issue.status_programmer == v }}>{{ l }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-muted mb-1">Status Testing</label>
+            <select name="status_testing" class="form-select form-select-sm">
+              {% for v,l,c in test_statuses %}
+              <option value="{{ v }}" {{ 'selected' if (issue.status_testing or '') == v }}>{{ l }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small text-muted mb-1">Catatan</label>
+            <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="Keterangan perubahan..."></textarea>
+          </div>
+          <button class="btn btn-primary btn-sm w-100"><i class="bi bi-arrow-repeat me-1"></i>Update Status</button>
+        </form>
+      </div>
+    </div>
+
+    {# Klasifikasi #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted"><i class="bi bi-tags me-1"></i>Klasifikasi</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.83rem">
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3" style="width:110px">Tipe</th>
+            <td><span class="badge {{ 'bg-danger-subtle text-danger border border-danger' if issue.issued_type=='Bugs' else 'bg-primary-subtle text-primary border border-primary' }}" style="font-size:.68rem">{{ issue.issued_type }}</span></td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Priority</th>
+            <td>
+              {% set pcol = {'Low':'secondary','Medium':'primary','High':'warning','Critical':'danger'} %}
+              <span class="badge bg-{{ pcol.get(issue.priority,'secondary') }}" style="font-size:.68rem">{{ issue.priority }}</span>
+            </td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Severity</th>
+            <td><span class="badge bg-{{ pcol.get(issue.severity,'secondary') }}" style="font-size:.68rem">{{ issue.severity }}</span></td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Difficulty</th>
+            <td class="small">{{ issue.difficulty or '—' }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal ps-3">Solution</th>
+            <td class="small">{{ issue.solution_type or '—' }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    {# Estimasi & Tanggal #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted"><i class="bi bi-clock me-1"></i>Estimasi & Tanggal</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.83rem">
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3" style="width:110px">MD (Days)</th>
+            <td class="fw-semibold">{{ issue.md_days or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Plan Hours</th>
+            <td>{{ issue.plan_hours or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Issued Date</th>
+            <td>{{ issue.issued_date or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Testing Date</th>
+            <td>{{ issue.testing_date or '—' }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal ps-3">Resolved</th>
+            <td>{{ issue.resolved_date or '—' }}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  {# ── Kolom kanan: Detail & History ── #}
+  <div class="col-lg-8">
+
+    {# Info Issue #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted"><i class="bi bi-info-circle me-1"></i>Informasi Issue</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.85rem">
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3" style="width:140px">No. Issue</th>
+            <td><span class="badge bg-light border text-dark fw-semibold">{{ issue.issue_no }}</span>
+            {% if issue.redmine %}<a href="#" class="ms-2 text-muted small">#{{ issue.redmine }}</a>{% endif %}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Role</th>
+            <td>{{ issue.role or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Menu / Stage</th>
+            <td>{{ issue.menu or '—' }}{% if issue.stage %} › {{ issue.stage }}{% endif %}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Issued By</th>
+            <td>{{ issue.issued_by or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">PIC Programmer</th>
+            <td class="fw-semibold">{{ issue.pic_prog_name or '—' }}</td>
+          </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">PIC Tester</th>
+            <td>{{ issue.pic_test_name or '—' }}</td>
+          </tr>
+          <tr>
+            <th class="text-muted fw-normal ps-3">Status Testing</th>
+            <td>
+              {% set test_colors = {'Done':'success','Feedback':'warning','Reject':'danger','Testing':'primary'} %}
+              {% if issue.status_testing %}
+              <span class="badge bg-{{ test_colors.get(issue.status_testing,'secondary') }}">{{ issue.status_testing }}</span>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    {# Deskripsi #}
+    {% if issue.description %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted"><i class="bi bi-file-text me-1"></i>Keterangan</div>
+      <div class="card-body" style="font-size:.88rem;white-space:pre-wrap">{{ issue.description }}</div>
+    </div>
+    {% endif %}
+
+    {# Notes #}
+    {% if issue.notes %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted"><i class="bi bi-chat-text me-1"></i>Catatan</div>
+      <div class="card-body" style="font-size:.88rem;white-space:pre-wrap">{{ issue.notes }}</div>
+    </div>
+    {% endif %}
+
+    {# History #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-clock-history me-1"></i>Riwayat Perubahan
+        <span class="badge bg-secondary ms-1">{{ history|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% if history %}
+        <div style="max-height:360px;overflow-y:auto">
+          {% for h in history %}
+          {% set action_icons = {
+            'created':       ('bi-plus-circle-fill','success'),
+            'status_change': ('bi-arrow-repeat','primary'),
+            'update':        ('bi-pencil-fill','secondary'),
+          } %}
+          {% set ico, col = action_icons.get(h.action, ('bi-circle-fill','secondary')) %}
+          <div class="d-flex gap-3 px-3 py-2 border-bottom" style="font-size:.82rem">
+            <div class="flex-shrink-0 mt-1"><i class="bi {{ ico }} text-{{ col }}"></i></div>
+            <div class="flex-grow-1">
+              <div class="d-flex justify-content-between">
+                <span class="fw-semibold">{{ h.changed_by_name or 'System' }}</span>
+                <span class="text-muted">{{ h.created_at[:16] if h.created_at else '' }}</span>
+              </div>
+              {% if h.old_value or h.new_value %}
+              <div class="mt-1 d-flex align-items-center gap-2" style="font-size:.78rem">
+                {% if h.old_value %}<span class="badge bg-danger-subtle text-danger border">{{ h.old_value }}</span>{% endif %}
+                {% if h.old_value and h.new_value %}<i class="bi bi-arrow-right text-muted"></i>{% endif %}
+                {% if h.new_value %}<span class="badge bg-success-subtle text-success border">{{ h.new_value }}</span>{% endif %}
+              </div>
+              {% endif %}
+              {% if h.notes %}<div class="text-muted mt-1">{{ h.notes }}</div>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted small text-center py-4">
+          <i class="bi bi-clock opacity-25" style="font-size:1.5rem"></i>
+          <div class="mt-1">Belum ada riwayat perubahan.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

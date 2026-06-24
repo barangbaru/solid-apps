@@ -1,0 +1,576 @@
+{% extends 'base.html' %}
+{% block title %}{{ proj.name }} — ProjectCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Detail Proyek</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div class="d-flex align-items-center gap-3">
+    <div style="width:42px;height:42px;border-radius:10px;background:{{ proj.color }};display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-folder2-open text-white fs-5"></i>
+    </div>
+    <div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge" style="background:{{ proj.color }}20;color:{{ proj.color }};border:1px solid {{ proj.color }}40">{{ proj.code }}</span>
+        <h5 class="fw-bold mb-0">{{ proj.name }}</h5>
+      </div>
+      <div class="text-muted small mt-1">
+        {% if proj.client %}<span class="me-2"><i class="bi bi-building me-1"></i>{{ proj.client }}</span>{% endif %}
+        {% if proj.pic_name %}<span class="me-2"><i class="bi bi-person me-1"></i>{{ proj.pic_name }}</span>{% endif %}
+        {% if proj.start_date %}<span><i class="bi bi-calendar me-1"></i>{{ proj.start_date }}{% if proj.end_date %} → {{ proj.end_date }}{% endif %}</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/project/projects/{{ proj.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil me-1"></i>Edit</a>
+    <a href="/project/projects" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Kembali</a>
+  </div>
+</div>
+
+{# Stats row #}
+<div class="row g-2 mb-3">
+  {% for val, label, color in [
+    (stats.total_issues, 'Total Issue',   '#ef4444'),
+    (stats.open_issues,  'Issue Open',    '#f59e0b'),
+    (stats.done_issues,  'Issue Done',    '#10b981'),
+    (stats.total_tasks,  'Total Task',    '#8b5cf6'),
+    (stats.done_tasks,   'Task Done',     '#0d9488'),
+  ] %}
+  <div class="col">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fw-bold" style="color:{{ color }};font-size:1.3rem">{{ val }}</div>
+      <div class="text-muted" style="font-size:.72rem">{{ label }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# Tabs #}
+<ul class="nav nav-tabs mb-3" id="pcTabs">
+  <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#issues"><i class="bi bi-bug me-1"></i>Issue <span class="badge bg-secondary ms-1">{{ issues|length }}</span></a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#kanban"><i class="bi bi-kanban me-1"></i>Kanban</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#milestones"><i class="bi bi-flag me-1"></i>Milestone <span class="badge bg-secondary ms-1">{{ milestones|length }}</span></a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#proposed"><i class="bi bi-lightbulb me-1"></i>Proposed Change <span class="badge bg-secondary ms-1">{{ proposed|length }}</span></a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#members"><i class="bi bi-people me-1"></i>Tim</a></li>
+</ul>
+
+<div class="tab-content">
+
+{# ── TAB ISSUES ── #}
+<div class="tab-pane fade show active" id="issues">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="text-muted small">{{ issues|length }} issue total</div>
+    <a href="/project/projects/{{ proj.id }}/issues/add" class="btn btn-sm btn-primary">
+      <i class="bi bi-plus-lg me-1"></i>Tambah Issue
+    </a>
+  </div>
+
+  {# Filter bar #}
+  <div class="d-flex gap-2 mb-3 flex-wrap">
+    <input type="text" id="issueSearch" class="form-control form-control-sm" placeholder="Cari issue..." style="max-width:220px">
+    <select id="filterPrg" class="form-select form-select-sm" style="max-width:160px">
+      <option value="">— Status Programmer —</option>
+      {% for v,l,_ in [('New','New',''),('In Progress','In Progress',''),('Done','Done',''),('Ready to Test','Ready to Test',''),('Need Deploy','Need Deploy',''),('Hold','Hold',''),('Feedback','Feedback','')] %}
+      <option value="{{ v }}">{{ l }}</option>{% endfor %}
+    </select>
+    <select id="filterPriority" class="form-select form-select-sm" style="max-width:130px">
+      <option value="">— Priority —</option>
+      {% for p in priorities %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+    </select>
+  </div>
+
+  {% if issues %}
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle" id="issueTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:100px">No. Issue</th>
+            <th>Judul</th>
+            <th style="width:80px">Tipe</th>
+            <th style="width:80px">Priority</th>
+            <th style="width:90px">Status Dev</th>
+            <th style="width:90px">Status Test</th>
+            <th style="width:90px">PIC Dev</th>
+            <th style="width:70px">MD</th>
+            <th style="width:60px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in issues %}
+          {% set prg_colors = {'New':'secondary','In Progress':'primary','Done':'success','Ready to Test':'info','Need Deploy':'warning','Hold':'dark','Feedback':'danger'} %}
+          {% set test_colors = {'Done':'success','Feedback':'warning','Reject':'danger','Testing':'primary'} %}
+          <tr data-prg="{{ i.status_programmer }}" data-priority="{{ i.priority }}" data-title="{{ i.title|lower }}">
+            <td><a href="/project/issues/{{ i.id }}" class="fw-semibold text-decoration-none" style="color:{{ proj.color }}">{{ i.issue_no }}</a></td>
+            <td style="max-width:280px">
+              <div class="text-truncate fw-semibold small" title="{{ i.title }}">{{ i.title }}</div>
+              {% if i.menu %}<div class="text-muted" style="font-size:.72rem">{{ i.menu }}{% if i.stage %} › {{ i.stage }}{% endif %}</div>{% endif %}
+            </td>
+            <td><span class="badge {{ 'bg-danger-subtle text-danger border border-danger' if i.issued_type == 'Bugs' else 'bg-primary-subtle text-primary border border-primary' }}" style="font-size:.68rem">{{ i.issued_type }}</span></td>
+            <td>
+              {% set pcol = {'Low':'secondary','Medium':'primary','High':'warning','Critical':'danger'} %}
+              <span class="badge bg-{{ pcol.get(i.priority,'secondary') }}" style="font-size:.68rem">{{ i.priority }}</span>
+            </td>
+            <td><span class="badge bg-{{ prg_colors.get(i.status_programmer,'secondary') }}" style="font-size:.68rem">{{ i.status_programmer }}</span></td>
+            <td>
+              {% if i.status_testing %}
+              <span class="badge bg-{{ test_colors.get(i.status_testing,'secondary') }}" style="font-size:.68rem">{{ i.status_testing }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="small text-muted">{{ i.pic_prog_name or '—' }}</td>
+            <td class="small text-muted text-center">{{ i.md_days or '—' }}</td>
+            <td>
+              <div class="d-flex gap-1">
+                <a href="/project/issues/{{ i.id }}" class="btn btn-xs btn-outline-primary" style="padding:1px 6px;font-size:.72rem"><i class="bi bi-eye"></i></a>
+                <form action="/project/issues/{{ i.id }}/delete" method="post" onsubmit="return confirm('Hapus issue ini?')">
+                  <button class="btn btn-xs btn-outline-danger" style="padding:1px 6px;font-size:.72rem"><i class="bi bi-trash"></i></button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-bug opacity-25" style="font-size:2.5rem"></i>
+    <div class="mt-2">Belum ada issue. <a href="/project/projects/{{ proj.id }}/issues/add">Tambah issue pertama</a>.</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── TAB KANBAN ── #}
+<div class="tab-pane fade" id="kanban">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="text-muted small">Drag kartu untuk pindah kolom</div>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+      <i class="bi bi-plus-lg me-1"></i>Tambah Task
+    </button>
+  </div>
+
+  <div class="d-flex gap-3 overflow-auto pb-3" style="min-height:400px">
+    {% for s_key, s_label, s_color in task_statuses %}
+    <div class="flex-shrink-0" style="width:260px">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center" style="border-top:3px solid {{ s_color }}">
+          <span class="fw-semibold small" style="color:{{ s_color }}">{{ s_label }}</span>
+          <span class="badge" style="background:{{ s_color }}20;color:{{ s_color }}">{{ kanban[s_key]|length }}</span>
+        </div>
+        <div class="card-body p-2 kanban-col" data-status="{{ s_key }}" style="min-height:300px">
+          {% for task in kanban[s_key] %}
+          <div class="card mb-2 border shadow-none task-card" data-task-id="{{ task.id }}" draggable="true">
+            <div class="card-body py-2 px-3">
+              <div class="fw-semibold small mb-1">{{ task.title }}</div>
+              {% if task.description %}
+              <div class="text-muted" style="font-size:.72rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ task.description }}</div>
+              {% endif %}
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <div>
+                  {% set tpcol = {'Low':'secondary','Medium':'primary','High':'warning','Critical':'danger'} %}
+                  <span class="badge bg-{{ tpcol.get(task.priority,'secondary') }}" style="font-size:.62rem">{{ task.priority }}</span>
+                  {% if task.due_date %}<span class="text-muted ms-1" style="font-size:.68rem"><i class="bi bi-calendar2 me-1"></i>{{ task.due_date }}</span>{% endif %}
+                </div>
+                <form action="/project/tasks/{{ task.id }}/delete" method="post" onsubmit="return confirm('Hapus task?')">
+                  <button class="btn btn-xs btn-outline-danger border-0" style="padding:0 4px;font-size:.7rem"><i class="bi bi-x"></i></button>
+                </form>
+              </div>
+              {% if task.assignees %}
+              <div class="text-muted mt-1" style="font-size:.68rem"><i class="bi bi-person me-1"></i>{{ task.assignees }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── TAB MILESTONES ── #}
+<div class="tab-pane fade" id="milestones">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="text-muted small">{{ milestones|length }} milestone</div>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addMilestoneModal">
+      <i class="bi bi-plus-lg me-1"></i>Tambah Milestone
+    </button>
+  </div>
+
+  {% if milestones %}
+  <div class="d-flex flex-column gap-2">
+    {% for m in milestones %}
+    {% set ms_colors = {'upcoming':'secondary','in_progress':'primary','completed':'success','delayed':'danger'} %}
+    {% set ms_labels = {'upcoming':'Upcoming','in_progress':'In Progress','completed':'Selesai','delayed':'Delayed'} %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-body d-flex align-items-center gap-3 py-3">
+        <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--bs-{{ ms_colors.get(m.status,'secondary') }})"></div>
+        <div class="flex-grow-1">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <span class="fw-semibold">{{ m.title }}</span>
+              {% if m.description %}<div class="text-muted small">{{ m.description }}</div>{% endif %}
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-{{ ms_colors.get(m.status,'secondary') }}" style="font-size:.68rem">{{ ms_labels.get(m.status,m.status) }}</span>
+              <span class="text-muted small"><i class="bi bi-calendar me-1"></i>{{ m.due_date }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="d-flex gap-1 flex-shrink-0">
+          <form action="/project/milestones/{{ m.id }}/status" method="post" class="d-flex gap-1 align-items-center">
+            <select name="status" class="form-select form-select-sm" style="font-size:.75rem;width:130px" onchange="this.form.submit()">
+              {% for sv, sl in [('upcoming','Upcoming'),('in_progress','In Progress'),('completed','Selesai'),('delayed','Delayed')] %}
+              <option value="{{ sv }}" {{ 'selected' if m.status == sv }}>{{ sl }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <form action="/project/milestones/{{ m.id }}/delete" method="post" onsubmit="return confirm('Hapus milestone ini?')">
+            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-flag opacity-25" style="font-size:2.5rem"></i>
+    <div class="mt-2">Belum ada milestone.</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── TAB PROPOSED CHANGES ── #}
+<div class="tab-pane fade" id="proposed">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="text-muted small">{{ proposed|length }} proposed change</div>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addProposedModal">
+      <i class="bi bi-plus-lg me-1"></i>Tambah
+    </button>
+  </div>
+
+  {% if proposed %}
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Judul</th>
+            <th style="width:120px">Modul</th>
+            <th style="width:80px">Impact</th>
+            <th style="width:100px">Difficulty</th>
+            <th style="width:110px">Status</th>
+            <th style="width:80px">Tester</th>
+            <th style="width:80px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in proposed %}
+          {% set pc_colors = {'proposed':'secondary','approved':'success','in_progress':'primary','done':'success','rejected':'danger','hold':'warning'} %}
+          <tr>
+            <td>
+              <div class="fw-semibold small">{{ c.title }}</div>
+              {% if c.description %}<div class="text-muted" style="font-size:.72rem">{{ c.description }}</div>{% endif %}
+              {% if c.pekerjaan %}<div class="text-muted" style="font-size:.72rem"><i class="bi bi-tools me-1"></i>{{ c.pekerjaan }}</div>{% endif %}
+            </td>
+            <td class="small text-muted">{{ c.module or '—' }}</td>
+            <td>
+              {% set ic = {'Low':'secondary','Medium':'primary','High':'warning','Critical':'danger'} %}
+              <span class="badge bg-{{ ic.get(c.impact,'secondary') }}" style="font-size:.68rem">{{ c.impact }}</span>
+            </td>
+            <td class="small text-muted">{{ c.difficulty }}</td>
+            <td>
+              <form action="/project/proposed/{{ c.id }}/status" method="post">
+                <select name="status" class="form-select form-select-sm" style="font-size:.72rem" onchange="this.form.submit()">
+                  {% for sv,sl in [('proposed','Proposed'),('approved','Approved'),('in_progress','In Progress'),('done','Done'),('rejected','Rejected'),('hold','Hold')] %}
+                  <option value="{{ sv }}" {{ 'selected' if c.status == sv }}>{{ sl }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
+            <td class="small text-muted">{{ c.tester or '—' }}</td>
+            <td>
+              <form action="/project/proposed/{{ c.id }}/delete" method="post" onsubmit="return confirm('Hapus?')">
+                <button class="btn btn-xs btn-outline-danger" style="padding:1px 6px;font-size:.72rem"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-lightbulb opacity-25" style="font-size:2.5rem"></i>
+    <div class="mt-2">Belum ada proposed change.</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── TAB TIM ── #}
+<div class="tab-pane fade" id="members">
+  <div class="row g-3">
+    <div class="col-md-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2 fw-bold small"><i class="bi bi-people me-1 text-primary"></i>Anggota Tim</div>
+        {% if members %}
+        <div class="list-group list-group-flush">
+          {% for m in members %}
+          <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+            <div class="d-flex align-items-center gap-2">
+              <i class="bi bi-person-circle text-muted fs-5"></i>
+              <div>
+                <div class="fw-semibold small">{{ m.name }}</div>
+                <div class="text-muted" style="font-size:.72rem">{{ m.jabatan or '' }} — <span class="badge bg-light text-dark border">{{ m.role }}</span></div>
+              </div>
+            </div>
+            <form action="/project/projects/{{ proj.id }}/members/{{ m.id }}/delete" method="post" onsubmit="return confirm('Hapus anggota?')">
+              <button class="btn btn-xs btn-outline-danger" style="padding:1px 6px;font-size:.72rem"><i class="bi bi-person-dash"></i></button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card-body text-center text-muted py-4">
+          <i class="bi bi-people opacity-25" style="font-size:2rem"></i>
+          <div class="mt-1 small">Belum ada anggota tim.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="col-md-5">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2 fw-bold small"><i class="bi bi-person-plus me-1 text-success"></i>Tambah Anggota</div>
+        <div class="card-body">
+          <form action="/project/projects/{{ proj.id }}/members" method="post">
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Karyawan</label>
+              <select name="employee_id" class="form-select form-select-sm" required>
+                <option value="">— Pilih Karyawan —</option>
+                {% for e in emps %}
+                <option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Role di Proyek</label>
+              <select name="role" class="form-select form-select-sm">
+                {% for rv in ['developer','tester','designer','analyst','devops','project_manager','other'] %}
+                <option value="{{ rv }}">{{ rv | replace('_',' ') | title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-person-plus me-1"></i>Tambah</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>{# end tab-content #}
+
+{# ── MODALS ── #}
+
+{# Add Task Modal #}
+<div class="modal fade" id="addTaskModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form action="/project/projects/{{ proj.id }}/tasks/add" method="post">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold"><i class="bi bi-plus-square me-2 text-primary"></i>Tambah Task</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Judul Task <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control form-control-sm" required placeholder="Judul singkat task">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Deskripsi</label>
+            <textarea name="description" class="form-control form-control-sm" rows="2"></textarea>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Kolom</label>
+              <select name="status" class="form-select form-select-sm">
+                {% for sk, sl, sc in task_statuses %}
+                <option value="{{ sk }}">{{ sl }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Priority</label>
+              <select name="priority" class="form-select form-select-sm">
+                {% for p in priorities %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Due Date</label>
+              <input type="date" name="due_date" class="form-control form-control-sm">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-semibold">Assignee</label>
+              <select name="assignee_ids" class="form-select form-select-sm" multiple>
+                {% for e in emps %}
+                <option value="{{ e.id }}">{{ e.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check me-1"></i>Tambah Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# Add Milestone Modal #}
+<div class="modal fade" id="addMilestoneModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form action="/project/projects/{{ proj.id }}/milestones/add" method="post">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold"><i class="bi bi-flag me-2 text-primary"></i>Tambah Milestone</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Judul Milestone <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control form-control-sm" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Deskripsi</label>
+            <textarea name="description" class="form-control form-control-sm" rows="2"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Due Date <span class="text-danger">*</span></label>
+            <input type="date" name="due_date" class="form-control form-control-sm" required>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check me-1"></i>Simpan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# Add Proposed Change Modal #}
+<div class="modal fade" id="addProposedModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form action="/project/projects/{{ proj.id }}/proposed/add" method="post">
+        <div class="modal-header">
+          <h6 class="modal-title fw-bold"><i class="bi bi-lightbulb me-2 text-warning"></i>Tambah Proposed Change</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Judul <span class="text-danger">*</span></label>
+              <input type="text" name="title" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Modul</label>
+              <input type="text" name="module" class="form-control form-control-sm" placeholder="PM, CM, VM...">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Tester</label>
+              <input type="text" name="tester" class="form-control form-control-sm">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Deskripsi</label>
+              <textarea name="description" class="form-control form-control-sm" rows="2"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Pekerjaan</label>
+              <textarea name="pekerjaan" class="form-control form-control-sm" rows="2" placeholder="Rincian pekerjaan yang diperlukan..."></textarea>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Impact</label>
+              <select name="impact" class="form-select form-select-sm">
+                {% for p in priorities %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small fw-semibold">Difficulty</label>
+              <select name="difficulty" class="form-select form-select-sm">
+                {% for d in difficulties %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check me-1"></i>Simpan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Tab restore via hash
+(function(){
+  var hash = window.location.hash;
+  if(hash){
+    var tab = document.querySelector('[href="'+hash+'"]');
+    if(tab) bootstrap.Tab.getOrCreateInstance(tab).show();
+  }
+  document.querySelectorAll('[data-bs-toggle="tab"]').forEach(function(el){
+    el.addEventListener('shown.bs.tab', function(e){
+      history.replaceState(null, null, e.target.getAttribute('href'));
+    });
+  });
+})();
+
+// Issue filter
+document.getElementById('issueSearch').addEventListener('input', filterIssues);
+document.getElementById('filterPrg').addEventListener('change', filterIssues);
+document.getElementById('filterPriority').addEventListener('change', filterIssues);
+function filterIssues(){
+  var q       = document.getElementById('issueSearch').value.toLowerCase();
+  var prg     = document.getElementById('filterPrg').value;
+  var priority= document.getElementById('filterPriority').value;
+  document.querySelectorAll('#issueTable tbody tr').forEach(function(tr){
+    var show = true;
+    if(q && !tr.dataset.title.includes(q)) show = false;
+    if(prg && tr.dataset.prg !== prg) show = false;
+    if(priority && tr.dataset.priority !== priority) show = false;
+    tr.style.display = show ? '' : 'none';
+  });
+}
+
+// Kanban drag & drop
+var draggedId = null;
+document.querySelectorAll('.task-card').forEach(function(card){
+  card.addEventListener('dragstart', function(){ draggedId = this.dataset.taskId; this.style.opacity='.5'; });
+  card.addEventListener('dragend', function(){ this.style.opacity='1'; });
+});
+document.querySelectorAll('.kanban-col').forEach(function(col){
+  col.addEventListener('dragover', function(e){ e.preventDefault(); col.style.background='#f0f9ff'; });
+  col.addEventListener('dragleave', function(){ col.style.background=''; });
+  col.addEventListener('drop', function(e){
+    e.preventDefault();
+    col.style.background='';
+    if(!draggedId) return;
+    var newStatus = col.dataset.status;
+    fetch('/project/tasks/'+draggedId+'/move', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status: newStatus})
+    }).then(function(){ location.reload(); });
+  });
+});
+</script>
+{% endblock %}

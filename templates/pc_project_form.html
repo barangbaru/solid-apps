@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if is_edit else 'Buat' }} Proyek — ProjectCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if is_edit else 'Buat' }} Proyek</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h5 class="fw-bold mb-0"><i class="bi bi-folder-plus text-primary me-2"></i>{{ 'Edit' if is_edit else 'Buat' }} Proyek</h5>
+  <a href="/project/projects" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Kembali</a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <form method="post">
+          <div class="row g-3">
+            <div class="col-sm-4">
+              <label class="form-label fw-semibold small">Kode Proyek <span class="text-danger">*</span></label>
+              <input type="text" name="code" class="form-control" value="{{ r.code or '' }}"
+                     placeholder="GDE, HIVE, ..." required {{ 'readonly' if is_edit }}>
+              <div class="form-text">Singkatan unik, huruf kapital</div>
+            </div>
+            <div class="col-sm-8">
+              <label class="form-label fw-semibold small">Nama Proyek <span class="text-danger">*</span></label>
+              <input type="text" name="name" class="form-control" value="{{ r.name or '' }}"
+                     placeholder="Nama lengkap proyek" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold small">Client / Customer</label>
+              <input type="text" name="client" class="form-control" value="{{ r.client or '' }}"
+                     placeholder="Nama client atau internal">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold small">Deskripsi</label>
+              <textarea name="description" class="form-control" rows="3" placeholder="Ringkasan singkat proyek...">{{ r.description or '' }}</textarea>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold small">PIC Proyek</label>
+              <select name="pic_id" class="form-select">
+                <option value="">— Pilih PIC —</option>
+                {% for e in emps %}
+                <option value="{{ e.id }}" {{ 'selected' if r.pic_id == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold small">Status</label>
+              <select name="status" class="form-select">
+                {% for val, label in [('active','Aktif'),('on_hold','Hold'),('completed','Selesai'),('archived','Arsip')] %}
+                <option value="{{ val }}" {{ 'selected' if r.status == val }}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold small">Tanggal Mulai</label>
+              <input type="date" name="start_date" class="form-control" value="{{ r.start_date or '' }}">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold small">Tanggal Selesai</label>
+              <input type="date" name="end_date" class="form-control" value="{{ r.end_date or '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold small">Warna Label</label>
+              <div class="d-flex gap-2 flex-wrap mt-1">
+                {% for c in colors %}
+                <label class="d-flex align-items-center gap-1" style="cursor:pointer">
+                  <input type="radio" name="color" value="{{ c }}" class="d-none"
+                         {{ 'checked' if (r.color or '#0ea5e9') == c }}>
+                  <span class="color-swatch {{ 'selected' if (r.color or '#0ea5e9') == c }}"
+                        style="width:28px;height:28px;border-radius:50%;background:{{ c }};display:inline-block;border:3px solid {{ 'white' if (r.color or '#0ea5e9') != c else '#333' }};box-shadow:{{ '0 0 0 2px ' + c if (r.color or '#0ea5e9') == c else 'none' }};cursor:pointer"
+                        onclick="this.previousElementSibling.checked=true;document.querySelectorAll('.color-swatch').forEach(el=>el.style.boxShadow='none');this.style.boxShadow='0 0 0 2px {{ c }}'">
+                  </span>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Simpan Proyek</button>
+            <a href="/project/projects" class="btn btn-outline-secondary">Batal</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
