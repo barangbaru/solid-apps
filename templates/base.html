@@ -562,6 +562,41 @@
     </li>
   </ul>
 
+  {% elif current_app_slug == 'project' %}
+  {# ── App sidebar: ProjectCore ── #}
+  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
+    <div style="width:6px;height:6px;border-radius:50%;background:#0ea5e9;flex-shrink:0"></div>
+    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
+      ProjectCore
+    </span>
+  </div>
+  <div class="sidebar-section">Menu Utama</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/project/" class="{{ 'active' if request.path in ['/project/','/project'] }}">
+        <i class="bi bi-grid-1x2 nav-icon"></i> Dashboard
+      </a>
+    </li>
+    <li>
+      <a href="/project/projects" class="{{ 'active' if '/project/projects' in request.path }}">
+        <i class="bi bi-kanban nav-icon"></i> Semua Proyek
+      </a>
+    </li>
+    <li>
+      <a href="/project/projects/add" class="{{ 'active' if request.path == '/project/projects/add' }}">
+        <i class="bi bi-plus-circle nav-icon"></i> Tambah Proyek
+      </a>
+    </li>
+  </ul>
+  <div class="sidebar-section">Master Data</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/support/customers" class="{{ 'active' if '/support/customers' in request.path }}">
+        <i class="bi bi-building nav-icon"></i> Customer
+      </a>
+    </li>
+  </ul>
+
   {% else %}
   {# ── App sidebar: TalentCore ── #}
   <!-- Current app indicator -->
