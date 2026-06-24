@@ -1360,7 +1360,7 @@ def init_db():
         ('booking', 'BookingCore', 'Pemesanan & penjadwalan ruangan, kendaraan & aset',
          'calendar2-check', '#d97706', '#fff8e1', '/booking/', 1, 0, 3, ''),
         ('project', 'ProjectCore', 'Manajemen proyek, task & timeline tim',
-         'kanban', '#0ea5e9', '#e0f2fe', '/project/', 1, 1, 4, ''),
+         'kanban', '#0ea5e9', '#e0f2fe', '/project/', 1, 0, 4, ''),
         ('docs', 'DocsCore', 'Pengelolaan dokumen, SOP & knowledge base perusahaan',
          'file-earmark-richtext', '#10b981', '#d1fae5', '/docs/', 1, 1, 5, ''),
         ('finance', 'FinanceCore', 'Pencatatan keuangan, anggaran & laporan finansial',

@@ -1,3 +1,3 @@
-VERSION = "1.5.4"
+VERSION = "1.5.5"
 RELEASE_DATE = "2026-06-24"
-RELEASE_NOTES = "Fix: deploy-ubuntu.sh — skip NEWER_TAGS computation jika --version sudah ditentukan; grep -c aman dengan set -e"
+RELEASE_NOTES = "ProjectCore aktif di portal — is_coming_soon diubah ke 0"
