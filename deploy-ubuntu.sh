@@ -75,17 +75,20 @@ if $IS_UPDATE; then
     info "Versi terinstall : $CURRENT_VERSION"
     info "Versi terbaru    : ${LATEST_VERSION:-main (no tags)}"
 
-    if [ -n "$ALL_TAGS" ] && [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
-        # Filter tag yang lebih baru dari yang terinstall
+    if [ -n "$TARGET_VERSION" ]; then
+        # Versi sudah ditentukan via --version, langsung pakai
+        info "Target versi     : v$TARGET_VERSION"
+    elif [ -n "$ALL_TAGS" ] && [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
+        # Cari tag yang lebih baru dari yang terinstall
         if [ "$CURRENT_VERSION" != "(belum terinstall)" ] && [ "$CURRENT_VERSION" != "unknown" ]; then
             NEWER_TAGS=$(echo "$ALL_TAGS" | awk -v cur="v$CURRENT_VERSION" 'BEGIN{found=0} $0==cur{found=1; next} found{print}')
         else
             NEWER_TAGS="$ALL_TAGS"
         fi
 
-        TAG_COUNT=$(echo "$NEWER_TAGS" | grep -c '^v' 2>/dev/null); TAG_COUNT=${TAG_COUNT:-0}
+        TAG_COUNT=$(echo "$NEWER_TAGS" | grep -c '^v' 2>/dev/null || echo 0)
 
-        if [ "$TAG_COUNT" -gt 1 ] && [ -z "$TARGET_VERSION" ]; then
+        if [ "$TAG_COUNT" -gt 1 ]; then
             echo ""
             echo -e "  ${BOLD}Ada $TAG_COUNT versi baru tersedia:${NC}"
             echo "$NEWER_TAGS" | while read -r tag; do
@@ -93,7 +96,6 @@ if $IS_UPDATE; then
             done
             echo ""
             if $AUTO_MODE; then
-                # Auto mode: langsung ambil versi terbaru
                 TARGET_VERSION="$LATEST_VERSION"
                 info "Auto mode — upgrade ke versi terbaru: v$TARGET_VERSION"
             else
@@ -112,14 +114,12 @@ if $IS_UPDATE; then
                     info "Upgrade ke versi terbaru: v$TARGET_VERSION"
                 fi
             fi
-        elif [ "$TAG_COUNT" -eq 1 ] && [ -z "$TARGET_VERSION" ]; then
+        elif [ "$TAG_COUNT" -eq 1 ]; then
             TARGET_VERSION=$(echo "$NEWER_TAGS" | head -1 | sed 's/^v//')
             info "Update ke v$TARGET_VERSION"
         fi
     else
-        if [ -z "$TARGET_VERSION" ]; then
-            info "Sudah versi terbaru — deploy ulang kode yang sama."
-        fi
+        info "Sudah versi terbaru — deploy ulang kode yang sama."
     fi
 fi
 
