@@ -6950,8 +6950,16 @@ def portal_update():
             else:
                 item['status'] = 'old'
         all_tags = _raw[:5]
+        # Hitung update_available langsung dari all_tags (bukan dari DB)
+        # agar selalu sinkron dengan daftar versi yang ditampilkan
+        _newer = [i for i in all_tags if i.get('status') == 'newer']
+        _latest_newer = max(_newer, key=lambda i: _vp(i['tag']), default=None)
+        update_available_live = bool(_newer)
+        latest_version_live   = _latest_newer['tag'].lstrip('v') if _latest_newer else settings.get('update_latest_version', '')
     except Exception:
-        all_tags = []
+        all_tags             = []
+        update_available_live = settings.get('update_available', '0') == '1'
+        latest_version_live   = settings.get('update_latest_version', '')
 
     # Status deploy sedang berjalan
     deploy_running = os.path.exists(UPDATE_TRIGGER_FILE)
@@ -6966,9 +6974,9 @@ def portal_update():
     return render_template('update_center.html',
         settings       = settings,
         current_version= VERSION,
-        latest_version = settings.get('update_latest_version', ''),
+        latest_version = latest_version_live,
         latest_tag     = settings.get('update_latest_tag', ''),
-        update_available = settings.get('update_available', '0') == '1',
+        update_available = update_available_live,
         release_notes  = settings.get('update_release_notes', ''),
         check_last     = settings.get('update_check_last', ''),
         all_tags       = all_tags,
