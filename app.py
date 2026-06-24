@@ -941,7 +941,7 @@ CREATE TABLE IF NOT EXISTS pc_projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    customer_id INTEGER DEFAULT NULL REFERENCES sc_customers(id) ON DELETE SET NULL,
+    client TEXT DEFAULT '',
     description TEXT DEFAULT '',
     status TEXT DEFAULT 'active',
     start_date TEXT DEFAULT NULL,
@@ -951,8 +951,6 @@ CREATE TABLE IF NOT EXISTS pc_projects (
     created_by INTEGER DEFAULT NULL REFERENCES users(id),
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
--- migrate: tambah customer_id jika tabel sudah ada tanpa kolom ini
-CREATE INDEX IF NOT EXISTS idx_pc_projects_customer ON pc_projects(customer_id);
 CREATE TABLE IF NOT EXISTS pc_members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
@@ -1107,7 +1105,6 @@ MIGRATIONS = [
     ('bk_resources',         'image',                   "TEXT DEFAULT ''"),
     ('bk_resources',         'facilities',              "TEXT DEFAULT ''"),
     ('bk_resources',         'notes',                   "TEXT DEFAULT ''"),
-    ('pc_projects',          'customer_id',             'INTEGER DEFAULT NULL'),
 ]
 
 SC_TICKET_STATUSES = [
@@ -1939,8 +1936,6 @@ def auto_set_active_app():
         session['active_app'] = 'booking'
     elif path.startswith('/aset'):
         session['active_app'] = 'aset'
-    elif path.startswith('/project'):
-        session['active_app'] = 'project'
     else:
         session['active_app'] = 'evaluasi'
 
@@ -8433,12 +8428,10 @@ def pc_index():
 def pc_projects():
     db  = get_db()
     rows = db.execute(
-        '''SELECT p.*, e.name as pic_name, c.name as customer_name, c.code as customer_code,
+        '''SELECT p.*, e.name as pic_name,
                   (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
                   (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues
-           FROM pc_projects p
-           LEFT JOIN employees e ON e.id=p.pic_id
-           LEFT JOIN sc_customers c ON c.id=p.customer_id
+           FROM pc_projects p LEFT JOIN employees e ON e.id=p.pic_id
            ORDER BY p.status, p.created_at DESC'''
     ).fetchall()
     return render_template('pc_projects.html', rows=rows)
@@ -8446,23 +8439,22 @@ def pc_projects():
 @app.route('/project/projects/add', methods=['GET','POST'])
 @login_required
 def pc_project_add():
-    db        = get_db()
-    emps      = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
-    customers = db.execute("SELECT id, code, name FROM sc_customers WHERE is_active=1 ORDER BY name").fetchall()
+    db   = get_db()
+    emps = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
     if request.method == 'POST':
         code = request.form.get('code','').strip().upper()
         name = request.form.get('name','').strip()
         if not code or not name:
             flash('Kode dan nama wajib diisi', 'danger')
-            return render_template('pc_project_form.html', emps=emps, customers=customers, colors=PC_PROJECT_COLORS, r={})
+            return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r={})
         if db.execute("SELECT id FROM pc_projects WHERE code=?", (code,)).fetchone():
             flash(f'Kode proyek {code} sudah dipakai', 'danger')
-            return render_template('pc_project_form.html', emps=emps, customers=customers, colors=PC_PROJECT_COLORS, r={})
+            return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r={})
         db.execute(
-            '''INSERT INTO pc_projects(code,name,customer_id,description,status,start_date,end_date,pic_id,color,created_by)
+            '''INSERT INTO pc_projects(code,name,client,description,status,start_date,end_date,pic_id,color,created_by)
                VALUES(?,?,?,?,?,?,?,?,?,?)''',
             (code, name,
-             request.form.get('customer_id') or None,
+             request.form.get('client','').strip(),
              request.form.get('description','').strip(),
              request.form.get('status','active'),
              request.form.get('start_date') or None,
@@ -8474,22 +8466,21 @@ def pc_project_add():
         db.commit()
         flash(f'Proyek {name} berhasil dibuat', 'success')
         return redirect(url_for('pc_projects'))
-    return render_template('pc_project_form.html', emps=emps, customers=customers, colors=PC_PROJECT_COLORS, r={})
+    return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r={})
 
 @app.route('/project/projects/<int:pid>/edit', methods=['GET','POST'])
 @login_required
 def pc_project_edit(pid):
-    db        = get_db()
-    proj      = db.execute("SELECT * FROM pc_projects WHERE id=?", (pid,)).fetchone()
+    db   = get_db()
+    proj = db.execute("SELECT * FROM pc_projects WHERE id=?", (pid,)).fetchone()
     if not proj: abort(404)
-    emps      = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
-    customers = db.execute("SELECT id, code, name FROM sc_customers WHERE is_active=1 ORDER BY name").fetchall()
+    emps = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
     if request.method == 'POST':
         db.execute(
-            '''UPDATE pc_projects SET name=?,customer_id=?,description=?,status=?,
+            '''UPDATE pc_projects SET name=?,client=?,description=?,status=?,
                start_date=?,end_date=?,pic_id=?,color=? WHERE id=?''',
             (request.form.get('name','').strip(),
-             request.form.get('customer_id') or None,
+             request.form.get('client','').strip(),
              request.form.get('description','').strip(),
              request.form.get('status','active'),
              request.form.get('start_date') or None,
@@ -8501,18 +8492,14 @@ def pc_project_edit(pid):
         db.commit()
         flash('Proyek diperbarui', 'success')
         return redirect(url_for('pc_project_detail', pid=pid))
-    return render_template('pc_project_form.html', emps=emps, customers=customers, colors=PC_PROJECT_COLORS, r=proj)
+    return render_template('pc_project_form.html', emps=emps, colors=PC_PROJECT_COLORS, r=proj)
 
 @app.route('/project/projects/<int:pid>')
 @login_required
 def pc_project_detail(pid):
     db   = get_db()
     proj = db.execute(
-        '''SELECT p.*, e.name as pic_name, c.name as customer_name, c.code as customer_code
-           FROM pc_projects p
-           LEFT JOIN employees e ON e.id=p.pic_id
-           LEFT JOIN sc_customers c ON c.id=p.customer_id
-           WHERE p.id=?''', (pid,)
+        'SELECT p.*, e.name as pic_name FROM pc_projects p LEFT JOIN employees e ON e.id=p.pic_id WHERE p.id=?', (pid,)
     ).fetchone()
     if not proj: abort(404)
     issues = db.execute(

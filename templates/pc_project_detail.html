@@ -14,7 +14,7 @@
         <h5 class="fw-bold mb-0">{{ proj.name }}</h5>
       </div>
       <div class="text-muted small mt-1">
-        {% if proj.customer_name %}<span class="me-2"><i class="bi bi-building me-1"></i>{{ proj.customer_name }}</span>{% endif %}
+        {% if proj.client %}<span class="me-2"><i class="bi bi-building me-1"></i>{{ proj.client }}</span>{% endif %}
         {% if proj.pic_name %}<span class="me-2"><i class="bi bi-person me-1"></i>{{ proj.pic_name }}</span>{% endif %}
         {% if proj.start_date %}<span><i class="bi bi-calendar me-1"></i>{{ proj.start_date }}{% if proj.end_date %} → {{ proj.end_date }}{% endif %}</span>{% endif %}
       </div>

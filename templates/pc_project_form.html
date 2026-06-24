@@ -26,21 +26,9 @@
                      placeholder="Nama lengkap proyek" required>
             </div>
             <div class="col-12">
-              <label class="form-label fw-semibold small">Customer</label>
-              <select name="customer_id" class="form-select">
-                <option value="">— Pilih Customer —</option>
-                {% for c in customers %}
-                <option value="{{ c.id }}" {{ 'selected' if r.get('customer_id') == c.id }}>
-                  {{ c.code }} — {{ c.name }}
-                </option>
-                {% endfor %}
-              </select>
-              {% if not customers %}
-              <div class="form-text text-warning">
-                <i class="bi bi-exclamation-triangle me-1"></i>
-                Belum ada customer. <a href="/support/customers/add" target="_blank">Tambah customer</a> di SupportCore terlebih dahulu.
-              </div>
-              {% endif %}
+              <label class="form-label fw-semibold small">Client / Customer</label>
+              <input type="text" name="client" class="form-control" value="{{ r.client or '' }}"
+                     placeholder="Nama client atau internal">
             </div>
             <div class="col-12">
               <label class="form-label fw-semibold small">Deskripsi</label>
