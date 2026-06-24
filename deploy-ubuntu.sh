@@ -63,14 +63,10 @@ echo ""
 if $IS_UPDATE; then
     header "Cek Versi"
 
-    # Fetch semua tag dari GitHub tanpa clone penuh
+    # Fetch semua tag dari GitHub tanpa clone (ls-remote jauh lebih cepat & tidak miss tags)
     apt-get install -y git -qq 2>/dev/null || true
-    TMPDIR_VER=$(mktemp -d)
-    git clone --bare --depth=1 "$REPO_URL" "$TMPDIR_VER/bare.git" -q 2>/dev/null || true
-
-    # Ambil semua tag yang ada di repo
-    ALL_TAGS=$(git -C "$TMPDIR_VER/bare.git" tag --sort=version:refname 2>/dev/null | grep '^v' || true)
-    rm -rf "$TMPDIR_VER"
+    ALL_TAGS=$(git ls-remote --tags --refs "$REPO_URL" 2>/dev/null \
+        | awk '{print $2}' | grep -oP 'v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V || true)
 
     # Ambil versi latest dari tag
     LATEST_TAG=$(echo "$ALL_TAGS" | tail -1)
