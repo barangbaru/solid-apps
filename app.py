@@ -1148,6 +1148,7 @@ MIGRATIONS = [
     ('pc_projects',          'implementor_ext',         "TEXT DEFAULT ''"),
     ('pc_projects',          'co_leader_ext',           "TEXT DEFAULT ''"),
     ('pc_members',           'name_ext',                "TEXT DEFAULT ''"),
+    ('pc_projects',          'deleted_at',              'TEXT DEFAULT NULL'),
     ('pc_phases',            'pic_ext',                 "TEXT DEFAULT ''"),
     ('pc_phases',            'sign_off_date',           "TEXT DEFAULT NULL"),
     ('pc_phases',            'app_id',                  'INTEGER DEFAULT NULL'),
@@ -8541,7 +8542,7 @@ def pc_index():
                   (SELECT COUNT(*) FROM pc_tasks WHERE project_id=p.id AND status='done') as done_tasks
            FROM pc_projects p
            LEFT JOIN employees e ON e.id=p.pic_id
-           WHERE p.status != 'archived'
+           WHERE p.status != 'archived' AND p.deleted_at IS NULL
            ORDER BY p.created_at DESC'''
     ).fetchall()
     counts = {
@@ -8561,17 +8562,34 @@ def pc_index():
 @app.route('/project/projects')
 @login_required
 def pc_projects():
-    db  = get_db()
-    rows = db.execute(
-        '''SELECT p.*, e.name as pic_name, c.name as customer_name,
-                  (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
-                  (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues
-           FROM pc_projects p
-           LEFT JOIN employees e ON e.id=p.pic_id
-           LEFT JOIN sc_customers c ON c.id=p.customer_id
-           ORDER BY p.status, p.created_at DESC'''
-    ).fetchall()
-    return render_template('pc_projects.html', rows=rows)
+    db       = get_db()
+    show_del = request.args.get('show') == 'deleted'
+    if show_del:
+        rows = db.execute(
+            '''SELECT p.*, e.name as pic_name, c.name as customer_name,
+                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
+                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues
+               FROM pc_projects p
+               LEFT JOIN employees e ON e.id=p.pic_id
+               LEFT JOIN sc_customers c ON c.id=p.customer_id
+               WHERE p.deleted_at IS NOT NULL
+               ORDER BY p.deleted_at DESC'''
+        ).fetchall()
+    else:
+        rows = db.execute(
+            '''SELECT p.*, e.name as pic_name, c.name as customer_name,
+                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
+                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues
+               FROM pc_projects p
+               LEFT JOIN employees e ON e.id=p.pic_id
+               LEFT JOIN sc_customers c ON c.id=p.customer_id
+               WHERE p.deleted_at IS NULL
+               ORDER BY p.status, p.created_at DESC'''
+        ).fetchall()
+    deleted_count = db.execute(
+        "SELECT COUNT(*) FROM pc_projects WHERE deleted_at IS NOT NULL"
+    ).fetchone()[0]
+    return render_template('pc_projects.html', rows=rows, show_deleted=show_del, deleted_count=deleted_count)
 
 def _pc_save_team_members(db, pid, programmers, prog_exts, testers, test_exts):
     """Replace programmer dan QC/tester members untuk project pid.
@@ -8766,6 +8784,28 @@ def pc_project_detail(pid):
         phase_types=PC_PHASE_TYPES, phase_statuses=PC_PHASE_STATUSES,
         sc_apps_list=sc_apps_list, sc_modules_list=sc_modules_list,
         priorities=PC_PRIORITIES, difficulties=PC_DIFFICULTIES)
+
+@app.route('/project/projects/<int:pid>/delete', methods=['POST'])
+@login_required
+def pc_project_delete(pid):
+    db = get_db()
+    p  = db.execute("SELECT id FROM pc_projects WHERE id=? AND deleted_at IS NULL", (pid,)).fetchone()
+    if not p: abort(404)
+    db.execute("UPDATE pc_projects SET deleted_at=datetime('now','localtime') WHERE id=?", (pid,))
+    db.commit()
+    flash('Proyek dipindahkan ke tempat sampah. Bisa dipulihkan dari daftar proyek dihapus.', 'warning')
+    return redirect(url_for('pc_projects'))
+
+@app.route('/project/projects/<int:pid>/restore', methods=['POST'])
+@login_required
+def pc_project_restore(pid):
+    db = get_db()
+    p  = db.execute("SELECT id FROM pc_projects WHERE id=? AND deleted_at IS NOT NULL", (pid,)).fetchone()
+    if not p: abort(404)
+    db.execute("UPDATE pc_projects SET deleted_at=NULL WHERE id=?", (pid,))
+    db.commit()
+    flash('Proyek berhasil dipulihkan.', 'success')
+    return redirect(url_for('pc_project_detail', pid=pid))
 
 @app.route('/project/projects/<int:pid>/members', methods=['POST'])
 @login_required

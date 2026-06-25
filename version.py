@@ -1,3 +1,3 @@
-VERSION = "1.6.2"
+VERSION = "1.6.3"
 RELEASE_DATE = "2026-06-25"
-RELEASE_NOTES = "Fix: GROUP_CONCAT → STRING_AGG di PG wrapper (ProjectCore task assignees)"
+RELEASE_NOTES = "ProjectCore: soft delete proyek + restore dari daftar proyek dihapus"
