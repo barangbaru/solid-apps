@@ -1140,6 +1140,8 @@ MIGRATIONS = [
     ('pc_members',           'name_ext',                "TEXT DEFAULT ''"),
     ('pc_phases',            'pic_ext',                 "TEXT DEFAULT ''"),
     ('pc_phases',            'sign_off_date',           "TEXT DEFAULT NULL"),
+    ('pc_phases',            'app_id',                  'INTEGER DEFAULT NULL'),
+    ('pc_phases',            'module_id',               'INTEGER DEFAULT NULL'),
 ]
 
 SC_TICKET_STATUSES = [
@@ -8719,10 +8721,19 @@ def pc_project_detail(pid):
         "SELECT * FROM pc_proposed_changes WHERE project_id=? ORDER BY id", (pid,)
     ).fetchall()
     phases = db.execute(
-        '''SELECT ph.*, COALESCE(e.name, ph.pic_ext) as pic_name
+        '''SELECT ph.*, COALESCE(e.name, ph.pic_ext) as pic_name,
+                  a.name as app_name, m.name as module_name
            FROM pc_phases ph
-           LEFT JOIN employees e ON e.id=ph.pic_id
+           LEFT JOIN employees e   ON e.id=ph.pic_id
+           LEFT JOIN sc_apps a     ON a.id=ph.app_id
+           LEFT JOIN sc_modules m  ON m.id=ph.module_id
            WHERE ph.project_id=? ORDER BY ph.sort_order, ph.id''', (pid,)
+    ).fetchall()
+    sc_apps_list = db.execute(
+        "SELECT id, name FROM sc_apps WHERE is_active=1 ORDER BY name"
+    ).fetchall()
+    sc_modules_list = db.execute(
+        "SELECT id, app_id, name FROM sc_modules WHERE is_active=1 ORDER BY app_id, name"
     ).fetchall()
     members  = _pc_members(db, pid)
     emps     = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
@@ -8743,6 +8754,7 @@ def pc_project_detail(pid):
         task_statuses=PC_TASK_STATUSES, milestone_statuses=PC_MILESTONE_STATUSES,
         proposed_statuses=PC_PROPOSED_STATUSES,
         phase_types=PC_PHASE_TYPES, phase_statuses=PC_PHASE_STATUSES,
+        sc_apps_list=sc_apps_list, sc_modules_list=sc_modules_list,
         priorities=PC_PRIORITIES, difficulties=PC_DIFFICULTIES)
 
 @app.route('/project/projects/<int:pid>/members', methods=['POST'])
@@ -9030,17 +9042,19 @@ def pc_phase_add(pid):
         name = ptype_labels.get(ptype, 'Fase Baru')
     start = request.form.get('start_date','').strip() or None
     end   = request.form.get('end_date','').strip() or None
-    pic_id= request.form.get('pic_id','').strip() or None
-    pic_ext = request.form.get('pic_ext','').strip()
+    pic_id    = request.form.get('pic_id','').strip() or None
+    pic_ext   = request.form.get('pic_ext','').strip()
+    app_id    = request.form.get('app_id','').strip() or None
+    module_id = request.form.get('module_id','').strip() or None
     notes = request.form.get('notes','').strip()
     max_order = db.execute(
         "SELECT COALESCE(MAX(sort_order),0) FROM pc_phases WHERE project_id=?", (pid,)
     ).fetchone()[0]
     db.execute(
         '''INSERT INTO pc_phases(project_id,phase_type,name,start_date,end_date,
-           status,sort_order,pic_id,pic_ext,notes)
-           VALUES(?,?,?,?,?,'planned',?,?,?,?)''',
-        (pid, ptype, name, start, end, max_order + 1, pic_id, pic_ext, notes)
+           status,sort_order,pic_id,pic_ext,app_id,module_id,notes)
+           VALUES(?,?,?,?,?,'planned',?,?,?,?,?,?)''',
+        (pid, ptype, name, start, end, max_order + 1, pic_id, pic_ext, app_id, module_id, notes)
     )
     db.commit()
     flash('Fase ditambahkan', 'success')
@@ -9073,13 +9087,15 @@ def pc_phase_edit(phid):
     end       = request.form.get('end_date','').strip() or None
     pic_id    = request.form.get('pic_id','').strip() or None
     pic_ext   = request.form.get('pic_ext','').strip()
+    app_id    = request.form.get('app_id','').strip() or None
+    module_id = request.form.get('module_id','').strip() or None
     sign_off  = request.form.get('sign_off_date','').strip() or None
     notes     = request.form.get('notes','').strip()
     if name:
         db.execute(
             '''UPDATE pc_phases SET name=?,start_date=?,end_date=?,
-               pic_id=?,pic_ext=?,sign_off_date=?,notes=? WHERE id=?''',
-            (name, start, end, pic_id, pic_ext, sign_off, notes, phid)
+               pic_id=?,pic_ext=?,app_id=?,module_id=?,sign_off_date=?,notes=? WHERE id=?''',
+            (name, start, end, pic_id, pic_ext, app_id, module_id, sign_off, notes, phid)
         )
         db.commit()
         flash('Fase diperbarui', 'success')

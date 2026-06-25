@@ -328,6 +328,7 @@
             <div class="d-flex flex-wrap gap-3 text-muted small">
               {% if ph.start_date %}<span><i class="bi bi-calendar-range me-1"></i>{{ ph.start_date }} → {{ ph.end_date or '?' }}</span>{% endif %}
               {% if ph.pic_name %}<span><i class="bi bi-person me-1"></i>{{ ph.pic_name }}</span>{% endif %}
+              {% if ph.app_name %}<span><i class="bi bi-grid me-1"></i>{{ ph.app_name }}{% if ph.module_name %} / {{ ph.module_name }}{% endif %}</span>{% endif %}
               {% if ph.sign_off_date %}<span class="text-success"><i class="bi bi-pen-check me-1"></i>Sign-off: {{ ph.sign_off_date }}</span>{% endif %}
             </div>
             {% if ph.notes %}<div class="text-muted mt-1" style="font-size:.78rem">{{ ph.notes }}</div>{% endif %}
@@ -395,6 +396,24 @@
                 <div class="col-md-6">
                   <label class="form-label small fw-semibold">PIC Eksternal</label>
                   <input type="text" name="pic_ext" class="form-control form-control-sm" value="{{ ph.pic_ext or '' }}" placeholder="Nama jika eksternal">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Aplikasi</label>
+                  <select name="app_id" class="form-select form-select-sm edit-app-select" data-phase="{{ ph.id }}" onchange="filterEditModules({{ ph.id }})">
+                    <option value="">— Semua Aplikasi —</option>
+                    {% for a in sc_apps_list %}
+                    <option value="{{ a.id }}" {{ 'selected' if ph.app_id == a.id }}>{{ a.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Modul</label>
+                  <select name="module_id" class="form-select form-select-sm" id="editModSel{{ ph.id }}">
+                    <option value="">— Semua Modul —</option>
+                    {% for mod in sc_modules_list %}
+                    <option value="{{ mod.id }}" data-app="{{ mod.app_id }}" {{ 'selected' if ph.module_id == mod.id }}>{{ mod.name }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label small fw-semibold">Tanggal Sign-off <span class="text-muted">(BAST/Go Live)</span></label>
@@ -473,6 +492,24 @@
               <label class="form-label small fw-semibold">PIC Eksternal</label>
               <input type="text" name="pic_ext" class="form-control form-control-sm" placeholder="Nama jika eksternal">
             </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Aplikasi</label>
+              <select name="app_id" class="form-select form-select-sm" id="addAppSel" onchange="filterAddModules()">
+                <option value="">— Semua Aplikasi —</option>
+                {% for a in sc_apps_list %}
+                <option value="{{ a.id }}">{{ a.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Modul</label>
+              <select name="module_id" class="form-select form-select-sm" id="addModSel">
+                <option value="">— Semua Modul —</option>
+                {% for mod in sc_modules_list %}
+                <option value="{{ mod.id }}" data-app="{{ mod.app_id }}">{{ mod.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
             <div class="col-12">
               <label class="form-label small fw-semibold">Catatan</label>
               <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="Keterangan fase ini..."></textarea>
@@ -497,10 +534,33 @@ function setPhaseType(tv, tl) {
   var lbl = document.getElementById('ptlabel_' + tv);
   if (lbl) { lbl.parentElement.classList.add('border-primary','text-primary'); }
 }
+function filterAddModules() {
+  var appId = document.getElementById('addAppSel').value;
+  var modSel = document.getElementById('addModSel');
+  modSel.value = '';
+  Array.from(modSel.options).forEach(function(opt){
+    if (!opt.value) { opt.hidden = false; return; }
+    opt.hidden = appId ? opt.dataset.app !== appId : false;
+  });
+}
+function filterEditModules(phid) {
+  var appSel = document.querySelector('.edit-app-select[data-phase="'+phid+'"]');
+  if (!appSel) return;
+  var appId = appSel.value;
+  var modSel = document.getElementById('editModSel' + phid);
+  if (!modSel) return;
+  var prev = modSel.value;
+  Array.from(modSel.options).forEach(function(opt){
+    if (!opt.value) { opt.hidden = false; return; }
+    opt.hidden = appId ? opt.dataset.app !== appId : false;
+  });
+  if (appId && modSel.querySelector('option[value="'+prev+'"]:not([hidden])') === null) modSel.value = '';
+}
 document.addEventListener('DOMContentLoaded', function(){
   setPhaseType('sit','SIT');
   var ni = document.getElementById('phaseNameInput');
   if (ni) ni.addEventListener('input', function(){ this.dataset.manualEdit = this.value ? '1' : ''; });
+  {% for ph in phases %}filterEditModules({{ ph.id }});{% endfor %}
 });
 </script>
 
