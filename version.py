@@ -1,3 +1,3 @@
-VERSION = "1.5.7"
+VERSION = "1.5.8"
 RELEASE_DATE = "2026-06-25"
-RELEASE_NOTES = "Field-level encryption kolom gaji (Fernet); ProjectCore sidebar + customer FK"
+RELEASE_NOTES = "ProjectCore: tim proyek — PM, Implementor, Co-Leader, Programmer[], QC/Tester[]"

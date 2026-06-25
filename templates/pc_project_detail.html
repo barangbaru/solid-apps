@@ -311,16 +311,100 @@
 
 {# ── TAB TIM ── #}
 <div class="tab-pane fade" id="members">
+
+  {# Baris 1: Struktur tetap (PM, Implementor, Co-Leader) #}
+  <div class="row g-3 mb-3">
+    {% for role_label, role_icon, role_color, person_name, person_jabatan in [
+      ('Project Manager', 'person-badge', '#4da8da', proj.pic_name, ''),
+      ('Implementor',     'person-gear',  '#0d9488', proj.implementor_name, ''),
+      ('Co-Leader',       'person-check', '#d97706', proj.co_leader_name, ''),
+    ] %}
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body py-3 px-3 d-flex align-items-center gap-3">
+          <div style="width:40px;height:40px;border-radius:10px;background:{{ role_color }}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="bi bi-{{ role_icon }}" style="color:{{ role_color }};font-size:1.2rem"></i>
+          </div>
+          <div>
+            <div class="text-muted" style="font-size:.7rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase">{{ role_label }}</div>
+            {% if person_name %}
+            <div class="fw-semibold small">{{ person_name }}</div>
+            {% else %}
+            <div class="text-muted small fst-italic">Belum ditentukan</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Baris 2: Programmer dan QC/Tester dari pc_members #}
+  {% set programmers = members | selectattr('role','equalto','programmer') | list %}
+  {% set testers     = members | selectattr('role','equalto','qc_tester')  | list %}
+  {% set others      = members | rejectattr('role','in',['programmer','qc_tester']) | list %}
+
   <div class="row g-3">
-    <div class="col-md-7">
+    {# Programmer #}
+    <div class="col-md-6">
       <div class="card border-0 shadow-sm">
-        <div class="card-header py-2 fw-bold small"><i class="bi bi-people me-1 text-primary"></i>Anggota Tim</div>
-        {% if members %}
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="fw-bold small"><i class="bi bi-code-slash me-1 text-secondary"></i>Programmer <span class="badge bg-secondary ms-1">{{ programmers|length }}</span></span>
+          <a href="/project/projects/{{ proj.id }}/edit" class="btn btn-xs btn-outline-secondary" style="padding:1px 7px;font-size:.72rem"><i class="bi bi-pencil me-1"></i>Edit</a>
+        </div>
+        {% if programmers %}
         <div class="list-group list-group-flush">
-          {% for m in members %}
+          {% for m in programmers %}
+          <div class="list-group-item d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-person-circle text-muted"></i>
+            <div>
+              <div class="fw-semibold small">{{ m.name }}</div>
+              {% if m.jabatan %}<div class="text-muted" style="font-size:.72rem">{{ m.jabatan }}</div>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card-body text-center text-muted py-3 small fst-italic">Belum ada programmer</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# QC / Tester #}
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span class="fw-bold small"><i class="bi bi-check2-circle me-1 text-danger"></i>QC / Tester <span class="badge bg-secondary ms-1">{{ testers|length }}</span></span>
+          <a href="/project/projects/{{ proj.id }}/edit" class="btn btn-xs btn-outline-secondary" style="padding:1px 7px;font-size:.72rem"><i class="bi bi-pencil me-1"></i>Edit</a>
+        </div>
+        {% if testers %}
+        <div class="list-group list-group-flush">
+          {% for m in testers %}
+          <div class="list-group-item d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-person-circle text-muted"></i>
+            <div>
+              <div class="fw-semibold small">{{ m.name }}</div>
+              {% if m.jabatan %}<div class="text-muted" style="font-size:.72rem">{{ m.jabatan }}</div>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="card-body text-center text-muted py-3 small fst-italic">Belum ada QC/Tester</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Anggota lain (role selain programmer/qc_tester) #}
+    {% if others %}
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2 fw-bold small"><i class="bi bi-people me-1 text-primary"></i>Anggota Lain</div>
+        <div class="list-group list-group-flush">
+          {% for m in others %}
           <div class="list-group-item d-flex justify-content-between align-items-center py-2">
             <div class="d-flex align-items-center gap-2">
-              <i class="bi bi-person-circle text-muted fs-5"></i>
+              <i class="bi bi-person-circle text-muted"></i>
               <div>
                 <div class="fw-semibold small">{{ m.name }}</div>
                 <div class="text-muted" style="font-size:.72rem">{{ m.jabatan or '' }} — <span class="badge bg-light text-dark border">{{ m.role }}</span></div>
@@ -332,41 +416,10 @@
           </div>
           {% endfor %}
         </div>
-        {% else %}
-        <div class="card-body text-center text-muted py-4">
-          <i class="bi bi-people opacity-25" style="font-size:2rem"></i>
-          <div class="mt-1 small">Belum ada anggota tim.</div>
-        </div>
-        {% endif %}
       </div>
     </div>
-    <div class="col-md-5">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header py-2 fw-bold small"><i class="bi bi-person-plus me-1 text-success"></i>Tambah Anggota</div>
-        <div class="card-body">
-          <form action="/project/projects/{{ proj.id }}/members" method="post">
-            <div class="mb-2">
-              <label class="form-label small fw-semibold">Karyawan</label>
-              <select name="employee_id" class="form-select form-select-sm" required>
-                <option value="">— Pilih Karyawan —</option>
-                {% for e in emps %}
-                <option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Role di Proyek</label>
-              <select name="role" class="form-select form-select-sm">
-                {% for rv in ['developer','tester','designer','analyst','devops','project_manager','other'] %}
-                <option value="{{ rv }}">{{ rv | replace('_',' ') | title }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-person-plus me-1"></i>Tambah</button>
-          </form>
-        </div>
-      </div>
-    </div>
+    {% endif %}
+
   </div>
 </div>
 

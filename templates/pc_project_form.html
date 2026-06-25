@@ -1,94 +1,225 @@
 {% extends 'base.html' %}
-{% block title %}{{ 'Edit' if is_edit else 'Buat' }} Proyek — ProjectCore{% endblock %}
-{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if is_edit else 'Buat' }} Proyek</span>{% endblock %}
+{% block title %}{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek — ProjectCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek</span>{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-  <h5 class="fw-bold mb-0"><i class="bi bi-folder-plus text-primary me-2"></i>{{ 'Edit' if is_edit else 'Buat' }} Proyek</h5>
+  <h5 class="fw-bold mb-0"><i class="bi bi-folder-plus text-primary me-2"></i>{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek</h5>
   <a href="/project/projects" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Kembali</a>
 </div>
 
-<div class="row justify-content-center">
+<form method="post">
+<div class="row g-3">
+
+  {# ── Kolom kiri: Info Proyek ── #}
   <div class="col-lg-7">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body p-4">
-        <form method="post">
-          <div class="row g-3">
-            <div class="col-sm-4">
-              <label class="form-label fw-semibold small">Kode Proyek <span class="text-danger">*</span></label>
-              <input type="text" name="code" class="form-control" value="{{ r.code or '' }}"
-                     placeholder="GDE, HIVE, ..." required {{ 'readonly' if is_edit }}>
-              <div class="form-text">Singkatan unik, huruf kapital</div>
-            </div>
-            <div class="col-sm-8">
-              <label class="form-label fw-semibold small">Nama Proyek <span class="text-danger">*</span></label>
-              <input type="text" name="name" class="form-control" value="{{ r.name or '' }}"
-                     placeholder="Nama lengkap proyek" required>
-            </div>
-            <div class="col-12">
-              <label class="form-label fw-semibold small">Customer</label>
-              <select name="customer_id" class="form-select">
-                <option value="">— Pilih Customer —</option>
-                {% for c in customers %}
-                <option value="{{ c.id }}" {{ 'selected' if r.get('customer_id') == c.id }}>{{ c.code }} — {{ c.name }}</option>
-                {% endfor %}
-              </select>
-              {% if not customers %}
-              <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Belum ada customer. <a href="/support/customers/add" target="_blank">Tambah di SupportCore</a>.</div>
-              {% endif %}
-            </div>
-            <div class="col-12">
-              <label class="form-label fw-semibold small">Deskripsi</label>
-              <textarea name="description" class="form-control" rows="3" placeholder="Ringkasan singkat proyek...">{{ r.description or '' }}</textarea>
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label fw-semibold small">PIC Proyek</label>
-              <select name="pic_id" class="form-select">
-                <option value="">— Pilih PIC —</option>
-                {% for e in emps %}
-                <option value="{{ e.id }}" {{ 'selected' if r.pic_id == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label fw-semibold small">Status</label>
-              <select name="status" class="form-select">
-                {% for val, label in [('active','Aktif'),('on_hold','Hold'),('completed','Selesai'),('archived','Arsip')] %}
-                <option value="{{ val }}" {{ 'selected' if r.status == val }}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label fw-semibold small">Tanggal Mulai</label>
-              <input type="date" name="start_date" class="form-control" value="{{ r.start_date or '' }}">
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label fw-semibold small">Tanggal Selesai</label>
-              <input type="date" name="end_date" class="form-control" value="{{ r.end_date or '' }}">
-            </div>
-            <div class="col-12">
-              <label class="form-label fw-semibold small">Warna Label</label>
-              <div class="d-flex gap-2 flex-wrap mt-1">
-                {% for c in colors %}
-                <label class="d-flex align-items-center gap-1" style="cursor:pointer">
-                  <input type="radio" name="color" value="{{ c }}" class="d-none"
-                         {{ 'checked' if (r.color or '#0ea5e9') == c }}>
-                  <span class="color-swatch {{ 'selected' if (r.color or '#0ea5e9') == c }}"
-                        style="width:28px;height:28px;border-radius:50%;background:{{ c }};display:inline-block;border:3px solid {{ 'white' if (r.color or '#0ea5e9') != c else '#333' }};box-shadow:{{ '0 0 0 2px ' + c if (r.color or '#0ea5e9') == c else 'none' }};cursor:pointer"
-                        onclick="this.previousElementSibling.checked=true;document.querySelectorAll('.color-swatch').forEach(el=>el.style.boxShadow='none');this.style.boxShadow='0 0 0 2px {{ c }}'">
-                  </span>
-                </label>
-                {% endfor %}
-              </div>
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-info-circle me-1 text-primary"></i>Informasi Proyek</div>
+      <div class="card-body p-3">
+        <div class="row g-3">
+          <div class="col-sm-4">
+            <label class="form-label fw-semibold small">Kode Proyek <span class="text-danger">*</span></label>
+            <input type="text" name="code" class="form-control" value="{{ r.get('code') or '' }}"
+                   placeholder="GDE, HIVE, ..." required {{ 'readonly' if r and r.get('id') }}>
+            <div class="form-text">Singkatan unik, huruf kapital</div>
+          </div>
+          <div class="col-sm-8">
+            <label class="form-label fw-semibold small">Nama Proyek <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" value="{{ r.get('name') or '' }}"
+                   placeholder="Nama lengkap proyek" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Customer</label>
+            <select name="customer_id" class="form-select">
+              <option value="">— Pilih Customer —</option>
+              {% for c in customers %}
+              <option value="{{ c.id }}" {{ 'selected' if r.get('customer_id') == c.id }}>{{ c.code }} — {{ c.name }}</option>
+              {% endfor %}
+            </select>
+            {% if not customers %}
+            <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Belum ada customer. <a href="/support/customers/add" target="_blank">Tambah di SupportCore</a>.</div>
+            {% endif %}
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Deskripsi</label>
+            <textarea name="description" class="form-control" rows="3" placeholder="Ringkasan singkat proyek...">{{ r.get('description') or '' }}</textarea>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold small">Status</label>
+            <select name="status" class="form-select">
+              {% for val, label in [('active','Aktif'),('on_hold','Hold'),('completed','Selesai'),('archived','Arsip')] %}
+              <option value="{{ val }}" {{ 'selected' if r.get('status') == val }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-semibold small">Tanggal Mulai</label>
+            <input type="date" name="start_date" class="form-control" value="{{ r.get('start_date') or '' }}">
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-semibold small">Tanggal Selesai</label>
+            <input type="date" name="end_date" class="form-control" value="{{ r.get('end_date') or '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold small">Warna Label</label>
+            <div class="d-flex gap-2 flex-wrap mt-1">
+              {% for c in colors %}
+              <label class="d-flex align-items-center gap-1" style="cursor:pointer">
+                <input type="radio" name="color" value="{{ c }}" class="d-none"
+                       {{ 'checked' if (r.get('color') or '#0ea5e9') == c }}>
+                <span class="color-swatch"
+                      style="width:28px;height:28px;border-radius:50%;background:{{ c }};display:inline-block;
+                             border:3px solid {{ '#333' if (r.get('color') or '#0ea5e9') == c else 'white' }};
+                             box-shadow:{{ '0 0 0 2px ' + c if (r.get('color') or '#0ea5e9') == c else 'none' }};cursor:pointer"
+                      onclick="this.previousElementSibling.checked=true;document.querySelectorAll('.color-swatch').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='white'});this.style.boxShadow='0 0 0 2px {{ c }}';this.style.borderColor='#333'">
+                </span>
+              </label>
+              {% endfor %}
             </div>
           </div>
-          <div class="d-flex gap-2 mt-4">
-            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Simpan Proyek</button>
-            <a href="/project/projects" class="btn btn-outline-secondary">Batal</a>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   </div>
+
+  {# ── Kolom kanan: Tim Proyek ── #}
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small"><i class="bi bi-people me-1 text-success"></i>Tim Proyek</div>
+      <div class="card-body p-3">
+        <div class="row g-3">
+
+          {# Project Manager #}
+          <div class="col-12">
+            <label class="form-label fw-semibold small"><i class="bi bi-person-badge me-1 text-primary"></i>Project Manager</label>
+            <select name="pic_id" class="form-select form-select-sm">
+              <option value="">— Pilih PM —</option>
+              {% for e in emps %}
+              <option value="{{ e.id }}" {{ 'selected' if r.get('pic_id') == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Implementor #}
+          <div class="col-12">
+            <label class="form-label fw-semibold small"><i class="bi bi-person-gear me-1 text-info"></i>Implementor</label>
+            <select name="implementor_id" class="form-select form-select-sm">
+              <option value="">— Pilih Implementor —</option>
+              {% for e in emps %}
+              <option value="{{ e.id }}" {{ 'selected' if r.get('implementor_id') == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Co-Leader #}
+          <div class="col-12">
+            <label class="form-label fw-semibold small"><i class="bi bi-person-check me-1 text-warning"></i>Co-Leader</label>
+            <select name="co_leader_id" class="form-select form-select-sm">
+              <option value="">— Pilih Co-Leader —</option>
+              {% for e in emps %}
+              <option value="{{ e.id }}" {{ 'selected' if r.get('co_leader_id') == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Programmer — multiple dynamic #}
+          <div class="col-12">
+            <label class="form-label fw-semibold small d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-code-slash me-1 text-secondary"></i>Programmer</span>
+              <button type="button" class="btn btn-xs btn-outline-secondary" style="padding:1px 8px;font-size:.75rem"
+                      onclick="addMemberRow('prog-list','programmers')">
+                <i class="bi bi-plus-lg"></i> Tambah
+              </button>
+            </label>
+            <div id="prog-list">
+              {% if members_prog %}
+                {% for eid in members_prog %}
+                <div class="d-flex gap-1 mb-1 member-row">
+                  <select name="programmers" class="form-select form-select-sm">
+                    <option value="">— Pilih —</option>
+                    {% for e in emps %}
+                    <option value="{{ e.id }}" {{ 'selected' if e.id == eid }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                </div>
+                {% endfor %}
+              {% else %}
+                <div class="d-flex gap-1 mb-1 member-row">
+                  <select name="programmers" class="form-select form-select-sm">
+                    <option value="">— Pilih —</option>
+                    {% for e in emps %}<option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          {# QC/Tester — multiple dynamic #}
+          <div class="col-12">
+            <label class="form-label fw-semibold small d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-check2-circle me-1 text-danger"></i>QC / Tester</span>
+              <button type="button" class="btn btn-xs btn-outline-secondary" style="padding:1px 8px;font-size:.75rem"
+                      onclick="addMemberRow('test-list','testers')">
+                <i class="bi bi-plus-lg"></i> Tambah
+              </button>
+            </label>
+            <div id="test-list">
+              {% if members_test %}
+                {% for eid in members_test %}
+                <div class="d-flex gap-1 mb-1 member-row">
+                  <select name="testers" class="form-select form-select-sm">
+                    <option value="">— Pilih —</option>
+                    {% for e in emps %}
+                    <option value="{{ e.id }}" {{ 'selected' if e.id == eid }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                </div>
+                {% endfor %}
+              {% else %}
+                <div class="d-flex gap-1 mb-1 member-row">
+                  <select name="testers" class="form-select form-select-sm">
+                    <option value="">— Pilih —</option>
+                    {% for e in emps %}<option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
+                  </select>
+                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>{# end row #}
+
+<div class="d-flex gap-2 mt-2">
+  <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Simpan Proyek</button>
+  <a href="/project/projects" class="btn btn-outline-secondary">Batal</a>
 </div>
+</form>
+
+{# Template row untuk JS — hidden #}
+<template id="member-row-tpl">
+  <div class="d-flex gap-1 mb-1 member-row">
+    <select name="__NAME__" class="form-select form-select-sm">
+      <option value="">— Pilih —</option>
+      {% for e in emps %}<option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
+    </select>
+    <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+  </div>
+</template>
+
+<script>
+function addMemberRow(containerId, fieldName) {
+  const tpl = document.getElementById('member-row-tpl');
+  const clone = tpl.content.cloneNode(true);
+  clone.querySelector('select').name = fieldName;
+  document.getElementById(containerId).appendChild(clone);
+}
+</script>
 {% endblock %}
