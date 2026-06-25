@@ -108,6 +108,16 @@ class _DBWrapper:
             sql, flags=re.IGNORECASE)
         # julianday(col) sisa (standalone)
         sql = re.sub(r"julianday\(([^)]+)\)", r"\1::date", sql, flags=re.IGNORECASE)
+        # GROUP_CONCAT(col, sep) → STRING_AGG(col::text, sep)
+        sql = re.sub(
+            r'\bGROUP_CONCAT\s*\(([^,)]+),\s*([^)]+)\)',
+            lambda m: f"STRING_AGG({m.group(1).strip()}::text, {m.group(2).strip()})",
+            sql, flags=re.IGNORECASE)
+        # GROUP_CONCAT(col) tanpa separator → STRING_AGG(col::text, ',')
+        sql = re.sub(
+            r'\bGROUP_CONCAT\s*\(([^)]+)\)',
+            lambda m: f"STRING_AGG({m.group(1).strip()}::text, ',')",
+            sql, flags=re.IGNORECASE)
         # last_insert_rowid() → lastval()
         sql = re.sub(r'\blast_insert_rowid\s*\(\s*\)', 'lastval()', sql, flags=re.IGNORECASE)
         # date('now') → CURRENT_DATE  (harus sebelum pola date(col) di bawah)
