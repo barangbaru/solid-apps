@@ -3,6 +3,11 @@ from flask import (Flask, render_template, request, redirect, url_for,
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import sqlite3, os, smtplib, json, secrets, requests as req_lib, io, base64
+try:
+    from cryptography.fernet import Fernet, InvalidToken as _FernetInvalidToken
+    _CRYPTO_OK = True
+except ImportError:
+    _CRYPTO_OK = False
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, date, timedelta
@@ -4401,9 +4406,10 @@ def salary_import():
                     al_004=excluded.al_004, increase_pct=excluded.increase_pct,
                     increase_date=excluded.increase_date, notes=excluded.notes,
                     updated_at=excluded.updated_at
-            ''', (emp_id, year, num('base_salary'), num('al_001'), num('al_002'),
-                  num('al_003'), num('al_004'), num('increase_pct'),
-                  str(get('increase_date', '')), str(get('notes', '')), now))
+            ''', (emp_id, year,
+                  _fenc(num('base_salary')), _fenc(num('al_001')), _fenc(num('al_002')),
+                  _fenc(num('al_003')), _fenc(num('al_004')),
+                  num('increase_pct'), str(get('increase_date', '')), str(get('notes', '')), now))
             upserted += 1
 
         db.commit()
@@ -6746,6 +6752,60 @@ def admin_template_edit(divisi):
 
 # ─── Salary (MFA protected) ───────────────────────────────────────────────────
 
+# Kolom yang dienkripsi di tabel employee_salary
+SALARY_ENC_FIELDS = frozenset(['base_salary', 'al_001', 'al_002', 'al_003', 'al_004'])
+
+def _get_fernet():
+    if not _CRYPTO_OK:
+        return None
+    key = os.environ.get('FIELD_ENCRYPT_KEY', '')
+    if not key:
+        return None
+    try:
+        return Fernet(key.encode() if isinstance(key, str) else key)
+    except Exception:
+        return None
+
+def _fenc(val):
+    """Enkripsi nilai numerik gaji. Return string Fernet token, atau float jika key tidak ada."""
+    if val is None:
+        return None
+    f = _get_fernet()
+    if f is None:
+        return float(val) if not isinstance(val, str) else val
+    return f.encrypt(str(float(val)).encode()).decode()
+
+def _fdec(val):
+    """Dekripsi nilai gaji. Handle: None, float legacy, string token terenkripsi."""
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)  # data lama belum terenkripsi
+    f = _get_fernet()
+    if f is None:
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
+    try:
+        return float(f.decrypt(val.encode() if isinstance(val, str) else val).decode())
+    except Exception:
+        try:
+            return float(val)  # fallback: coba parse langsung (data lama)
+        except (ValueError, TypeError):
+            return 0.0
+
+def _dec_sal_row(row):
+    """Konversi sqlite3.Row salary ke dict dengan nilai terdekripsi."""
+    d = dict(row)
+    for field in SALARY_ENC_FIELDS:
+        if field in d:
+            d[field] = _fdec(d[field])
+        prev = f'p_{field}'
+        if prev in d:
+            d[prev] = _fdec(d[prev])
+    return d
+
 SALARY_COLS = [
     ('base_salary', 'SALARY',    'Gaji Pokok'),
     ('al_001',      'AL_001',    'Tunjangan Jabatan'),
@@ -6757,7 +6817,7 @@ SALARY_COLS = [
 def _salary_total(row):
     if not row:
         return 0
-    return sum(row[col] or 0 for col, *_ in SALARY_COLS)
+    return sum(_fdec(row[col]) for col, *_ in SALARY_COLS)
 
 @app.route('/salary')
 @permission_required('view_salary')
@@ -6778,6 +6838,7 @@ def salary_table():
         WHERE e.is_active = 1
         ORDER BY e.employment_type DESC, e.divisi, e.name
     ''', (year, prev_year)).fetchall()
+    emps = [_dec_sal_row(r) for r in emps]
     years = [r['year'] for r in db.execute(
         'SELECT DISTINCT year FROM employee_salary ORDER BY year DESC').fetchall()]
     if year not in years:
@@ -6799,9 +6860,14 @@ def salary_save():
     if not emp_id or not year or field not in valid_fields:
         return jsonify({'ok': False, 'msg': 'Parameter tidak valid'})
     try:
-        val = value if field in ('notes', 'increase_date') else float(value)
+        if field in ('notes', 'increase_date'):
+            val = value
+        elif field in SALARY_ENC_FIELDS:
+            val = _fenc(float(value))
+        else:
+            val = float(value)
     except ValueError:
-        val = 0.0
+        val = _fenc(0.0) if field in SALARY_ENC_FIELDS else 0.0
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     db.execute(f'''
         INSERT INTO employee_salary(employee_id, year, {field}, updated_at)
@@ -6809,9 +6875,10 @@ def salary_save():
         ON CONFLICT(employee_id, year) DO UPDATE SET {field}=excluded.{field}, updated_at=excluded.updated_at
     ''', (emp_id, year, val, now))
     db.commit()
-    # Return updated row totals
+    # Return updated row totals (decrypt before computing)
     row = db.execute('SELECT * FROM employee_salary WHERE employee_id=? AND year=?',
                      (emp_id, year)).fetchone()
+    row = _dec_sal_row(row) if row else row
     total = _salary_total(row)
     next_pct  = (row['increase_pct'] or 0) if row else 0
     next_total = round(total * (1 + next_pct / 100))
@@ -6844,11 +6911,11 @@ def salary_add_year():
                      increase_pct, notes, updated_at)
                     VALUES(?,?,?,?,?,?,?,0,'',?)
                 ''', (r['employee_id'], year,
-                      round((r['base_salary'] or 0) * factor),
-                      round((r['al_001'] or 0) * factor),
-                      round((r['al_002'] or 0) * factor),
-                      round((r['al_003'] or 0) * factor),
-                      round((r['al_004'] or 0) * factor),
+                      _fenc(round(_fdec(r['base_salary']) * factor)),
+                      _fenc(round(_fdec(r['al_001']) * factor)),
+                      _fenc(round(_fdec(r['al_002']) * factor)),
+                      _fenc(round(_fdec(r['al_003']) * factor)),
+                      _fenc(round(_fdec(r['al_004']) * factor)),
                       now))
                 copied += 1
             except Exception:
