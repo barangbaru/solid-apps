@@ -34,6 +34,7 @@
     (stats.done_issues,  'Issue Done',    '#10b981'),
     (stats.total_tasks,  'Total Task',    '#8b5cf6'),
     (stats.done_tasks,   'Task Done',     '#0d9488'),
+    (stats.done_phases ~ '/' ~ stats.total_phases, 'Fase Selesai', '#0ea5e9'),
   ] %}
   <div class="col">
     <div class="card border-0 shadow-sm text-center py-2">
@@ -48,6 +49,7 @@
 <ul class="nav nav-tabs mb-3" id="pcTabs">
   <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#issues"><i class="bi bi-bug me-1"></i>Issue <span class="badge bg-secondary ms-1">{{ issues|length }}</span></a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#kanban"><i class="bi bi-kanban me-1"></i>Kanban</a></li>
+  <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#timeline"><i class="bi bi-bar-chart-steps me-1"></i>Timeline <span class="badge bg-secondary ms-1">{{ phases|length }}</span></a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#milestones"><i class="bi bi-flag me-1"></i>Milestone <span class="badge bg-secondary ms-1">{{ milestones|length }}</span></a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#proposed"><i class="bi bi-lightbulb me-1"></i>Proposed Change <span class="badge bg-secondary ms-1">{{ proposed|length }}</span></a></li>
   <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#members"><i class="bi bi-people me-1"></i>Tim</a></li>
@@ -240,6 +242,267 @@
   </div>
   {% endif %}
 </div>
+
+{# ── TAB TIMELINE ── #}
+<div class="tab-pane fade" id="timeline">
+  {# ── Gantt Bar ── #}
+  {% if proj.start_date and proj.end_date %}
+  {% set proj_start = proj.start_date %}
+  {% set proj_end   = proj.end_date %}
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-3 px-4">
+      <div class="d-flex justify-content-between text-muted small mb-2">
+        <span><i class="bi bi-calendar-event me-1"></i>{{ proj_start }}</span>
+        <span class="fw-semibold">{{ proj.name }}</span>
+        <span>{{ proj_end }}<i class="bi bi-calendar-check ms-1"></i></span>
+      </div>
+      <div style="position:relative;height:28px;background:#f1f5f9;border-radius:6px;overflow:hidden">
+        {% set pt_colors = {'sit':'#3b82f6','uat':'#8b5cf6','bast':'#f59e0b','promote':'#ef4444','golive':'#10b981','custom':'#6b7280'} %}
+        {% set st_opacity = {'planned':'0.4','in_progress':'1','done':'0.85','skipped':'0.2'} %}
+        {% for ph in phases %}
+          {% if ph.start_date and ph.end_date %}
+          {# JS will handle positioning — render data attrs #}
+          <div class="gantt-bar"
+               data-proj-start="{{ proj_start }}"
+               data-proj-end="{{ proj_end }}"
+               data-start="{{ ph.start_date }}"
+               data-end="{{ ph.end_date }}"
+               data-color="{{ pt_colors.get(ph.phase_type,'#6b7280') }}"
+               data-opacity="{{ st_opacity.get(ph.status,'0.7') }}"
+               data-label="{{ ph.name }}"
+               title="{{ ph.name }}: {{ ph.start_date }} → {{ ph.end_date }}"
+               style="position:absolute;top:0;height:100%;border-radius:4px;display:flex;align-items:center;padding:0 6px;font-size:.65rem;color:#fff;white-space:nowrap;overflow:hidden">
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <script>
+      document.querySelectorAll('.gantt-bar').forEach(function(el){
+        var ps=new Date(el.dataset.projStart), pe=new Date(el.dataset.projEnd);
+        var ds=new Date(el.dataset.start),     de=new Date(el.dataset.end);
+        var total=pe-ps;
+        if(total<=0) return;
+        var left=Math.max(0,(ds-ps)/total*100);
+        var width=Math.min(100-left,(de-ds)/total*100);
+        el.style.left=left+'%'; el.style.width=width+'%';
+        el.style.background=el.dataset.color;
+        el.style.opacity=el.dataset.opacity;
+        el.textContent=el.dataset.label;
+      });
+      </script>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Phase List ── #}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="text-muted small">{{ phases|length }} fase{% if phases %} &mdash; {{ stats.done_phases }} selesai{% endif %}</div>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addPhaseModal">
+      <i class="bi bi-plus-lg me-1"></i>Tambah Fase
+    </button>
+  </div>
+
+  {% set pt_labels = {'sit':'SIT','uat':'UAT','bast':'BAST','promote':'Promote to Production','golive':'Go Live','custom':'Custom'} %}
+  {% set pt_colors = {'sit':'primary','uat':'info','bast':'warning','promote':'danger','golive':'success','custom':'secondary'} %}
+  {% set ps_colors = {'planned':'secondary','in_progress':'primary','done':'success','skipped':'dark'} %}
+  {% set ps_icons  = {'planned':'bi-clock','in_progress':'bi-arrow-repeat','done':'bi-check-circle-fill','skipped':'bi-dash-circle'} %}
+
+  {% if phases %}
+  <div class="d-flex flex-column gap-2">
+    {% for ph in phases %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-3 px-4">
+        <div class="d-flex align-items-start gap-3">
+          {# Left: status icon #}
+          <div style="width:36px;height:36px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center"
+               class="bg-{{ ps_colors.get(ph.status,'secondary') }} bg-opacity-10">
+            <i class="bi {{ ps_icons.get(ph.status,'bi-clock') }} text-{{ ps_colors.get(ph.status,'secondary') }}" style="font-size:1.1rem"></i>
+          </div>
+          {# Center: info #}
+          <div class="flex-grow-1 min-width-0">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+              <span class="fw-semibold">{{ ph.name }}</span>
+              <span class="badge bg-{{ pt_colors.get(ph.phase_type,'secondary') }}" style="font-size:.65rem">{{ pt_labels.get(ph.phase_type, ph.phase_type) }}</span>
+              <span class="badge bg-{{ ps_colors.get(ph.status,'secondary') }}" style="font-size:.65rem">{{ ph.status|replace('_',' ')|title }}</span>
+            </div>
+            <div class="d-flex flex-wrap gap-3 text-muted small">
+              {% if ph.start_date %}<span><i class="bi bi-calendar-range me-1"></i>{{ ph.start_date }} → {{ ph.end_date or '?' }}</span>{% endif %}
+              {% if ph.pic_name %}<span><i class="bi bi-person me-1"></i>{{ ph.pic_name }}</span>{% endif %}
+              {% if ph.sign_off_date %}<span class="text-success"><i class="bi bi-pen-check me-1"></i>Sign-off: {{ ph.sign_off_date }}</span>{% endif %}
+            </div>
+            {% if ph.notes %}<div class="text-muted mt-1" style="font-size:.78rem">{{ ph.notes }}</div>{% endif %}
+          </div>
+          {# Right: actions #}
+          <div class="d-flex gap-1 flex-shrink-0 align-items-center">
+            <form action="/project/phases/{{ ph.id }}/status" method="post" class="d-flex gap-1 align-items-center">
+              <select name="status" class="form-select form-select-sm" style="font-size:.72rem;width:140px" onchange="this.form.submit()">
+                {% for sv,sl,_ in phase_statuses %}
+                <option value="{{ sv }}" {{ 'selected' if ph.status == sv }}>{{ sl }}</option>
+                {% endfor %}
+              </select>
+            </form>
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editPhaseModal{{ ph.id }}">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <form action="/project/phases/{{ ph.id }}/delete" method="post" onsubmit="return confirm('Hapus fase ini?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Edit Phase Modal #}
+    <div class="modal fade" id="editPhaseModal{{ ph.id }}" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <form action="/project/phases/{{ ph.id }}/edit" method="post">
+            <div class="modal-header">
+              <h5 class="modal-title">Edit Fase</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Nama Fase</label>
+                  <input type="text" name="name" class="form-control form-control-sm" value="{{ ph.name }}" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Tipe</label>
+                  <select name="phase_type" class="form-select form-select-sm">
+                    {% for tv,tl,_ in phase_types %}
+                    <option value="{{ tv }}" {{ 'selected' if ph.phase_type == tv }}>{{ tl }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Tanggal Mulai</label>
+                  <input type="date" name="start_date" class="form-control form-control-sm" value="{{ ph.start_date or '' }}">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Tanggal Selesai</label>
+                  <input type="date" name="end_date" class="form-control form-control-sm" value="{{ ph.end_date or '' }}">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">PIC</label>
+                  <select name="pic_id" class="form-select form-select-sm">
+                    <option value="">— Eksternal / Kosong —</option>
+                    {% for e in emps %}
+                    <option value="{{ e.id }}" {{ 'selected' if ph.pic_id == e.id }}>{{ e.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">PIC Eksternal</label>
+                  <input type="text" name="pic_ext" class="form-control form-control-sm" value="{{ ph.pic_ext or '' }}" placeholder="Nama jika eksternal">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Tanggal Sign-off <span class="text-muted">(BAST/Go Live)</span></label>
+                  <input type="date" name="sign_off_date" class="form-control form-control-sm" value="{{ ph.sign_off_date or '' }}">
+                </div>
+                <div class="col-12">
+                  <label class="form-label small fw-semibold">Catatan</label>
+                  <textarea name="notes" class="form-control form-control-sm" rows="2">{{ ph.notes or '' }}</textarea>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Batal</button>
+              <button type="submit" class="btn btn-sm btn-primary">Simpan</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <i class="bi bi-bar-chart-steps opacity-25" style="font-size:2.5rem"></i>
+    <div class="mt-2">Belum ada fase. Tambah fase SIT, UAT, BAST, dll.</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Add Phase Modal ── #}
+<div class="modal fade" id="addPhaseModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form action="/project/projects/{{ proj.id }}/phases/add" method="post">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Tambah Fase</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          {# Quick-add predefined phases #}
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Pilih Tipe Fase</label>
+            <div class="d-flex flex-wrap gap-2">
+              {% for tv,tl,tc in phase_types %}
+              <label class="d-flex align-items-center gap-1 px-3 py-1 rounded-pill border" style="cursor:pointer;font-size:.8rem"
+                     onclick="setPhaseType('{{ tv }}','{{ tl }}')">
+                <input type="radio" name="phase_type" value="{{ tv }}" {{ 'checked' if loop.first }} class="d-none" id="pt_{{ tv }}">
+                <span class="pt-label" id="ptlabel_{{ tv }}">{{ tl }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Nama Fase</label>
+              <input type="text" name="name" id="phaseNameInput" class="form-control form-control-sm" placeholder="Otomatis dari tipe atau isi manual">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Tanggal Mulai</label>
+              <input type="date" name="start_date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Tanggal Selesai</label>
+              <input type="date" name="end_date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">PIC</label>
+              <select name="pic_id" class="form-select form-select-sm">
+                <option value="">— Eksternal / Kosong —</option>
+                {% for e in emps %}
+                <option value="{{ e.id }}">{{ e.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">PIC Eksternal</label>
+              <input type="text" name="pic_ext" class="form-control form-control-sm" placeholder="Nama jika eksternal">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Catatan</label>
+              <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="Keterangan fase ini..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Tambah Fase</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+var _phaseLabels = { {% for tv,tl,_ in phase_types %}'{{ tv }}':'{{ tl }}',{% endfor %} };
+function setPhaseType(tv, tl) {
+  document.getElementById('pt_' + tv).checked = true;
+  var ni = document.getElementById('phaseNameInput');
+  if (!ni.dataset.manualEdit) ni.value = tl;
+  document.querySelectorAll('[id^="ptlabel_"]').forEach(function(el){ el.parentElement.classList.remove('border-primary','text-primary'); });
+  var lbl = document.getElementById('ptlabel_' + tv);
+  if (lbl) { lbl.parentElement.classList.add('border-primary','text-primary'); }
+}
+document.addEventListener('DOMContentLoaded', function(){
+  setPhaseType('sit','SIT');
+  var ni = document.getElementById('phaseNameInput');
+  if (ni) ni.addEventListener('input', function(){ this.dataset.manualEdit = this.value ? '1' : ''; });
+});
+</script>
 
 {# ── TAB PROPOSED CHANGES ── #}
 <div class="tab-pane fade" id="proposed">

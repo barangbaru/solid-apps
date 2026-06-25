@@ -1051,6 +1051,21 @@ CREATE TABLE IF NOT EXISTS pc_proposed_changes (
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS pc_phases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
+    phase_type TEXT DEFAULT 'custom',
+    name TEXT NOT NULL,
+    start_date TEXT DEFAULT NULL,
+    end_date TEXT DEFAULT NULL,
+    status TEXT DEFAULT 'planned',
+    sort_order INTEGER DEFAULT 0,
+    pic_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL,
+    pic_ext TEXT DEFAULT '',
+    sign_off_date TEXT DEFAULT NULL,
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 MIGRATIONS = [
@@ -1123,6 +1138,8 @@ MIGRATIONS = [
     ('pc_projects',          'implementor_ext',         "TEXT DEFAULT ''"),
     ('pc_projects',          'co_leader_ext',           "TEXT DEFAULT ''"),
     ('pc_members',           'name_ext',                "TEXT DEFAULT ''"),
+    ('pc_phases',            'pic_ext',                 "TEXT DEFAULT ''"),
+    ('pc_phases',            'sign_off_date',           "TEXT DEFAULT NULL"),
 ]
 
 SC_TICKET_STATUSES = [
@@ -1193,6 +1210,20 @@ PC_PROPOSED_STATUSES = [
     ('done',        'Done',         'success'),
     ('rejected',    'Rejected',     'danger'),
     ('hold',        'Hold',         'warning'),
+]
+PC_PHASE_TYPES = [
+    ('sit',     'SIT',                   '#3b82f6'),
+    ('uat',     'UAT',                   '#8b5cf6'),
+    ('bast',    'BAST',                  '#f59e0b'),
+    ('promote', 'Promote to Production', '#ef4444'),
+    ('golive',  'Go Live',               '#10b981'),
+    ('custom',  'Custom',                '#6b7280'),
+]
+PC_PHASE_STATUSES = [
+    ('planned',     'Planned',     'secondary'),
+    ('in_progress', 'In Progress', 'primary'),
+    ('done',        'Done',        'success'),
+    ('skipped',     'Skipped',     'dark'),
 ]
 PC_PROJECT_COLORS = [
     '#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#0d9488','#6366f1',
@@ -8687,6 +8718,12 @@ def pc_project_detail(pid):
     proposed = db.execute(
         "SELECT * FROM pc_proposed_changes WHERE project_id=? ORDER BY id", (pid,)
     ).fetchall()
+    phases = db.execute(
+        '''SELECT ph.*, COALESCE(e.name, ph.pic_ext) as pic_name
+           FROM pc_phases ph
+           LEFT JOIN employees e ON e.id=ph.pic_id
+           WHERE ph.project_id=? ORDER BY ph.sort_order, ph.id''', (pid,)
+    ).fetchall()
     members  = _pc_members(db, pid)
     emps     = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name").fetchall()
     stats = {
@@ -8695,13 +8732,17 @@ def pc_project_detail(pid):
         'done_issues':  sum(1 for i in issues if i['status_programmer'] == 'Done'),
         'total_tasks':  len(tasks),
         'done_tasks':   sum(1 for t in tasks if t['status'] == 'done'),
+        'total_phases': len(phases),
+        'done_phases':  sum(1 for p in phases if p['status'] == 'done'),
     }
     kanban = {s: [t for t in tasks if t['status'] == s] for s, _, _ in PC_TASK_STATUSES}
     return render_template('pc_project_detail.html',
         proj=proj, issues=issues, tasks=tasks, milestones=milestones,
-        proposed=proposed, members=members, emps=emps, stats=stats, kanban=kanban,
+        proposed=proposed, phases=phases, members=members, emps=emps,
+        stats=stats, kanban=kanban,
         task_statuses=PC_TASK_STATUSES, milestone_statuses=PC_MILESTONE_STATUSES,
         proposed_statuses=PC_PROPOSED_STATUSES,
+        phase_types=PC_PHASE_TYPES, phase_statuses=PC_PHASE_STATUSES,
         priorities=PC_PRIORITIES, difficulties=PC_DIFFICULTIES)
 
 @app.route('/project/projects/<int:pid>/members', methods=['POST'])
@@ -8975,6 +9016,86 @@ def pc_milestone_delete(mid):
     db.commit()
     flash('Milestone dihapus', 'warning')
     return redirect(url_for('pc_project_detail', pid=pid) + '#milestones')
+
+# ── Phases / Timeline ──────────────────────────────────────────────────────────
+
+@app.route('/project/projects/<int:pid>/phases/add', methods=['POST'])
+@login_required
+def pc_phase_add(pid):
+    db   = get_db()
+    name = request.form.get('name','').strip()
+    ptype= request.form.get('phase_type','custom')
+    if not name:
+        ptype_labels = {k: v for k, v, _ in PC_PHASE_TYPES}
+        name = ptype_labels.get(ptype, 'Fase Baru')
+    start = request.form.get('start_date','').strip() or None
+    end   = request.form.get('end_date','').strip() or None
+    pic_id= request.form.get('pic_id','').strip() or None
+    pic_ext = request.form.get('pic_ext','').strip()
+    notes = request.form.get('notes','').strip()
+    max_order = db.execute(
+        "SELECT COALESCE(MAX(sort_order),0) FROM pc_phases WHERE project_id=?", (pid,)
+    ).fetchone()[0]
+    db.execute(
+        '''INSERT INTO pc_phases(project_id,phase_type,name,start_date,end_date,
+           status,sort_order,pic_id,pic_ext,notes)
+           VALUES(?,?,?,?,?,'planned',?,?,?,?)''',
+        (pid, ptype, name, start, end, max_order + 1, pic_id, pic_ext, notes)
+    )
+    db.commit()
+    flash('Fase ditambahkan', 'success')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#timeline')
+
+@app.route('/project/phases/<int:phid>/status', methods=['POST'])
+@login_required
+def pc_phase_status(phid):
+    db = get_db()
+    ph = db.execute("SELECT project_id FROM pc_phases WHERE id=?", (phid,)).fetchone()
+    if not ph: abort(404)
+    new_status = request.form.get('status', 'planned')
+    sign_off   = request.form.get('sign_off_date','').strip() or None
+    db.execute(
+        "UPDATE pc_phases SET status=?, sign_off_date=COALESCE(?,sign_off_date) WHERE id=?",
+        (new_status, sign_off, phid)
+    )
+    db.commit()
+    flash('Status fase diperbarui', 'success')
+    return redirect(url_for('pc_project_detail', pid=ph['project_id']) + '#timeline')
+
+@app.route('/project/phases/<int:phid>/edit', methods=['POST'])
+@login_required
+def pc_phase_edit(phid):
+    db = get_db()
+    ph = db.execute("SELECT project_id FROM pc_phases WHERE id=?", (phid,)).fetchone()
+    if not ph: abort(404)
+    name      = request.form.get('name','').strip()
+    start     = request.form.get('start_date','').strip() or None
+    end       = request.form.get('end_date','').strip() or None
+    pic_id    = request.form.get('pic_id','').strip() or None
+    pic_ext   = request.form.get('pic_ext','').strip()
+    sign_off  = request.form.get('sign_off_date','').strip() or None
+    notes     = request.form.get('notes','').strip()
+    if name:
+        db.execute(
+            '''UPDATE pc_phases SET name=?,start_date=?,end_date=?,
+               pic_id=?,pic_ext=?,sign_off_date=?,notes=? WHERE id=?''',
+            (name, start, end, pic_id, pic_ext, sign_off, notes, phid)
+        )
+        db.commit()
+        flash('Fase diperbarui', 'success')
+    return redirect(url_for('pc_project_detail', pid=ph['project_id']) + '#timeline')
+
+@app.route('/project/phases/<int:phid>/delete', methods=['POST'])
+@login_required
+def pc_phase_delete(phid):
+    db = get_db()
+    ph = db.execute("SELECT project_id FROM pc_phases WHERE id=?", (phid,)).fetchone()
+    if not ph: abort(404)
+    pid = ph['project_id']
+    db.execute("DELETE FROM pc_phases WHERE id=?", (phid,))
+    db.commit()
+    flash('Fase dihapus', 'warning')
+    return redirect(url_for('pc_project_detail', pid=pid) + '#timeline')
 
 # ── Proposed Changes ───────────────────────────────────────────────────────────
 
