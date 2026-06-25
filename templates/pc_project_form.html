@@ -3,12 +3,19 @@
 {% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek</span>{% endblock %}
 
 {% block content %}
+<style>
+.role-toggle { display:inline-flex; border:1px solid #dee2e6; border-radius:6px; overflow:hidden; }
+.role-toggle label { padding:2px 10px; font-size:.75rem; cursor:pointer; background:#fff; color:#555; transition:.15s; }
+.role-toggle input[type=radio]:checked + label { background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+.role-toggle input[type=radio] { display:none; }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h5 class="fw-bold mb-0"><i class="bi bi-folder-plus text-primary me-2"></i>{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek</h5>
   <a href="/project/projects" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Kembali</a>
 </div>
 
-<form method="post">
+<form method="post" id="projectForm">
 <div class="row g-3">
 
   {# ── Kolom kiri: Info Proyek ── #}
@@ -64,14 +71,13 @@
             <label class="form-label fw-semibold small">Warna Label</label>
             <div class="d-flex gap-2 flex-wrap mt-1">
               {% for c in colors %}
-              <label class="d-flex align-items-center gap-1" style="cursor:pointer">
+              <label style="cursor:pointer">
                 <input type="radio" name="color" value="{{ c }}" class="d-none"
                        {{ 'checked' if (r.get('color') or '#0ea5e9') == c }}>
-                <span class="color-swatch"
-                      style="width:28px;height:28px;border-radius:50%;background:{{ c }};display:inline-block;
-                             border:3px solid {{ '#333' if (r.get('color') or '#0ea5e9') == c else 'white' }};
+                <span style="width:26px;height:26px;border-radius:50%;background:{{ c }};display:inline-block;
+                             border:3px solid {{ '#333' if (r.get('color') or '#0ea5e9') == c else '#e5e7eb' }};
                              box-shadow:{{ '0 0 0 2px ' + c if (r.get('color') or '#0ea5e9') == c else 'none' }};cursor:pointer"
-                      onclick="this.previousElementSibling.checked=true;document.querySelectorAll('.color-swatch').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='white'});this.style.boxShadow='0 0 0 2px {{ c }}';this.style.borderColor='#333'">
+                      onclick="this.previousElementSibling.checked=true;document.querySelectorAll('[name=color]+span').forEach(el=>{el.style.boxShadow='none';el.style.borderColor='#e5e7eb'});this.style.boxShadow='0 0 0 2px {{ c }}';this.style.borderColor='#333'">
                 </span>
               </label>
               {% endfor %}
@@ -89,69 +95,100 @@
       <div class="card-body p-3">
         <div class="row g-3">
 
-          {# Project Manager #}
+          {# Macro: single person field dengan toggle internal/eksternal #}
+          {% macro person_field(label, icon, color, id_name, ext_name, cur_id, cur_ext) %}
           <div class="col-12">
-            <label class="form-label fw-semibold small"><i class="bi bi-person-badge me-1 text-primary"></i>Project Manager</label>
-            <select name="pic_id" class="form-select form-select-sm">
-              <option value="">— Pilih PM —</option>
-              {% for e in emps %}
-              <option value="{{ e.id }}" {{ 'selected' if r.get('pic_id') == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
-              {% endfor %}
-            </select>
+            <label class="form-label fw-semibold small d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-{{ icon }} me-1" style="color:{{ color }}"></i>{{ label }}</span>
+              <div class="role-toggle">
+                <input type="radio" id="tgl-{{ id_name }}-int" name="tgl_{{ id_name }}" value="internal"
+                       {{ 'checked' if not cur_ext }} onchange="togglePerson('{{ id_name }}','internal')">
+                <label for="tgl-{{ id_name }}-int">Internal</label>
+                <input type="radio" id="tgl-{{ id_name }}-ext" name="tgl_{{ id_name }}" value="external"
+                       {{ 'checked' if cur_ext }} onchange="togglePerson('{{ id_name }}','external')">
+                <label for="tgl-{{ id_name }}-ext">Eksternal</label>
+              </div>
+            </label>
+            <div id="{{ id_name }}-int-wrap" {{ 'style="display:none"' if cur_ext }}>
+              <select name="{{ id_name }}" class="form-select form-select-sm">
+                <option value="">— Pilih —</option>
+                {% for e in emps %}
+                <option value="{{ e.id }}" {{ 'selected' if cur_id == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div id="{{ id_name }}-ext-wrap" {{ '' if cur_ext else 'style="display:none"' }}>
+              <input type="text" name="{{ ext_name }}" class="form-control form-control-sm"
+                     value="{{ cur_ext or '' }}" placeholder="Nama lengkap (eksternal)">
+            </div>
           </div>
+          {% endmacro %}
 
-          {# Implementor #}
-          <div class="col-12">
-            <label class="form-label fw-semibold small"><i class="bi bi-person-gear me-1 text-info"></i>Implementor</label>
-            <select name="implementor_id" class="form-select form-select-sm">
-              <option value="">— Pilih Implementor —</option>
-              {% for e in emps %}
-              <option value="{{ e.id }}" {{ 'selected' if r.get('implementor_id') == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          {# Co-Leader #}
-          <div class="col-12">
-            <label class="form-label fw-semibold small"><i class="bi bi-person-check me-1 text-warning"></i>Co-Leader</label>
-            <select name="co_leader_id" class="form-select form-select-sm">
-              <option value="">— Pilih Co-Leader —</option>
-              {% for e in emps %}
-              <option value="{{ e.id }}" {{ 'selected' if r.get('co_leader_id') == e.id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
-              {% endfor %}
-            </select>
-          </div>
+          {{ person_field('Project Manager', 'person-badge', '#4da8da', 'pic_id', 'pic_ext',
+                          r.get('pic_id'), r.get('pic_ext')) }}
+          {{ person_field('Implementor', 'person-gear', '#0d9488', 'implementor_id', 'implementor_ext',
+                          r.get('implementor_id'), r.get('implementor_ext')) }}
+          {{ person_field('Co-Leader', 'person-check', '#d97706', 'co_leader_id', 'co_leader_ext',
+                          r.get('co_leader_id'), r.get('co_leader_ext')) }}
 
           {# Programmer — multiple dynamic #}
           <div class="col-12">
             <label class="form-label fw-semibold small d-flex justify-content-between align-items-center">
               <span><i class="bi bi-code-slash me-1 text-secondary"></i>Programmer</span>
               <button type="button" class="btn btn-xs btn-outline-secondary" style="padding:1px 8px;font-size:.75rem"
-                      onclick="addMemberRow('prog-list','programmers')">
+                      onclick="addMemberRow('prog-list','programmers','prog_exts')">
                 <i class="bi bi-plus-lg"></i> Tambah
               </button>
             </label>
             <div id="prog-list">
               {% if members_prog %}
-                {% for eid in members_prog %}
-                <div class="d-flex gap-1 mb-1 member-row">
-                  <select name="programmers" class="form-select form-select-sm">
-                    <option value="">— Pilih —</option>
-                    {% for e in emps %}
-                    <option value="{{ e.id }}" {{ 'selected' if e.id == eid }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
-                    {% endfor %}
-                  </select>
-                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                {% for m in members_prog %}
+                <div class="member-row mb-1">
+                  {% set is_ext = not m.employee_id %}
+                  <div class="d-flex gap-1 align-items-center mb-1">
+                    <div class="role-toggle">
+                      <input type="radio" id="pt-prog-int-{{ loop.index }}" name="_tgl_prog_{{ loop.index }}" value="internal"
+                             {{ '' if is_ext else 'checked' }} onchange="toggleMemberRow(this,'internal')">
+                      <label for="pt-prog-int-{{ loop.index }}">Internal</label>
+                      <input type="radio" id="pt-prog-ext-{{ loop.index }}" name="_tgl_prog_{{ loop.index }}" value="external"
+                             {{ 'checked' if is_ext else '' }} onchange="toggleMemberRow(this,'external')">
+                      <label for="pt-prog-ext-{{ loop.index }}">Eksternal</label>
+                    </div>
+                    <button type="button" class="btn btn-xs btn-outline-danger ms-auto" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                  </div>
+                  <div class="int-wrap" {{ 'style="display:none"' if is_ext }}>
+                    <select name="programmers" class="form-select form-select-sm">
+                      <option value="">— Pilih —</option>
+                      {% for e in emps %}<option value="{{ e.id }}" {{ 'selected' if e.id == m.employee_id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div class="ext-wrap" {{ '' if is_ext else 'style="display:none"' }}>
+                    <input type="text" name="prog_exts" class="form-control form-control-sm"
+                           value="{{ m.name_ext or '' }}" placeholder="Nama eksternal">
+                  </div>
                 </div>
                 {% endfor %}
               {% else %}
-                <div class="d-flex gap-1 mb-1 member-row">
+              <div class="member-row mb-1">
+                <div class="d-flex gap-1 align-items-center mb-1">
+                  <div class="role-toggle">
+                    <input type="radio" name="_tgl_prog_0" value="internal" checked onchange="toggleMemberRow(this,'internal')">
+                    <label>Internal</label>
+                    <input type="radio" name="_tgl_prog_0" value="external" onchange="toggleMemberRow(this,'external')">
+                    <label>Eksternal</label>
+                  </div>
+                  <button type="button" class="btn btn-xs btn-outline-danger ms-auto" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                </div>
+                <div class="int-wrap">
                   <select name="programmers" class="form-select form-select-sm">
                     <option value="">— Pilih —</option>
                     {% for e in emps %}<option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
                   </select>
-                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
                 </div>
+                <div class="ext-wrap" style="display:none">
+                  <input type="text" name="prog_exts" class="form-control form-control-sm" placeholder="Nama eksternal">
+                </div>
+              </div>
               {% endif %}
             </div>
           </div>
@@ -161,31 +198,59 @@
             <label class="form-label fw-semibold small d-flex justify-content-between align-items-center">
               <span><i class="bi bi-check2-circle me-1 text-danger"></i>QC / Tester</span>
               <button type="button" class="btn btn-xs btn-outline-secondary" style="padding:1px 8px;font-size:.75rem"
-                      onclick="addMemberRow('test-list','testers')">
+                      onclick="addMemberRow('test-list','testers','test_exts')">
                 <i class="bi bi-plus-lg"></i> Tambah
               </button>
             </label>
             <div id="test-list">
               {% if members_test %}
-                {% for eid in members_test %}
-                <div class="d-flex gap-1 mb-1 member-row">
-                  <select name="testers" class="form-select form-select-sm">
-                    <option value="">— Pilih —</option>
-                    {% for e in emps %}
-                    <option value="{{ e.id }}" {{ 'selected' if e.id == eid }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>
-                    {% endfor %}
-                  </select>
-                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                {% for m in members_test %}
+                <div class="member-row mb-1">
+                  {% set is_ext = not m.employee_id %}
+                  <div class="d-flex gap-1 align-items-center mb-1">
+                    <div class="role-toggle">
+                      <input type="radio" id="pt-test-int-{{ loop.index }}" name="_tgl_test_{{ loop.index }}" value="internal"
+                             {{ '' if is_ext else 'checked' }} onchange="toggleMemberRow(this,'internal')">
+                      <label for="pt-test-int-{{ loop.index }}">Internal</label>
+                      <input type="radio" id="pt-test-ext-{{ loop.index }}" name="_tgl_test_{{ loop.index }}" value="external"
+                             {{ 'checked' if is_ext else '' }} onchange="toggleMemberRow(this,'external')">
+                      <label for="pt-test-ext-{{ loop.index }}">Eksternal</label>
+                    </div>
+                    <button type="button" class="btn btn-xs btn-outline-danger ms-auto" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                  </div>
+                  <div class="int-wrap" {{ 'style="display:none"' if is_ext }}>
+                    <select name="testers" class="form-select form-select-sm">
+                      <option value="">— Pilih —</option>
+                      {% for e in emps %}<option value="{{ e.id }}" {{ 'selected' if e.id == m.employee_id }}>{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div class="ext-wrap" {{ '' if is_ext else 'style="display:none"' }}>
+                    <input type="text" name="test_exts" class="form-control form-control-sm"
+                           value="{{ m.name_ext or '' }}" placeholder="Nama eksternal">
+                  </div>
                 </div>
                 {% endfor %}
               {% else %}
-                <div class="d-flex gap-1 mb-1 member-row">
+              <div class="member-row mb-1">
+                <div class="d-flex gap-1 align-items-center mb-1">
+                  <div class="role-toggle">
+                    <input type="radio" name="_tgl_test_0" value="internal" checked onchange="toggleMemberRow(this,'internal')">
+                    <label>Internal</label>
+                    <input type="radio" name="_tgl_test_0" value="external" onchange="toggleMemberRow(this,'external')">
+                    <label>Eksternal</label>
+                  </div>
+                  <button type="button" class="btn btn-xs btn-outline-danger ms-auto" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+                </div>
+                <div class="int-wrap">
                   <select name="testers" class="form-select form-select-sm">
                     <option value="">— Pilih —</option>
                     {% for e in emps %}<option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
                   </select>
-                  <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
                 </div>
+                <div class="ext-wrap" style="display:none">
+                  <input type="text" name="test_exts" class="form-control form-control-sm" placeholder="Nama eksternal">
+                </div>
+              </div>
               {% endif %}
             </div>
           </div>
@@ -195,7 +260,7 @@
     </div>
   </div>
 
-</div>{# end row #}
+</div>
 
 <div class="d-flex gap-2 mt-2">
   <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Simpan Proyek</button>
@@ -203,23 +268,46 @@
 </div>
 </form>
 
-{# Template row untuk JS — hidden #}
-<template id="member-row-tpl">
-  <div class="d-flex gap-1 mb-1 member-row">
-    <select name="__NAME__" class="form-select form-select-sm">
-      <option value="">— Pilih —</option>
-      {% for e in emps %}<option value="{{ e.id }}">{{ e.name }}{% if e.jabatan %} ({{ e.jabatan }}){% endif %}</option>{% endfor %}
-    </select>
-    <button type="button" class="btn btn-xs btn-outline-danger" style="padding:2px 7px" onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
-  </div>
-</template>
-
+{# JS: toggle internal/eksternal #}
 <script>
-function addMemberRow(containerId, fieldName) {
-  const tpl = document.getElementById('member-row-tpl');
-  const clone = tpl.content.cloneNode(true);
-  clone.querySelector('select').name = fieldName;
-  document.getElementById(containerId).appendChild(clone);
+// Build emp options once from Jinja data
+const _empData = [{% for e in emps %}{"id":{{ e.id }},"label":"{{ e.name | replace('"','') }}{% if e.jabatan %} ({{ e.jabatan | replace('"','') }}){% endif %}"},{% endfor %}];
+const _empOptionsHtml = '<option value="">— Pilih —</option>' + _empData.map(e=>`<option value="${e.id}">${e.label}</option>`).join('');
+
+function togglePerson(fieldId, mode) {
+  document.getElementById(fieldId + '-int-wrap').style.display = mode === 'internal' ? '' : 'none';
+  document.getElementById(fieldId + '-ext-wrap').style.display = mode === 'external' ? '' : 'none';
+}
+
+function toggleMemberRow(radio, mode) {
+  const row = radio.closest('.member-row');
+  row.querySelector('.int-wrap').style.display = mode === 'internal' ? '' : 'none';
+  row.querySelector('.ext-wrap').style.display = mode === 'external' ? '' : 'none';
+}
+
+let _rowCnt = 100;
+function addMemberRow(containerId, intName, extName) {
+  const uid = ++_rowCnt;
+  const html = `
+    <div class="member-row mb-1">
+      <div class="d-flex gap-1 align-items-center mb-1">
+        <div class="role-toggle">
+          <input type="radio" id="tgl-${uid}-i" name="_tgl_dyn_${uid}" value="internal" checked onchange="toggleMemberRow(this,'internal')">
+          <label for="tgl-${uid}-i">Internal</label>
+          <input type="radio" id="tgl-${uid}-e" name="_tgl_dyn_${uid}" value="external" onchange="toggleMemberRow(this,'external')">
+          <label for="tgl-${uid}-e">Eksternal</label>
+        </div>
+        <button type="button" class="btn btn-xs btn-outline-danger ms-auto" style="padding:2px 7px"
+                onclick="this.closest('.member-row').remove()"><i class="bi bi-x"></i></button>
+      </div>
+      <div class="int-wrap">
+        <select name="${intName}" class="form-select form-select-sm">${_empOptionsHtml}</select>
+      </div>
+      <div class="ext-wrap" style="display:none">
+        <input type="text" name="${extName}" class="form-control form-control-sm" placeholder="Nama eksternal">
+      </div>
+    </div>`;
+  document.getElementById(containerId).insertAdjacentHTML('beforeend', html);
 }
 </script>
 {% endblock %}

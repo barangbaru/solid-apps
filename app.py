@@ -955,6 +955,9 @@ CREATE TABLE IF NOT EXISTS pc_projects (
     pic_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL,
     implementor_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL,
     co_leader_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE SET NULL,
+    pic_ext TEXT DEFAULT '',
+    implementor_ext TEXT DEFAULT '',
+    co_leader_ext TEXT DEFAULT '',
     color TEXT DEFAULT '#0ea5e9',
     created_by INTEGER DEFAULT NULL REFERENCES users(id),
     created_at TEXT DEFAULT (datetime('now','localtime'))
@@ -962,9 +965,9 @@ CREATE TABLE IF NOT EXISTS pc_projects (
 CREATE TABLE IF NOT EXISTS pc_members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES pc_projects(id) ON DELETE CASCADE,
-    employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-    role TEXT DEFAULT 'developer',
-    UNIQUE(project_id, employee_id)
+    employee_id INTEGER DEFAULT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    name_ext TEXT DEFAULT '',
+    role TEXT DEFAULT 'developer'
 );
 CREATE TABLE IF NOT EXISTS pc_issues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1116,6 +1119,10 @@ MIGRATIONS = [
     ('pc_projects',          'customer_id',             'INTEGER DEFAULT NULL'),
     ('pc_projects',          'implementor_id',          'INTEGER DEFAULT NULL'),
     ('pc_projects',          'co_leader_id',            'INTEGER DEFAULT NULL'),
+    ('pc_projects',          'pic_ext',                 "TEXT DEFAULT ''"),
+    ('pc_projects',          'implementor_ext',         "TEXT DEFAULT ''"),
+    ('pc_projects',          'co_leader_ext',           "TEXT DEFAULT ''"),
+    ('pc_members',           'name_ext',                "TEXT DEFAULT ''"),
 ]
 
 SC_TICKET_STATUSES = [
@@ -8462,11 +8469,21 @@ def _pc_log_issue(db, issue_id, action, old_val, new_val, notes=''):
     )
 
 def _pc_members(db, project_id):
-    return db.execute(
-        '''SELECT e.id, e.name, e.jabatan, e.divisi, pm.role
-           FROM pc_members pm JOIN employees e ON e.id=pm.employee_id
-           WHERE pm.project_id=? ORDER BY e.divisi, e.name''', (project_id,)
+    rows = db.execute(
+        '''SELECT pm.id, pm.role, pm.name_ext,
+                  e.id as emp_id, e.name, e.jabatan, e.divisi
+           FROM pc_members pm
+           LEFT JOIN employees e ON e.id=pm.employee_id
+           WHERE pm.project_id=? ORDER BY pm.role, e.name, pm.name_ext''', (project_id,)
     ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        if not d['name'] and d['name_ext']:
+            d['name'] = d['name_ext']
+            d['jabatan'] = 'Eksternal'
+        result.append(d)
+    return result
 
 @app.route('/project/')
 @app.route('/project')
@@ -8513,21 +8530,34 @@ def pc_projects():
     ).fetchall()
     return render_template('pc_projects.html', rows=rows)
 
-def _pc_save_team_members(db, pid, programmers, testers):
-    """Replace programmer dan QC/tester members untuk project pid."""
+def _pc_save_team_members(db, pid, programmers, prog_exts, testers, test_exts):
+    """Replace programmer dan QC/tester members untuk project pid.
+    programmers/testers: list of employee_id (int string) or '' if external
+    prog_exts/test_exts: list of external name strings
+    """
     db.execute("DELETE FROM pc_members WHERE project_id=? AND role IN ('programmer','qc_tester')", (pid,))
-    for eid in programmers:
-        try:
-            db.execute("INSERT OR IGNORE INTO pc_members(project_id,employee_id,role) VALUES(?,?,'programmer')",
-                       (pid, int(eid)))
-        except Exception:
-            pass
-    for eid in testers:
-        try:
-            db.execute("INSERT OR IGNORE INTO pc_members(project_id,employee_id,role) VALUES(?,?,'qc_tester')",
-                       (pid, int(eid)))
-        except Exception:
-            pass
+    for eid, ext in zip(programmers, prog_exts):
+        eid = eid.strip(); ext = ext.strip()
+        if eid:
+            try:
+                db.execute("INSERT INTO pc_members(project_id,employee_id,name_ext,role) VALUES(?,?,?,'programmer')",
+                           (pid, int(eid), ''))
+            except Exception:
+                pass
+        elif ext:
+            db.execute("INSERT INTO pc_members(project_id,employee_id,name_ext,role) VALUES(?,NULL,?,'programmer')",
+                       (pid, ext))
+    for eid, ext in zip(testers, test_exts):
+        eid = eid.strip(); ext = ext.strip()
+        if eid:
+            try:
+                db.execute("INSERT INTO pc_members(project_id,employee_id,name_ext,role) VALUES(?,?,?,'qc_tester')",
+                           (pid, int(eid), ''))
+            except Exception:
+                pass
+        elif ext:
+            db.execute("INSERT INTO pc_members(project_id,employee_id,name_ext,role) VALUES(?,NULL,?,'qc_tester')",
+                       (pid, ext))
 
 @app.route('/project/projects/add', methods=['GET','POST'])
 @login_required
@@ -8546,8 +8576,8 @@ def pc_project_add():
             return render_template('pc_project_form.html', emps=emps, customers=customers, colors=PC_PROJECT_COLORS, r={}, members_prog=[], members_test=[])
         cur = db.execute(
             '''INSERT INTO pc_projects(code,name,customer_id,description,status,start_date,end_date,
-               pic_id,implementor_id,co_leader_id,color,created_by)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+               pic_id,pic_ext,implementor_id,implementor_ext,co_leader_id,co_leader_ext,color,created_by)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (code, name,
              request.form.get('customer_id') or None,
              request.form.get('description','').strip(),
@@ -8555,15 +8585,20 @@ def pc_project_add():
              request.form.get('start_date') or None,
              request.form.get('end_date') or None,
              request.form.get('pic_id') or None,
+             request.form.get('pic_ext','').strip(),
              request.form.get('implementor_id') or None,
+             request.form.get('implementor_ext','').strip(),
              request.form.get('co_leader_id') or None,
+             request.form.get('co_leader_ext','').strip(),
              request.form.get('color','#0ea5e9'),
              session.get('user_id'))
         )
         pid = cur.lastrowid
         _pc_save_team_members(db, pid,
                               request.form.getlist('programmers'),
-                              request.form.getlist('testers'))
+                              request.form.getlist('prog_exts'),
+                              request.form.getlist('testers'),
+                              request.form.getlist('test_exts'))
         db.commit()
         flash(f'Proyek {name} berhasil dibuat', 'success')
         return redirect(url_for('pc_projects'))
@@ -8581,7 +8616,8 @@ def pc_project_edit(pid):
     if request.method == 'POST':
         db.execute(
             '''UPDATE pc_projects SET name=?,customer_id=?,description=?,status=?,
-               start_date=?,end_date=?,pic_id=?,implementor_id=?,co_leader_id=?,color=? WHERE id=?''',
+               start_date=?,end_date=?,pic_id=?,pic_ext=?,
+               implementor_id=?,implementor_ext=?,co_leader_id=?,co_leader_ext=?,color=? WHERE id=?''',
             (request.form.get('name','').strip(),
              request.form.get('customer_id') or None,
              request.form.get('description','').strip(),
@@ -8589,33 +8625,39 @@ def pc_project_edit(pid):
              request.form.get('start_date') or None,
              request.form.get('end_date') or None,
              request.form.get('pic_id') or None,
+             request.form.get('pic_ext','').strip(),
              request.form.get('implementor_id') or None,
+             request.form.get('implementor_ext','').strip(),
              request.form.get('co_leader_id') or None,
+             request.form.get('co_leader_ext','').strip(),
              request.form.get('color','#0ea5e9'),
              pid)
         )
         _pc_save_team_members(db, pid,
                               request.form.getlist('programmers'),
-                              request.form.getlist('testers'))
+                              request.form.getlist('prog_exts'),
+                              request.form.getlist('testers'),
+                              request.form.getlist('test_exts'))
         db.commit()
         flash('Proyek diperbarui', 'success')
         return redirect(url_for('pc_project_detail', pid=pid))
     members_prog = db.execute(
-        "SELECT employee_id FROM pc_members WHERE project_id=? AND role='programmer'", (pid,)).fetchall()
+        "SELECT employee_id, name_ext FROM pc_members WHERE project_id=? AND role='programmer'", (pid,)).fetchall()
     members_test = db.execute(
-        "SELECT employee_id FROM pc_members WHERE project_id=? AND role='qc_tester'", (pid,)).fetchall()
+        "SELECT employee_id, name_ext FROM pc_members WHERE project_id=? AND role='qc_tester'", (pid,)).fetchall()
     return render_template('pc_project_form.html', emps=emps, customers=customers,
-                           colors=PC_PROJECT_COLORS, r=proj,
-                           members_prog=[m['employee_id'] for m in members_prog],
-                           members_test=[m['employee_id'] for m in members_test])
+                           colors=PC_PROJECT_COLORS, r=dict(proj),
+                           members_prog=members_prog, members_test=members_test)
 
 @app.route('/project/projects/<int:pid>')
 @login_required
 def pc_project_detail(pid):
     db   = get_db()
-    proj = db.execute(
+    proj_row = db.execute(
         '''SELECT p.*, c.name as customer_name,
-                  pm.name as pic_name, im.name as implementor_name, cl.name as co_leader_name
+                  COALESCE(pm.name, p.pic_ext)        as pic_name,
+                  COALESCE(im.name, p.implementor_ext) as implementor_name,
+                  COALESCE(cl.name, p.co_leader_ext)   as co_leader_name
            FROM pc_projects p
            LEFT JOIN sc_customers c ON c.id=p.customer_id
            LEFT JOIN employees pm ON pm.id=p.pic_id
@@ -8623,6 +8665,7 @@ def pc_project_detail(pid):
            LEFT JOIN employees cl ON cl.id=p.co_leader_id
            WHERE p.id=?''', (pid,)
     ).fetchone()
+    proj = dict(proj_row) if proj_row else None
     if not proj: abort(404)
     issues = db.execute(
         '''SELECT i.*, ep.name as pic_prog_name, et.name as pic_test_name
