@@ -2184,6 +2184,13 @@ def send_telegram(bot_token, chat_id, message, _log_subject='', _app_slug=None):
         audit_notif('telegram', chat_id, _log_subject or message[:60], message, False, str(e), app_slug=_app_slug)
         return False, str(e)
 
+def _real_ip():
+    """Ambil IP asli client — baca X-Forwarded-For / X-Real-IP dari reverse proxy."""
+    xff = request.headers.get('X-Forwarded-For', '')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.headers.get('X-Real-IP', '') or request.remote_addr or ''
+
 def audit_log(action, resource='', resource_id='', detail='', app_slug=None):
     """Catat aktivitas user ke audit_activity. Dipanggil dari route mana saja."""
     try:
@@ -2193,7 +2200,7 @@ def audit_log(action, resource='', resource_id='', detail='', app_slug=None):
                       VALUES(?,?,?,?,?,?,?,?,?)''',
                    (slug, session.get('user_id'), session.get('user_name',''),
                     action, resource, str(resource_id), detail,
-                    request.remote_addr or '', request.user_agent.string[:200] if request.user_agent else ''))
+                    _real_ip(), request.user_agent.string[:200] if request.user_agent else ''))
         db.commit()
     except Exception:
         pass
@@ -7021,7 +7028,7 @@ def err_404(e):
                       VALUES(?,?,?,?,?,?,?,?,?)''',
                    (session.get('active_app','portal'), session.get('user_id'), session.get('user_name',''),
                     request.path, request.method, 404, 'NotFound', str(e),
-                    request.remote_addr or ''))
+                    _real_ip()))
         db.commit()
     except Exception:
         pass
@@ -7037,7 +7044,7 @@ def err_500(e):
                       VALUES(?,?,?,?,?,?,?,?,?,?)''',
                    (session.get('active_app','portal'), session.get('user_id'), session.get('user_name',''),
                     request.path, request.method, 500, type(e).__name__, str(e), tb[:3000],
-                    request.remote_addr or ''))
+                    _real_ip()))
         db.commit()
     except Exception:
         pass

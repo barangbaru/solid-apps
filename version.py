@@ -1,3 +1,3 @@
-VERSION = "1.6.3"
+VERSION = "1.6.4"
 RELEASE_DATE = "2026-06-25"
-RELEASE_NOTES = "ProjectCore: soft delete proyek + restore dari daftar proyek dihapus"
+RELEASE_NOTES = "Audit trail: real IP client dari X-Forwarded-For / X-Real-IP (reverse proxy aware)"
