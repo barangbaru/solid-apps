@@ -7,6 +7,62 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.9.2] — 2026-06-27
+### Bug Fix
+- Fix `psycopg2.errors.InFailedSqlTransaction` di `inject_globals`: `chatbot_enabled` sekarang dibungkus try/except tersendiri, tidak akan crash jika koneksi DB sedang dalam state aborted
+
+---
+
+## [1.9.1] — 2026-06-27
+### Fitur: Konfigurasi AI Multi-Provider
+- Pengaturan Sistem: card baru **AI Assistant** — pilih provider (Anthropic / OpenAI / OpenAI-Compatible), API key, model, base URL
+- Quick-fill badge model populer per provider (Claude Sonnet, GPT-4o, dll.)
+- Field Base URL muncul otomatis saat provider `openai_compat` dipilih
+- Backward compat: `anthropic_api_key` tetap berfungsi sebagai fallback
+
+---
+
+## [1.9.0] — 2026-06-27
+### Fitur: AI Assistant (Chatbot)
+- Halaman `/chatbot` dengan antarmuka chat bubble, sidebar contoh pertanyaan, dan info panel
+- AI mengakses data real-time dari DB: tiket, project, karyawan, aset IT
+- Data gaji & evaluasi pribadi dikecualikan dari akses AI
+- Tool calling agentic loop (max 5 iterasi): `search_tickets`, `get_ticket_detail`, `list_projects`, `search_employees`, `search_assets`, `get_stats`
+- Dukungan provider Anthropic (tool_use) dan OpenAI / OpenAI-Compatible (function calling)
+- Menu "AI Assistant" di navbar, ditampilkan sesuai pengaturan `chatbot_enabled` dan role
+
+---
+
+## [1.8.1] — 2026-06-27
+### Fitur: Assignee Manual (Eksternal)
+- Tiket support & task project: tambah nama assignee manual (luar daftar karyawan) via tag input widget
+- Tabel baru: `sc_ticket_external_assignees`, `pc_task_external_assignees`
+- Detail tiket menampilkan grup "Eksternal / Manual" di panel Assignee
+- Daftar task project: nama eksternal digabung dengan assignee karyawan
+
+---
+
+## [1.8.0] — 2026-06-27
+### Fitur: Multi-Upload Screenshot Tiket
+- Form tiket support: Deskripsi wajib diisi; multi-upload screenshot di Deskripsi, Keterangan Status, dan Catatan Solusi
+- Tabel baru: `sc_ticket_attachments` (dengan kolom `section`)
+- Detail tiket: thumbnail screenshot per seksi, tombol hapus (role-gated)
+- Endpoint `DELETE /support/tickets/<tid>/attachments/<att_id>/delete`
+
+---
+
+## [1.7.8] — 2026-06-27
+### Bug Fix
+- Fix template `sc_ticket_form.html`: hapus referensi `s.priority` dari dropdown SLA (kolom belum tentu ada di semua baris)
+
+---
+
+## [1.7.7] — 2026-06-27
+### Bug Fix
+- Fix `ValueError: 'priority' is not in list` saat buka form tiket: tambah migrasi `sc_sla_categories.priority` ke MIGRATIONS (kolom ada di CREATE TABLE tapi tidak di MIGRATIONS, sehingga tidak terbuat di DB existing)
+
+---
+
 ## [1.7.6] — 2026-06-27
 ### Fitur: Prioritas Tiket Support
 - Kolom `priority` ditambahkan ke tabel `sc_tickets` (migrasi otomatis, default `'Medium'`)

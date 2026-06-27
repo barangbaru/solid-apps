@@ -1990,10 +1990,16 @@ def inject_globals():
             bk_resources = db.execute(
                 'SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order, name'
             ).fetchall()
+            try:
+                _chatbot_on = get_settings(db).get('chatbot_enabled','0') == '1'
+            except Exception:
+                _chatbot_on = False
         except Exception:
             bk_resources = []
+            _chatbot_on = False
     else:
         bk_resources = []
+        _chatbot_on = False
     return {
         'current_user': {
             'id':       session.get('user_id'),
@@ -2014,7 +2020,7 @@ def inject_globals():
         'app_version':         VERSION,
         'app_release_date':    RELEASE_DATE,
         'update_badge':        _get_update_badge(session),
-        'chatbot_enabled':     (get_settings(get_db()).get('chatbot_enabled','0') == '1') if 'user_id' in session else False,
+        'chatbot_enabled':     _chatbot_on,
     }
 
 # ─── Auto-set active_app dari URL path ────────────────────────────────────────
