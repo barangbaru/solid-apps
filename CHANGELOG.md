@@ -7,6 +7,13 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.7.3] — 2026-06-27
+### Bug Fix
+- Fix error `column i.due_date does not exist` di PostgreSQL: tabel `pc_issues` tidak memiliki kolom `due_date` (hanya ada `resolved_date`, `issued_date`, `created_at`)
+- Perbaikan di `calc_task_perf()` dan `calc_task_analytics()`: hapus `i.due_date` dari SELECT, gunakan `resolved_date` sebagai proxy timeliness untuk issue project
+
+---
+
 ## [1.7.2] — 2026-06-27
 ### Fitur: Analitik Kinerja Divisi (`/kinerja/analitik`)
 - `calc_task_analytics()`: fungsi baru — analitik detail per karyawan mencakup timeliness, concurrency, breakdown per tipe task
