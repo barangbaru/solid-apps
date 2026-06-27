@@ -2950,6 +2950,281 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
     }
 
 
+def calc_task_analytics(db, emp_id, date_from='', date_to=''):
+    """Analitik detail per karyawan: timeliness, concurrency, breakdown tipe.
+
+    Return dict:
+      tasks_all      : list semua task (done & open) dengan info lengkap
+      done_ontime    : task selesai tepat/sebelum due date
+      done_delay     : task selesai setelah due date
+      done_no_due    : task selesai tanpa due date
+      open_ontime    : masih open, due date belum lewat (atau tanpa due)
+      open_overtime  : masih open, due date sudah lewat!
+      concurrent_max : maks task aktif bersamaan di satu titik waktu
+      concurrent_avg : rata-rata task aktif bersamaan per hari
+      by_type        : {type: {done, delay, overtime, ontime, open}} count
+      total_done     : jumlah task selesai
+      total_open     : jumlah task masih open
+      ontime_rate    : pct ontime dari yang punya due_date
+    """
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+
+    today = _date.today().isoformat()
+
+    def _in_period(d):
+        if not d:
+            return True
+        if date_from and d < date_from:
+            return False
+        if date_to and d > date_to:
+            return False
+        return True
+
+    def _timeliness(due, done_date):
+        """Return: 'ontime'|'delay'|'no_due'|'open_ontime'|'open_overtime'"""
+        is_done = bool(done_date)
+        if not due:
+            return 'done_no_due' if is_done else 'open_ontime'
+        if is_done:
+            return 'done_ontime' if done_date <= due else 'done_delay'
+        return 'open_ontime' if today <= due else 'open_overtime'
+
+    tasks_all = []
+
+    def _add(task_type, label, source, due, start, done, pts, priority='Medium', project=''):
+        tl = _timeliness(due, done)
+        tasks_all.append({
+            'type': task_type, 'label': label, 'source': source,
+            'due': due, 'start': start, 'done': done,
+            'timeliness': tl, 'pts': pts,
+            'priority': priority, 'project': project,
+            'is_done': bool(done),
+        })
+
+    # Load config bobot
+    cfg_rows = db.execute('SELECT * FROM task_perf_config ORDER BY sort_order').fetchall()
+    cfg = {r['task_type']: r for r in cfg_rows}
+
+    def _bpts(ctype):
+        return float(cfg[ctype]['base_points']) if ctype in cfg else 0
+
+    def _pmult(ctype, priority):
+        if ctype not in cfg:
+            return 1.0
+        c = cfg[ctype]
+        p = (priority or 'Medium').lower()
+        if p in ('critical', 'blocker', 'kritis'): return float(c['priority_critical'])
+        if p in ('high', 'tinggi'):                return float(c['priority_high'])
+        if p in ('low', 'rendah'):                 return float(c['priority_low'])
+        return float(c['priority_medium'])
+
+    def _omult(ctype, due, done):
+        if ctype not in cfg or not due or not done:
+            return 1.0
+        c = cfg[ctype]
+        return float(c['ontime_mult']) if done <= due else float(c['late_mult'])
+
+    def _dw(col, params):
+        cl = []
+        if date_from: cl.append(f'{col} >= ?'); params.append(date_from)
+        if date_to:   cl.append(f'{col} <= ?'); params.append(date_to)
+        return (' AND ' + ' AND '.join(cl)) if cl else ''
+
+    # ── Project tasks sebagai PIC ───────────────────────────────────────────
+    p = [emp_id]
+    rows = db.execute(f'''
+        SELECT p.name, p.start_date, p.end_date, p.status, p.code
+        FROM pc_projects p WHERE p.pic_id=? AND p.deleted_at IS NULL{_dw("p.start_date", p)}
+    ''', p).fetchall()
+    for r in rows:
+        done_date = r['end_date'] if r['status'] in ('done','closed','selesai') else None
+        pts = round(_bpts('project_lead') * _omult('project_lead', r['end_date'], done_date), 2)
+        _add('project_lead', 'Project PIC/Lead', f"Project: {r['name']}",
+             r['end_date'], r['start_date'], done_date, pts, project=r['name'])
+
+    # ── Project sebagai Implementor ─────────────────────────────────────────
+    p = [emp_id, emp_id]
+    rows = db.execute(f'''
+        SELECT p.name, p.start_date, p.end_date, p.status
+        FROM pc_projects p
+        WHERE (p.implementor_id=? OR p.co_leader_id=?)
+          AND p.pic_id != ? AND p.deleted_at IS NULL{_dw("p.start_date", p)}
+    ''', p + [emp_id]).fetchall()
+    for r in rows:
+        done_date = r['end_date'] if r['status'] in ('done','closed','selesai') else None
+        pts = round(_bpts('project_impl') * _omult('project_impl', r['end_date'], done_date), 2)
+        _add('project_impl', 'Project Implementor', f"Project: {r['name']}",
+             r['end_date'], r['start_date'], done_date, pts, project=r['name'])
+
+    # ── Project Member ──────────────────────────────────────────────────────
+    p = [emp_id]
+    rows = db.execute(f'''
+        SELECT p.name, p.start_date, p.end_date, p.status
+        FROM pc_members m JOIN pc_projects p ON p.id=m.project_id
+        WHERE m.employee_id=? AND p.deleted_at IS NULL
+          AND p.pic_id != ? AND p.implementor_id != ?
+          AND (p.co_leader_id IS NULL OR p.co_leader_id != ?){_dw("p.start_date", p)}
+    ''', p + [emp_id, emp_id, emp_id]).fetchall()
+    for r in rows:
+        done_date = r['end_date'] if r['status'] in ('done','closed','selesai') else None
+        pts = round(_bpts('project_member') * _omult('project_member', r['end_date'], done_date), 2)
+        _add('project_member', 'Project Member', f"Project: {r['name']}",
+             r['end_date'], r['start_date'], done_date, pts, project=r['name'])
+
+    # ── Project Issues ──────────────────────────────────────────────────────
+    difficulty_map = {'hard':2.0,'sulit':2.0,'normal':1.0,'easy':0.5,'mudah':0.5}
+    p = [emp_id]
+    rows = db.execute(f'''
+        SELECT i.issue_no, i.title, i.difficulty, i.priority, i.due_date,
+               i.resolved_date, i.created_at, i.status_programmer, p.name AS proj
+        FROM pc_issues i JOIN pc_projects p ON p.id=i.project_id
+        WHERE i.pic_programmer_id=?{_dw("i.created_at", p)}
+    ''', p).fetchall()
+    for r in rows:
+        dm = difficulty_map.get((r['difficulty'] or 'Normal').lower(), 1.0)
+        is_done = r['status_programmer'] in ('done','closed','resolved')
+        done_date = r['resolved_date'] if is_done else None
+        pts = round(_bpts('project_issue') * dm
+                    * _pmult('project_issue', r['priority'])
+                    * _omult('project_issue', r['due_date'], done_date), 2)
+        _add('project_issue', f"Issue ({r['difficulty'] or 'Normal'})",
+             f"#{r['issue_no']} {r['title'][:35]} ({r['proj']})",
+             r['due_date'], r['created_at'][:10] if r['created_at'] else None,
+             done_date, pts, r['priority'] or 'Medium', r['proj'])
+
+    # ── Project Tasks ───────────────────────────────────────────────────────
+    p = [emp_id]
+    rows = db.execute(f'''
+        SELECT t.title, t.priority, t.due_date, t.status, t.created_at, p.name AS proj
+        FROM pc_task_assignees ta JOIN pc_tasks t ON t.id=ta.task_id
+        JOIN pc_projects p ON p.id=t.project_id
+        WHERE ta.employee_id=?{_dw("t.created_at", p)}
+    ''', p).fetchall()
+    for r in rows:
+        is_done = r['status'] in ('done','closed')
+        done_date = r['due_date'] if is_done else None  # proxy: done on due_date
+        pts = round(_bpts('project_task') * _pmult('project_task', r['priority']), 2)
+        _add('project_task', 'Task Project', f"{r['title'][:40]} ({r['proj']})",
+             r['due_date'], r['created_at'][:10] if r['created_at'] else None,
+             done_date if is_done else None, pts, r['priority'] or 'Medium', r['proj'])
+
+    # ── POC / Presales ──────────────────────────────────────────────────────
+    p = [emp_id]
+    rows = db.execute(f'''
+        SELECT r.req_no, r.subject, r.status, r.request_type, r.created_at
+        FROM sc_presales_assignees pa JOIN sc_presales_requests r ON r.id=pa.request_id
+        WHERE pa.employee_id=?{_dw("r.created_at", p)}
+    ''', p).fetchall()
+    for r in rows:
+        is_done = r['status'] in ('done','closed','approved')
+        done_date = r['created_at'][:10] if (is_done and r['created_at']) else None
+        pts = round(_bpts('poc_presales'), 2)
+        _add('poc_presales', f"POC/Presales",
+             f"{r['request_type'].upper()} {r['req_no']}: {r['subject'][:35]}",
+             None, r['created_at'][:10] if r['created_at'] else None,
+             done_date, pts, 'Medium')
+
+    # ── Support Tickets ─────────────────────────────────────────────────────
+    p = [emp_id]
+    rows = db.execute(f'''
+        SELECT t.ticket_no, t.subject, t.priority, t.due_date, t.reported_at, t.status
+        FROM sc_ticket_assignees ta JOIN sc_tickets t ON t.id=ta.ticket_id
+        WHERE ta.employee_id=?{_dw("t.reported_at", p)}
+    ''', p).fetchall()
+    for r in rows:
+        is_done = r['status'] in ('resolved','closed')
+        done_date = r['due_date'] if is_done else None  # proxy
+        pts = round(_bpts('support_ticket') * _pmult('support_ticket', r['priority'] or 'Medium')
+                    * _omult('support_ticket', r['due_date'], done_date), 2)
+        _add('support_ticket', 'Tiket Support',
+             f"#{r['ticket_no']}: {r['subject'][:40]}",
+             r['due_date'],
+             r['reported_at'][:10] if r['reported_at'] else None,
+             done_date, pts, r['priority'] or 'Medium')
+
+    # ── Hitung timeliness ───────────────────────────────────────────────────
+    def _cnt(tl): return sum(1 for t in tasks_all if t['timeliness'] == tl)
+    done_ontime   = _cnt('done_ontime')
+    done_delay    = _cnt('done_delay')
+    done_no_due   = _cnt('done_no_due')
+    open_ontime   = _cnt('open_ontime')
+    open_overtime = _cnt('open_overtime')
+    total_done    = done_ontime + done_delay + done_no_due
+    total_open    = open_ontime + open_overtime
+    total_with_due = done_ontime + done_delay
+    ontime_rate   = round(done_ontime / total_with_due * 100, 1) if total_with_due else None
+
+    # ── Concurrency (max & avg task aktif bersamaan) ─────────────────────────
+    # Pakai event scan: setiap task punya [start, end]. Scan timeline, hitung max tumpang tindih.
+    events = []
+    for t in tasks_all:
+        s = t['start'] or t['due'] or today
+        e = t['done'] or (today if not t['is_done'] else t['done']) or today
+        if s and e and s <= e:
+            events.append((s, +1))
+            events.append((e, -1))
+    events.sort(key=lambda x: (x[0], x[1]))
+    cur = mx = 0
+    for _, d in events:
+        cur += d
+        if cur > mx: mx = cur
+    concurrent_max = mx
+
+    # Avg concurrent: total task-days / period days
+    total_task_days = 0
+    for t in tasks_all:
+        s = t['start'] or t['due'] or today
+        e = t['done'] or today
+        try:
+            d0 = _dt.strptime(s[:10], '%Y-%m-%d').date()
+            d1 = _dt.strptime(e[:10], '%Y-%m-%d').date()
+            total_task_days += max(1, (d1 - d0).days + 1)
+        except Exception:
+            total_task_days += 1
+    period_days = 1
+    if date_from and date_to:
+        try:
+            period_days = max(1, (_dt.strptime(date_to, '%Y-%m-%d').date()
+                                  - _dt.strptime(date_from, '%Y-%m-%d').date()).days + 1)
+        except Exception:
+            pass
+    concurrent_avg = round(total_task_days / period_days, 1) if period_days else 0
+
+    # ── By type summary ──────────────────────────────────────────────────────
+    by_type = {}
+    for t in tasks_all:
+        tp = t['type']
+        if tp not in by_type:
+            by_type[tp] = {'label': t['label'], 'done': 0, 'ontime': 0,
+                           'delay': 0, 'overtime': 0, 'open': 0}
+        tl = t['timeliness']
+        if 'done' in tl:
+            by_type[tp]['done'] += 1
+            if tl == 'done_ontime': by_type[tp]['ontime'] += 1
+            elif tl == 'done_delay': by_type[tp]['delay'] += 1
+        else:
+            by_type[tp]['open'] += 1
+            if tl == 'open_overtime': by_type[tp]['overtime'] += 1
+
+    total_raw = round(sum(t['pts'] for t in tasks_all if t['is_done']), 2)
+
+    return {
+        'tasks_all':      tasks_all,
+        'done_ontime':    done_ontime,
+        'done_delay':     done_delay,
+        'done_no_due':    done_no_due,
+        'open_ontime':    open_ontime,
+        'open_overtime':  open_overtime,
+        'total_done':     total_done,
+        'total_open':     total_open,
+        'ontime_rate':    ontime_rate,
+        'concurrent_max': concurrent_max,
+        'concurrent_avg': concurrent_avg,
+        'by_type':        by_type,
+        'total_raw':      total_raw,
+    }
+
+
 def start_scheduler():
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -7536,6 +7811,70 @@ def kinerja_tim():
         members=members, divisi=divisi, divisi_list=divisi_list,
         date_from=date_from, date_to=date_to, benchmark=benchmark,
         tim_avg=tim_avg, tim_max=tim_max, tim_min=tim_min,
+    )
+
+
+@app.route('/kinerja/analitik')
+@login_required
+def kinerja_analitik():
+    db        = get_db()
+    divisi    = request.args.get('divisi', '')
+    date_from = request.args.get('from', '')
+    date_to   = request.args.get('to', '')
+    benchmark = float(request.args.get('benchmark', 100))
+    level     = request.args.get('level', '')
+
+    divisi_list = [r['divisi'] for r in db.execute(
+        "SELECT DISTINCT divisi FROM employees WHERE is_active=1 AND divisi!='' ORDER BY divisi"
+    ).fetchall()]
+
+    # Filter karyawan
+    q = "SELECT * FROM employees WHERE is_active=1"
+    params = []
+    if divisi:
+        q += " AND divisi=?"; params.append(divisi)
+    if level:
+        q += " AND level=?"; params.append(level)
+    q += " ORDER BY divisi, name"
+    emps = db.execute(q, params).fetchall()
+
+    members = []
+    for emp in emps:
+        analytics = calc_task_analytics(db, emp['id'], date_from, date_to)
+        perf      = calc_task_perf(db, emp['id'], date_from, date_to, benchmark)
+        members.append({
+            'emp':       emp,
+            'a':         analytics,
+            'perf':      perf,
+        })
+
+    # Urutkan: total task selesai tertinggi
+    members.sort(key=lambda x: x['a']['total_done'], reverse=True)
+    for i, m in enumerate(members, 1):
+        m['rank'] = i
+
+    # Aggregate per divisi
+    div_stats = {}
+    for m in members:
+        d = m['emp']['divisi'] or '—'
+        if d not in div_stats:
+            div_stats[d] = {'count': 0, 'total_done': 0, 'ontime': 0,
+                            'delay': 0, 'overtime': 0, 'score_sum': 0}
+        s = div_stats[d]
+        s['count']      += 1
+        s['total_done'] += m['a']['total_done']
+        s['ontime']     += m['a']['done_ontime']
+        s['delay']      += m['a']['done_delay']
+        s['overtime']   += m['a']['open_overtime']
+        s['score_sum']  += m['perf']['task_score']
+    for d in div_stats:
+        n = div_stats[d]['count']
+        div_stats[d]['avg_score'] = round(div_stats[d]['score_sum'] / n, 1) if n else 0
+
+    return render_template('kinerja_analitik.html',
+        members=members, divisi=divisi, divisi_list=divisi_list,
+        date_from=date_from, date_to=date_to, benchmark=benchmark,
+        level=level, div_stats=div_stats,
     )
 
 

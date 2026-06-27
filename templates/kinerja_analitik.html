@@ -1,0 +1,394 @@
+{% extends 'base.html' %}
+{% block title %}Analitik Kinerja Divisi{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Analitik Kinerja Divisi</span>{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+{# ── Filter ── #}
+<div class="col-12">
+  <div class="card border-0 shadow-sm">
+    <div class="card-body py-2">
+      <form class="row g-2 align-items-end" method="get">
+        <div class="col-auto">
+          <label class="form-label small mb-1">Divisi</label>
+          <select name="divisi" class="form-select form-select-sm" style="min-width:160px">
+            <option value="">Semua Divisi</option>
+            {% for d in divisi_list %}
+            <option value="{{ d }}" {% if d == divisi %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Dari</label>
+          <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Sampai</label>
+          <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}">
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Benchmark (pts/bln)</label>
+          <input type="number" name="benchmark" class="form-control form-control-sm"
+                 style="width:110px" value="{{ benchmark }}" min="10" step="10">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-sm">Terapkan</button>
+          <a href="/kinerja/tim?divisi={{ divisi }}&from={{ date_from }}&to={{ date_to }}"
+             class="btn btn-outline-secondary btn-sm ms-1">← Ranking Tim</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Charts: Task Volume & Timeliness ── #}
+<div class="col-12 col-lg-6">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header py-2 fw-bold small">
+      <i class="bi bi-bar-chart-line me-1"></i>Jumlah Task Diselesaikan per Orang
+    </div>
+    <div class="card-body">
+      <canvas id="chartVolume" height="{% if members|length > 8 %}280{% else %}200{% endif %}"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="col-12 col-lg-6">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header py-2 fw-bold small">
+      <i class="bi bi-clock-history me-1"></i>Status Ketepatan Waktu (On-time vs Delay vs Overtime)
+    </div>
+    <div class="card-body">
+      <canvas id="chartTimeliness" height="{% if members|length > 8 %}280{% else %}200{% endif %}"></canvas>
+    </div>
+  </div>
+</div>
+
+{# ── Chart: Concurrency & Score ── #}
+<div class="col-12 col-lg-5">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header py-2 fw-bold small">
+      <i class="bi bi-layers me-1"></i>Task Berjalan Bersamaan (Maks & Rata-rata)
+    </div>
+    <div class="card-body">
+      <canvas id="chartConcurrency" height="220"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="col-12 col-lg-7">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header py-2 fw-bold small">
+      <i class="bi bi-graph-up me-1"></i>Skor Task vs Volume Task (Bubble)
+    </div>
+    <div class="card-body d-flex align-items-center">
+      <canvas id="chartBubble" height="220"></canvas>
+    </div>
+  </div>
+</div>
+
+{# ── Tabel Detail Perbandingan ── #}
+<div class="col-12">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header py-2 fw-bold small d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-table me-1"></i>Tabel Perbandingan Detail ({{ members|length }} karyawan)</span>
+      <input type="text" id="filterTable" class="form-control form-control-sm w-auto"
+             placeholder="Cari nama..." style="max-width:200px">
+    </div>
+    <div class="card-body p-0" style="overflow-x:auto">
+      <table class="table table-hover align-middle mb-0 small" id="mainTable" style="min-width:1050px">
+        <thead class="table-light sticky-top">
+          <tr>
+            <th class="ps-3" rowspan="2" style="vertical-align:middle">#</th>
+            <th rowspan="2" style="vertical-align:middle">Nama</th>
+            <th rowspan="2" style="vertical-align:middle">Divisi / Level</th>
+            <th class="text-center border-start" colspan="4">Volume Task</th>
+            <th class="text-center border-start" colspan="4">Ketepatan Waktu</th>
+            <th class="text-center border-start" colspan="2">Concurrency</th>
+            <th class="text-center border-start" colspan="2">Skor</th>
+            <th rowspan="2" style="vertical-align:middle"></th>
+          </tr>
+          <tr>
+            <th class="text-center small fw-normal border-start">Selesai</th>
+            <th class="text-center small fw-normal">Open</th>
+            <th class="text-center small fw-normal">Project</th>
+            <th class="text-center small fw-normal">Support</th>
+            <th class="text-center small fw-normal border-start text-success">On-time</th>
+            <th class="text-center small fw-normal text-danger">Delay</th>
+            <th class="text-center small fw-normal text-warning">Overtime</th>
+            <th class="text-center small fw-normal text-muted">% On-time</th>
+            <th class="text-center small fw-normal border-start">Maks</th>
+            <th class="text-center small fw-normal">Avg</th>
+            <th class="text-center small fw-normal border-start">Raw Pts</th>
+            <th class="text-center small fw-normal">Skor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          {% set a = m.a %}
+          {% set score = m.perf.task_score %}
+          {% set proj_done = (a.by_type.get('project_lead', {}).get('done', 0) +
+                              a.by_type.get('project_impl', {}).get('done', 0) +
+                              a.by_type.get('project_member', {}).get('done', 0) +
+                              a.by_type.get('project_issue', {}).get('done', 0) +
+                              a.by_type.get('project_task', {}).get('done', 0)) %}
+          {% set sup_done = a.by_type.get('support_ticket', {}).get('done', 0) %}
+          <tr>
+            <td class="ps-3 text-center text-muted">{{ loop.index }}</td>
+            <td class="fw-semibold">{{ m.emp.name }}</td>
+            <td class="text-muted">
+              {{ m.emp.divisi or '—' }}
+              {% if m.emp.level %}<br><span class="badge bg-light text-muted border" style="font-size:.65rem">{{ m.emp.level }}</span>{% endif %}
+            </td>
+            {# Volume #}
+            <td class="text-center border-start fw-bold">{{ a.total_done }}</td>
+            <td class="text-center">
+              {% if a.total_open > 0 %}
+              <span class="{% if a.open_overtime > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">
+                {{ a.total_open }}
+              </span>
+              {% else %}<span class="text-muted">0</span>{% endif %}
+            </td>
+            <td class="text-center">{{ proj_done }}</td>
+            <td class="text-center">{{ sup_done }}</td>
+            {# Timeliness #}
+            <td class="text-center border-start text-success fw-semibold">{{ a.done_ontime }}</td>
+            <td class="text-center {% if a.done_delay > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+              {{ a.done_delay }}
+            </td>
+            <td class="text-center {% if a.open_overtime > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">
+              {{ a.open_overtime }}
+              {% if a.open_overtime > 0 %}<i class="bi bi-exclamation-triangle-fill ms-1" style="font-size:.7rem"></i>{% endif %}
+            </td>
+            <td class="text-center border-start">
+              {% if a.ontime_rate is not none %}
+              <span class="fw-bold {% if a.ontime_rate >= 80 %}text-success{% elif a.ontime_rate >= 60 %}text-primary{% else %}text-danger{% endif %}">
+                {{ a.ontime_rate }}%
+              </span>
+              {% else %}<span class="text-muted small">—</span>{% endif %}
+            </td>
+            {# Concurrency #}
+            <td class="text-center border-start">
+              <span class="badge {% if a.concurrent_max >= 5 %}bg-danger{% elif a.concurrent_max >= 3 %}bg-warning text-dark{% else %}bg-light text-dark border{% endif %}">
+                {{ a.concurrent_max }}
+              </span>
+            </td>
+            <td class="text-center text-muted">{{ a.concurrent_avg }}</td>
+            {# Score #}
+            <td class="text-center border-start text-muted">{{ a.total_raw }}</td>
+            <td class="text-center">
+              <span class="fw-bold {% if score >= 80 %}text-success{% elif score >= 60 %}text-primary{% elif score >= 40 %}text-warning{% else %}text-danger{% endif %}">
+                {{ score }}
+              </span>
+            </td>
+            <td class="pe-3">
+              <a href="/kinerja/individu/{{ m.emp.id }}?from={{ date_from }}&to={{ date_to }}&benchmark={{ benchmark }}"
+                 class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:.7rem">Detail</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="15" class="text-center text-muted py-4">Tidak ada data.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ── Rangkuman per Divisi ── #}
+{% if div_stats %}
+<div class="col-12">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header py-2 fw-bold small">
+      <i class="bi bi-building me-1"></i>Rangkuman per Divisi
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover align-middle mb-0 small">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Divisi</th>
+            <th class="text-center">Anggota</th>
+            <th class="text-center">Total Task Selesai</th>
+            <th class="text-center text-success">On-time</th>
+            <th class="text-center text-danger">Delay</th>
+            <th class="text-center text-warning">Overtime (open)</th>
+            <th class="text-center">% On-time</th>
+            <th class="text-center">Avg Skor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dname, ds in div_stats.items() | sort(attribute='0') %}
+          {% set total_with_due = ds.ontime + ds.delay %}
+          {% set ontime_pct = (ds.ontime / total_with_due * 100) | round(1) if total_with_due > 0 else none %}
+          <tr>
+            <td class="ps-3 fw-semibold">{{ dname }}</td>
+            <td class="text-center">{{ ds.count }}</td>
+            <td class="text-center fw-bold">{{ ds.total_done }}</td>
+            <td class="text-center text-success fw-semibold">{{ ds.ontime }}</td>
+            <td class="text-center {% if ds.delay > 0 %}text-danger{% else %}text-muted{% endif %}">{{ ds.delay }}</td>
+            <td class="text-center {% if ds.overtime > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">{{ ds.overtime }}</td>
+            <td class="text-center">
+              {% if ontime_pct is not none %}
+              <span class="fw-bold {% if ontime_pct >= 80 %}text-success{% elif ontime_pct >= 60 %}text-primary{% else %}text-danger{% endif %}">
+                {{ ontime_pct }}%
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              <span class="fw-bold {% if ds.avg_score >= 80 %}text-success{% elif ds.avg_score >= 60 %}text-primary{% elif ds.avg_score >= 40 %}text-warning{% else %}text-danger{% endif %}">
+                {{ ds.avg_score }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+</div>{# end row #}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const NAMES  = {{ members | map(attribute='emp') | map(attribute='name') | list | tojson }};
+const COLORS = ['#4361ee','#7209b7','#3a0ca3','#f72585','#4cc9f0',
+                '#06d6a0','#ffd166','#ef476f','#118ab2','#2ec4b6'];
+
+// ── Volume: stacked bar (project vs support vs poc vs issue) ───────────────
+{% set vol_proj   = [] %}{% set vol_issue  = [] %}
+{% set vol_sup    = [] %}{% set vol_poc    = [] %}{% set vol_open   = [] %}
+{% for m in members %}
+  {% set a = m.a %}
+  {% set _ = vol_proj.append(
+      a.by_type.get('project_lead',{}).get('done',0) +
+      a.by_type.get('project_impl',{}).get('done',0) +
+      a.by_type.get('project_member',{}).get('done',0) +
+      a.by_type.get('project_task',{}).get('done',0)) %}
+  {% set _ = vol_issue.append(a.by_type.get('project_issue',{}).get('done',0)) %}
+  {% set _ = vol_sup.append(a.by_type.get('support_ticket',{}).get('done',0)) %}
+  {% set _ = vol_poc.append(a.by_type.get('poc_presales',{}).get('done',0)) %}
+  {% set _ = vol_open.append(m.a.total_open) %}
+{% endfor %}
+
+new Chart(document.getElementById('chartVolume'), {
+  type: 'bar',
+  data: {
+    labels: NAMES,
+    datasets: [
+      { label: 'Project/Task',    data: {{ vol_proj }},  backgroundColor: '#4361ee', borderRadius: 3 },
+      { label: 'Issue Project',   data: {{ vol_issue }}, backgroundColor: '#7209b7', borderRadius: 3 },
+      { label: 'Support',         data: {{ vol_sup }},   backgroundColor: '#06d6a0', borderRadius: 3 },
+      { label: 'POC/Presales',    data: {{ vol_poc }},   backgroundColor: '#ffd166', borderRadius: 3 },
+      { label: 'Masih Open',      data: {{ vol_open }},  backgroundColor: 'rgba(200,200,200,.5)', borderRadius: 3, borderDash: [4,4] },
+    ]
+  },
+  options: {
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    scales: { x: { stacked: true, grid: { color: 'rgba(0,0,0,.05)' } }, y: { stacked: true, ticks: { font: { size: 11 } } } },
+    plugins: { legend: { labels: { font: { size: 11 }, boxWidth: 12 } } }
+  }
+});
+
+// ── Timeliness: stacked bar ────────────────────────────────────────────────
+const TL_ONTIME   = {{ members | map(attribute='a') | map(attribute='done_ontime')   | list | tojson }};
+const TL_DELAY    = {{ members | map(attribute='a') | map(attribute='done_delay')    | list | tojson }};
+const TL_OVERTIME = {{ members | map(attribute='a') | map(attribute='open_overtime') | list | tojson }};
+const TL_OPEN     = {{ members | map(attribute='a') | map(attribute='open_ontime')   | list | tojson }};
+
+new Chart(document.getElementById('chartTimeliness'), {
+  type: 'bar',
+  data: {
+    labels: NAMES,
+    datasets: [
+      { label: 'On-time',    data: TL_ONTIME,   backgroundColor: '#06d6a0', borderRadius: 3 },
+      { label: 'Delay',      data: TL_DELAY,    backgroundColor: '#ef476f', borderRadius: 3 },
+      { label: 'Overtime!',  data: TL_OVERTIME, backgroundColor: '#ffd166', borderRadius: 3 },
+      { label: 'Open',       data: TL_OPEN,     backgroundColor: 'rgba(180,180,180,.4)', borderRadius: 3 },
+    ]
+  },
+  options: {
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    scales: { x: { stacked: true, grid: { color: 'rgba(0,0,0,.05)' } }, y: { stacked: true, ticks: { font: { size: 11 } } } },
+    plugins: { legend: { labels: { font: { size: 11 }, boxWidth: 12 } } }
+  }
+});
+
+// ── Concurrency ─────────────────────────────────────────────────────────────
+const CON_MAX = {{ members | map(attribute='a') | map(attribute='concurrent_max') | list | tojson }};
+const CON_AVG = {{ members | map(attribute='a') | map(attribute='concurrent_avg') | list | tojson }};
+
+new Chart(document.getElementById('chartConcurrency'), {
+  type: 'bar',
+  data: {
+    labels: NAMES,
+    datasets: [
+      { label: 'Maks Bersamaan', data: CON_MAX, backgroundColor: 'rgba(67,97,238,.75)', borderRadius: 4 },
+      { label: 'Avg Bersamaan',  data: CON_AVG, backgroundColor: 'rgba(76,201,240,.6)',  borderRadius: 4, type: 'line', tension: 0.3, pointRadius: 3 },
+    ]
+  },
+  options: {
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { ticks: { font: { size: 11 } } } },
+    plugins: { legend: { labels: { font: { size: 11 }, boxWidth: 12 } },
+               tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.x}` } } }
+  }
+});
+
+// ── Bubble: Volume vs Score, ukuran = concurrent_max ─────────────────────
+const bubbleData = [
+  {% for m in members %}
+  {
+    x: {{ m.a.total_done }},
+    y: {{ m.perf.task_score }},
+    r: Math.max(5, {{ m.a.concurrent_max }} * 3),
+    label: {{ m.emp.name | tojson }},
+    div: {{ (m.emp.divisi or '—') | tojson }},
+  },
+  {% endfor %}
+];
+
+new Chart(document.getElementById('chartBubble'), {
+  type: 'bubble',
+  data: {
+    datasets: [{
+      label: 'Karyawan',
+      data: bubbleData,
+      backgroundColor: bubbleData.map((_, i) => COLORS[i % COLORS.length] + 'bb'),
+      borderColor:     bubbleData.map((_, i) => COLORS[i % COLORS.length]),
+      borderWidth: 1.5,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      x: { title: { display: true, text: 'Jumlah Task Selesai', font: { size: 11 } },
+           beginAtZero: true, grid: { color: 'rgba(0,0,0,.05)' } },
+      y: { title: { display: true, text: 'Skor Task (0-100)', font: { size: 11 } },
+           beginAtZero: true, max: 105, grid: { color: 'rgba(0,0,0,.05)' } },
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const d = ctx.raw;
+            return [`${d.label} (${d.div})`, `Task selesai: ${d.x}`, `Skor: ${d.y}`, `Maks concurrent: ${Math.round(d.r/3)}`];
+          }
+        }
+      }
+    }
+  }
+});
+
+// ── Filter tabel ────────────────────────────────────────────────────────────
+document.getElementById('filterTable').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#mainTable tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

@@ -7,6 +7,18 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.7.2] — 2026-06-27
+### Fitur: Analitik Kinerja Divisi (`/kinerja/analitik`)
+- `calc_task_analytics()`: fungsi baru — analitik detail per karyawan mencakup timeliness, concurrency, breakdown per tipe task
+- **Timeliness breakdown**: done_ontime / done_delay / open_ontime / open_overtime (task masih open & sudah lewat due date)
+- **Concurrency**: maks & rata-rata task aktif bersamaan (via event-point scan pada interval [start, done])
+- **Tabel perbandingan**: semua metrik dalam satu baris per karyawan — volume, project vs support, timeliness, concurrency, % on-time, skor
+- **4 chart**: stacked bar volume per tipe, stacked bar timeliness, bar concurrency dengan line avg, bubble chart volume vs skor (ukuran bubble = maks concurrent)
+- **Rangkuman per divisi**: aggregate on-time, delay, overtime, avg skor
+- Menu "Analitik Divisi" ditambahkan di sidebar TalentCore
+
+---
+
 ## [1.7.1] — 2026-06-27
 ### Dokumentasi & Transparansi
 - README.md diperbarui lengkap: nama app (Hive), stack PostgreSQL, semua modul, Scoring Framework tabel, arsitektur file, deploy guide
