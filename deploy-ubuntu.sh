@@ -245,6 +245,13 @@ rsync -a --delete \
     --exclude='*.pyc' \
     --exclude='*.db' \
     "$TMPDIR_DEPLOY/repo/$REPO_SUBDIR/" "$APP_DIR/"
+
+# Tulis .git_info agar aplikasi bisa tampilkan info commit di UI
+GIT_HASH=$(git -C "$TMPDIR_DEPLOY/repo" rev-parse --short HEAD 2>/dev/null || echo "-")
+GIT_MSG=$(git -C "$TMPDIR_DEPLOY/repo" log -1 --pretty=%s 2>/dev/null || echo "-")
+GIT_DATE=$(git -C "$TMPDIR_DEPLOY/repo" log -1 --pretty=%ci 2>/dev/null || echo "-")
+printf '%s\n%s\n%s\n' "$GIT_HASH" "$GIT_MSG" "$GIT_DATE" > "$APP_DIR/.git_info"
+
 rm -rf "$TMPDIR_DEPLOY"
 success "Kode berhasil diperbarui."
 
@@ -426,7 +433,7 @@ sleep 2
 systemctl status "$SERVICE_NAME" --no-pager -l
 
 # Catat versi yang baru saja di-deploy
-DEPLOYED_VERSION=$(grep '^VERSION' "$APP_DIR/version.py" 2>/dev/null | cut -d'"' -f2 || echo "unknown")
+DEPLOYED_VERSION=$(grep '^VERSION' "$APP_DIR/version.py" 2>/dev/null | cut -d'"' -f2 || echo "${TARGET_VERSION:-unknown}")
 mkdir -p "$DATA_DIR"
 echo "$DEPLOYED_VERSION" > "$VERSION_FILE"
 # Tambahkan ke history log

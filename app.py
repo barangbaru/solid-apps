@@ -4544,19 +4544,28 @@ def portal_version_info():
     if not is_portal_admin():
         return jsonify({'ok': False})
     info = {'deployed': VERSION, 'release_date': RELEASE_DATE}
+    # Coba baca dari .git_info (ditulis oleh deploy script — lebih andal dari git commands di server)
+    git_info_path = os.path.join(os.path.dirname(__file__), '.git_info')
     try:
-        git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
-                                           cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
-                                           timeout=3).decode().strip()
-        git_msg  = subprocess.check_output(['git', 'log', '-1', '--pretty=%s'],
-                                           cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
-                                           timeout=3).decode().strip()
-        git_date = subprocess.check_output(['git', 'log', '-1', '--pretty=%ci'],
-                                           cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
-                                           timeout=3).decode().strip()
-        info.update({'git_hash': git_hash, 'git_msg': git_msg, 'git_date': git_date})
+        lines = open(git_info_path).read().splitlines()
+        info.update({'git_hash': lines[0] if len(lines)>0 else '-',
+                     'git_msg':  lines[1] if len(lines)>1 else '-',
+                     'git_date': lines[2] if len(lines)>2 else '-'})
     except Exception:
-        info.update({'git_hash': '-', 'git_msg': '-', 'git_date': '-'})
+        # Fallback: coba git command langsung (untuk dev environment)
+        try:
+            git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                               cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
+                                               timeout=3).decode().strip()
+            git_msg  = subprocess.check_output(['git', 'log', '-1', '--pretty=%s'],
+                                               cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
+                                               timeout=3).decode().strip()
+            git_date = subprocess.check_output(['git', 'log', '-1', '--pretty=%ci'],
+                                               cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
+                                               timeout=3).decode().strip()
+            info.update({'git_hash': git_hash, 'git_msg': git_msg, 'git_date': git_date})
+        except Exception:
+            info.update({'git_hash': '-', 'git_msg': '-', 'git_date': '-'})
     return jsonify(info)
 
 @app.route('/')

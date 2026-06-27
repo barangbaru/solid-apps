@@ -1,3 +1,3 @@
-VERSION = "1.9.3"
+VERSION = "1.9.4"
 RELEASE_DATE = "2026-06-27"
-RELEASE_NOTES = "Fix: INSERT OR REPLACE ke PostgreSQL ON CONFLICT syntax yang benar"
+RELEASE_NOTES = "Feat: Reload Gunicorn Worker + info versi git di Pengaturan Sistem"
