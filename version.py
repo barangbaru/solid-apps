@@ -1,3 +1,3 @@
-VERSION = "1.9.7"
-RELEASE_DATE = "2026-06-27"
-RELEASE_NOTES = "Feat: floating AI chatbot widget di semua halaman"
+VERSION = "1.9.8"
+RELEASE_DATE = "2026-06-28"
+RELEASE_NOTES = "Refactor: chatbot hanya ChatGPT/OpenAI, sederhanakan config AI"

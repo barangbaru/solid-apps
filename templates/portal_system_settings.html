@@ -389,7 +389,7 @@
     {# ── AI Assistant ── #}
     <div class="card mb-3 border-primary border-opacity-25">
       <div class="card-header py-2 fw-bold small text-uppercase text-muted d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-robot text-primary me-1"></i>AI Assistant (Chatbot)</span>
+        <span><i class="bi bi-robot text-primary me-1"></i>AI Assistant — ChatGPT</span>
         <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:.7rem">
           <i class="bi bi-shield-check me-1"></i>Gaji & evaluasi pribadi dilindungi
         </span>
@@ -399,7 +399,6 @@
         <div class="mb-3">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" name="chatbot_enabled" id="chatbotEnabled"
-                   form="aiConfigForm"
                    {{ 'checked' if cfg.get('chatbot_enabled') == '1' }}>
             <label class="form-check-label fw-semibold" for="chatbotEnabled">Aktifkan AI Assistant</label>
           </div>
@@ -407,37 +406,19 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Provider AI</label>
-          <select name="ai_provider" id="aiProviderSel" class="form-select form-select-sm"
-                  form="aiConfigForm"
-                  onchange="onProviderChange(this.value)">
-            <option value="anthropic"    {{ 'selected' if cfg.get('ai_provider','anthropic')=='anthropic' }}>
-              Claude (Anthropic)
-            </option>
-            <option value="openai"       {{ 'selected' if cfg.get('ai_provider')=='openai' }}>
-              ChatGPT (OpenAI)
-            </option>
-            <option value="openai_compat" {{ 'selected' if cfg.get('ai_provider')=='openai_compat' }}>
-              OpenAI-Compatible (Gemini, DeepSeek, Groq, Mistral, dll)
-            </option>
-          </select>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label fw-semibold small">API Key</label>
+          <label class="form-label fw-semibold small">OpenAI API Key</label>
           <div class="input-group input-group-sm">
             <input type="password" name="ai_api_key" id="aiApiKey"
                    class="form-control form-control-sm font-monospace"
-                   form="aiConfigForm"
-                   value="{{ cfg.get('ai_api_key','') or cfg.get('anthropic_api_key','') }}"
-                   placeholder="Masukkan API key..."
+                   value="{{ cfg.get('ai_api_key','') }}"
+                   placeholder="sk-..."
                    autocomplete="off">
             <button class="btn btn-outline-secondary" type="button" onclick="toggleVis('aiApiKey',this)">
               <i class="bi bi-eye"></i>
             </button>
           </div>
-          <div class="form-text" id="aiKeyHint">
-            Anthropic: <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>
+          <div class="form-text">
+            Dapatkan API key di <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>
           </div>
         </div>
 
@@ -445,38 +426,15 @@
           <label class="form-label fw-semibold small">Model</label>
           <input type="text" name="ai_model" id="aiModelInput"
                  class="form-control form-control-sm font-monospace"
-                 form="aiConfigForm"
                  value="{{ cfg.get('ai_model','') }}"
-                 placeholder="Kosongkan untuk default">
-          <div class="form-text" id="aiModelHint">
-            Default Anthropic: <code>claude-sonnet-4-6</code>
-          </div>
-          <div id="aiModelSuggestions" class="d-flex flex-wrap gap-1 mt-1">
+                 placeholder="Kosongkan untuk default (gpt-4o)">
+          <div class="d-flex flex-wrap gap-1 mt-1">
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-                  onclick="setModel('claude-sonnet-4-6')">claude-sonnet-4-6</span>
+                  onclick="document.getElementById('aiModelInput').value='gpt-4o'">gpt-4o</span>
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-                  onclick="setModel('claude-haiku-4-5-20251001')">claude-haiku-4-5</span>
+                  onclick="document.getElementById('aiModelInput').value='gpt-4o-mini'">gpt-4o-mini</span>
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-                  onclick="setModel('claude-opus-4-8')">claude-opus-4-8</span>
-          </div>
-        </div>
-
-        <div class="mb-3" id="aiBaseUrlRow" style="display:none">
-          <label class="form-label fw-semibold small">Base URL <span class="text-muted fw-normal">(untuk OpenAI-Compatible)</span></label>
-          <input type="text" name="ai_base_url" class="form-control form-control-sm font-monospace"
-                 form="aiConfigForm"
-                 value="{{ cfg.get('ai_base_url','') }}"
-                 placeholder="https://api.deepseek.com/v1">
-          <div class="form-text" id="aiBaseUrlHint">
-            Contoh provider:
-            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
-                  onclick="setBaseUrl('https://api.deepseek.com/v1','deepseek-chat')">DeepSeek</span>
-            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
-                  onclick="setBaseUrl('https://api.groq.com/openai/v1','llama-3.3-70b-versatile')">Groq</span>
-            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
-                  onclick="setBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai','gemini-2.0-flash')">Gemini</span>
-            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
-                  onclick="setBaseUrl('https://api.mistral.ai/v1','mistral-large-latest')">Mistral</span>
+                  onclick="document.getElementById('aiModelInput').value='gpt-4-turbo'">gpt-4-turbo</span>
           </div>
         </div>
 
@@ -552,53 +510,6 @@ function toggleField(id) {
   const el = document.getElementById(id);
   el.type = el.type === 'password' ? 'text' : 'password';
 }
-/* ── AI Provider selector ── */
-const AI_PROVIDERS = {
-  anthropic: {
-    keyHint: 'Anthropic: <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>',
-    modelHint: 'Default: <code>claude-sonnet-4-6</code>',
-    models: ['claude-sonnet-4-6','claude-haiku-4-5-20251001','claude-opus-4-8'],
-    showBaseUrl: false,
-  },
-  openai: {
-    keyHint: 'OpenAI: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>',
-    modelHint: 'Default: <code>gpt-4o</code>',
-    models: ['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-3.5-turbo'],
-    showBaseUrl: false,
-  },
-  openai_compat: {
-    keyHint: 'API key dari provider yang dipilih (DeepSeek, Groq, Gemini, Mistral, dll)',
-    modelHint: 'Isi nama model sesuai dokumentasi provider',
-    models: [],
-    showBaseUrl: true,
-  },
-};
-
-function onProviderChange(val) {
-  const p = AI_PROVIDERS[val] || AI_PROVIDERS.anthropic;
-  document.getElementById('aiKeyHint').innerHTML = p.keyHint;
-  document.getElementById('aiModelHint').innerHTML = p.modelHint;
-  document.getElementById('aiBaseUrlRow').style.display = p.showBaseUrl ? '' : 'none';
-  const sugg = document.getElementById('aiModelSuggestions');
-  sugg.innerHTML = p.models.map(m =>
-    `<span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-           onclick="setModel('${m}')">${m}</span>`
-  ).join('');
-}
-
-function setModel(m) {
-  document.getElementById('aiModelInput').value = m;
-}
-
-function setBaseUrl(url, model) {
-  document.querySelector('[name="ai_base_url"]').value = url;
-  setModel(model);
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  const sel = document.getElementById('aiProviderSel');
-  if (sel) onProviderChange(sel.value);
-});
 
 function toggleVis(id, btn) {
   const el = document.getElementById(id);
@@ -674,10 +585,8 @@ function testWaApp(appSlug, btn) {
 async function saveAiConfig(btn) {
   const fd = new FormData();
   fd.append('chatbot_enabled', document.getElementById('chatbotEnabled').checked ? '1' : '');
-  fd.append('ai_provider',     document.getElementById('aiProviderSel').value);
   fd.append('ai_api_key',      document.getElementById('aiApiKey').value);
   fd.append('ai_model',        document.getElementById('aiModelInput').value);
-  fd.append('ai_base_url',     document.querySelector('[name="ai_base_url"]').value);
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menyimpan...';

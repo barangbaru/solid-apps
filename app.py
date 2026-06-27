@@ -4449,8 +4449,7 @@ PORTAL_SYSTEM_KEYS = [
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
     'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
     'chatbot_enabled',
-    'ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url',
-    'anthropic_api_key',  # backward compat
+    'ai_api_key', 'ai_model',
 ]
 
 @app.route('/portal/system-settings', methods=['GET', 'POST'])
@@ -4530,7 +4529,7 @@ def portal_save_ai_settings():
     if not is_portal_admin():
         return jsonify({'ok': False, 'msg': 'Akses ditolak'})
     db = get_db()
-    AI_KEYS = ['chatbot_enabled', 'ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url', 'anthropic_api_key']
+    AI_KEYS = ['chatbot_enabled', 'ai_api_key', 'ai_model']
     for k in AI_KEYS:
         if k == 'chatbot_enabled':
             v = '1' if request.form.get(k) else '0'
@@ -8411,16 +8410,11 @@ def chatbot_send():
     if settings.get('chatbot_enabled','0') != '1':
         return jsonify({'error': 'Chatbot tidak aktif'}), 403
 
-    provider = settings.get('ai_provider','anthropic').strip()
-    api_key  = settings.get('ai_api_key','').strip()
-    # backward compat: jika ai_api_key kosong, cek anthropic_api_key lama
+    api_key = settings.get('ai_api_key','').strip()
     if not api_key:
-        api_key = settings.get('anthropic_api_key','').strip()
-    if not api_key:
-        return jsonify({'error': f'API key belum dikonfigurasi. Isi di System Settings → AI Assistant.'}), 503
+        return jsonify({'error': 'API key ChatGPT belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
 
-    model    = settings.get('ai_model','').strip() or AI_PROVIDER_DEFAULTS.get(provider, 'gpt-4o')
-    base_url = settings.get('ai_base_url','').strip() or None
+    model = settings.get('ai_model','').strip() or 'gpt-4o'
 
     data = request.get_json()
     messages = data.get('messages', [])
@@ -8429,10 +8423,7 @@ def chatbot_send():
     messages = messages[-20:]
 
     try:
-        if provider == 'anthropic':
-            reply = _chatbot_call_anthropic(api_key, model, messages, CHATBOT_SYSTEM, CHATBOT_TOOLS)
-        else:
-            reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai(), base_url)
+        reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai())
         return jsonify({'reply': reply})
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500
