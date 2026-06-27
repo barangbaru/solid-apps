@@ -1,0 +1,304 @@
+{% extends 'base.html' %}
+{% block title %}Kinerja Tim{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Kinerja Tim</span>{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  {# ── Filter Bar ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-2">
+        <form class="row g-2 align-items-end" method="get">
+          <div class="col-auto">
+            <label class="form-label small mb-1">Divisi</label>
+            <select name="divisi" class="form-select form-select-sm" style="min-width:160px">
+              <option value="">Semua Divisi</option>
+              {% for d in divisi_list %}
+              <option value="{{ d }}" {% if d == divisi %}selected{% endif %}>{{ d }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-1">Dari</label>
+            <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-1">Sampai</label>
+            <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-1">Benchmark (pts/bln)</label>
+            <input type="number" name="benchmark" class="form-control form-control-sm"
+                   style="width:110px" value="{{ benchmark }}" min="10" step="10">
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">Terapkan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ── Statistik Tim ── #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-primary">{{ members | length }}</div>
+      <div class="small text-muted">Anggota Tim</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-success">{{ tim_avg }}</div>
+      <div class="small text-muted">Rata-rata Skor</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-info">{{ tim_max }}</div>
+      <div class="small text-muted">Skor Tertinggi</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-warning">{{ tim_min }}</div>
+      <div class="small text-muted">Skor Terendah</div>
+    </div>
+  </div>
+
+  {# ── Bar Chart Perbandingan ── #}
+  <div class="col-12 col-lg-7">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-bar-chart-line me-1"></i>Perbandingan Skor Task per Individu
+      </div>
+      <div class="card-body">
+        <canvas id="chartTeam" height="{% if members|length > 8 %}300{% else %}220{% endif %}"></canvas>
+      </div>
+    </div>
+  </div>
+
+  {# ── Distribusi Beban Task ── #}
+  <div class="col-12 col-lg-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-pie-chart me-1"></i>Distribusi Beban Task Tim
+      </div>
+      <div class="card-body">
+        <canvas id="chartLoad" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+
+  {# ── Tabel Ranking ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-trophy me-1"></i>Ranking Kinerja Tim{% if divisi %} — {{ divisi }}{% endif %}</span>
+        <input type="text" id="filterTable" class="form-control form-control-sm w-auto"
+               placeholder="Cari nama..." style="max-width:200px">
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover align-middle mb-0 small" id="rankTable">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th class="ps-3" style="width:50px">Rank</th>
+              <th>Nama</th>
+              <th>Divisi</th>
+              <th>Jabatan</th>
+              <th class="text-center">Skor Task</th>
+              <th class="text-center">Raw Pts</th>
+              <th class="text-center">Jumlah Task</th>
+              <th class="text-center">Nilai Eval</th>
+              <th class="text-center">Status Eval</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in members %}
+            {% set score = m.perf.task_score %}
+            <tr>
+              <td class="ps-3 fw-bold text-center">
+                {% if loop.index == 1 %}<span class="text-warning fs-5">🥇</span>
+                {% elif loop.index == 2 %}<span class="text-secondary fs-5">🥈</span>
+                {% elif loop.index == 3 %}<span style="color:#cd7f32" class="fs-5">🥉</span>
+                {% else %}<span class="text-muted">{{ loop.index }}</span>{% endif %}
+              </td>
+              <td class="fw-semibold">{{ m.emp.name }}</td>
+              <td class="text-muted">{{ m.emp.divisi or '—' }}</td>
+              <td class="text-muted">{{ m.emp.jabatan or '—' }}</td>
+              <td class="text-center">
+                <div class="d-flex align-items-center gap-2 justify-content-center">
+                  <div class="progress flex-grow-1" style="height:6px;min-width:60px;max-width:80px">
+                    <div class="progress-bar
+                      {% if score >= 80 %}bg-success
+                      {% elif score >= 60 %}bg-primary
+                      {% elif score >= 40 %}bg-warning
+                      {% else %}bg-danger{% endif %}"
+                      style="width:{{ score }}%"></div>
+                  </div>
+                  <span class="fw-bold
+                    {% if score >= 80 %}text-success
+                    {% elif score >= 60 %}text-primary
+                    {% elif score >= 40 %}text-warning
+                    {% else %}text-danger{% endif %}">
+                    {{ score }}
+                  </span>
+                </div>
+              </td>
+              <td class="text-center text-muted">{{ m.perf.total_raw }}</td>
+              <td class="text-center">
+                {% set total_tasks = m.perf.breakdown | sum(attribute='count') %}
+                <span class="badge bg-light text-dark border">{{ total_tasks }}</span>
+              </td>
+              <td class="text-center">
+                {% if m.last_eval and m.last_eval.final_total %}
+                <span class="fw-semibold
+                  {% if m.last_eval.final_total >= 80 %}text-success
+                  {% elif m.last_eval.final_total >= 60 %}text-primary
+                  {% else %}text-warning{% endif %}">
+                  {{ m.last_eval.final_total | round(1) }}
+                </span>
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td class="text-center">
+                {% if m.last_eval %}
+                <span class="badge {% if m.last_eval.status == 'final' %}bg-success{% else %}bg-secondary{% endif %}">
+                  {{ m.last_eval.status or '—' }}
+                </span>
+                {% else %}<span class="text-muted small">Belum ada</span>{% endif %}
+              </td>
+              <td class="pe-3">
+                <a href="/kinerja/individu/{{ m.emp.id }}{% if date_from or date_to or benchmark != 100 %}?from={{ date_from }}&to={{ date_to }}&benchmark={{ benchmark }}{% endif %}"
+                   class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:.7rem">
+                  Detail
+                </a>
+              </td>
+            </tr>
+            {# Breakdown bar mini #}
+            <tr class="bg-light" style="border-top:none">
+              <td></td>
+              <td colspan="9" class="py-1 pe-3">
+                <div class="d-flex gap-2 flex-wrap">
+                  {% for b in m.perf.breakdown %}
+                  <span class="badge bg-white border text-dark" style="font-size:.65rem;font-weight:400">
+                    {{ b.label | truncate(22,True,'…') }}:
+                    <strong>{{ b.count }}</strong> task /
+                    <strong class="text-primary">{{ b.raw_pts | round(1) }}</strong> pts
+                  </span>
+                  {% else %}
+                  <span class="text-muted small">Belum ada task selesai</span>
+                  {% endfor %}
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-muted py-4">Tidak ada data.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Legenda Skor ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-2 small">
+        <span class="fw-semibold me-3"><i class="bi bi-info-circle me-1"></i>Kategori Skor:</span>
+        <span class="badge bg-success me-2">≥ 80 — Sangat Baik</span>
+        <span class="badge bg-primary me-2">60–79 — Baik</span>
+        <span class="badge bg-warning text-dark me-2">40–59 — Cukup</span>
+        <span class="badge bg-danger me-2">&lt; 40 — Perlu Perhatian</span>
+        <span class="text-muted ms-3">Benchmark: <strong>{{ benchmark }} pts/bulan</strong>
+        {% if date_from or date_to %} | Periode: {{ date_from or '—' }} s/d {{ date_to or '—' }}{% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const COLORS = ['#4361ee','#7209b7','#3a0ca3','#f72585','#4cc9f0','#06d6a0',
+                '#ffd166','#ef476f','#118ab2','#073b4c','#2ec4b6','#e9c46a'];
+
+// Bar chart: skor task per orang
+const names  = {{ members | map(attribute='emp') | map(attribute='name') | list | tojson }};
+const scores = {{ members | map(attribute='perf') | map(attribute='task_score') | list | tojson }};
+const barColors = scores.map(s =>
+  s >= 80 ? '#06d6a0' : s >= 60 ? '#4361ee' : s >= 40 ? '#ffd166' : '#ef476f'
+);
+
+new Chart(document.getElementById('chartTeam'), {
+  type: 'bar',
+  data: {
+    labels: names,
+    datasets: [{
+      label: 'Skor Task',
+      data: scores,
+      backgroundColor: barColors,
+      borderRadius: 5,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true, maintainAspectRatio: false,
+    scales: {
+      x: { beginAtZero: true, max: 100,
+           grid: { color: 'rgba(0,0,0,.05)' } },
+      y: { ticks: { font: { size: 11 } } }
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` Skor Task: ${ctx.parsed.x} / 100`
+        }
+      }
+    }
+  }
+});
+
+// Pie chart: distribusi raw points (beban task)
+const rawPts = {{ members | map(attribute='perf') | map(attribute='total_raw') | list | tojson }};
+new Chart(document.getElementById('chartLoad'), {
+  type: 'doughnut',
+  data: {
+    labels: names,
+    datasets: [{
+      data: rawPts,
+      backgroundColor: COLORS,
+      borderWidth: 2, borderColor: '#fff'
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 10, padding: 6 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const total = ctx.dataset.data.reduce((a,b) => a+b, 0);
+            const pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
+            return ` ${ctx.label}: ${ctx.parsed} pts (${pct}%)`;
+          }
+        }
+      }
+    }
+  }
+});
+
+// Filter tabel
+document.getElementById('filterTable').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  const rows = document.querySelectorAll('#rankTable tbody tr');
+  for (let i = 0; i < rows.length; i += 2) {
+    const match = rows[i].textContent.toLowerCase().includes(q);
+    rows[i].style.display     = match ? '' : 'none';
+    if (rows[i+1]) rows[i+1].style.display = match ? '' : 'none';
+  }
+});
+</script>
+{% endblock %}

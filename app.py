@@ -1076,6 +1076,21 @@ CREATE TABLE IF NOT EXISTS pc_phases (
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+
+-- ─── Task Performance Config ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS task_perf_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_type TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    base_points REAL DEFAULT 0,
+    priority_critical REAL DEFAULT 2.0,
+    priority_high REAL DEFAULT 1.5,
+    priority_medium REAL DEFAULT 1.0,
+    priority_low REAL DEFAULT 0.7,
+    ontime_mult REAL DEFAULT 1.1,
+    late_mult REAL DEFAULT 0.9,
+    sort_order INTEGER DEFAULT 0
+);
 """
 
 MIGRATIONS = [
@@ -1153,6 +1168,10 @@ MIGRATIONS = [
     ('pc_phases',            'sign_off_date',           "TEXT DEFAULT NULL"),
     ('pc_phases',            'app_id',                  'INTEGER DEFAULT NULL'),
     ('pc_phases',            'module_id',               'INTEGER DEFAULT NULL'),
+    ('evaluations',          'task_score',              'REAL DEFAULT NULL'),
+    ('evaluations',          'task_date_from',          "TEXT DEFAULT ''"),
+    ('evaluations',          'task_date_to',            "TEXT DEFAULT ''"),
+    ('evaluations',          'task_benchmark',          'REAL DEFAULT 100'),
 ]
 
 SC_TICKET_STATUSES = [
@@ -1524,6 +1543,23 @@ def init_db():
             (code,name,priority,response_time_hours,workaround_time_hours,resolution_time_hours,maintenance_type,description)
             VALUES(?,?,?,?,?,?,?,?)''', (code, name, prio, resp, wta, reso, mtype, desc))
     db.commit()
+    # Seed default task_perf_config
+    _tpc_seed = [
+        # (task_type, label, base_pts, crit, high, med, low, ontime, late, sort)
+        ('project_lead',      'Project (PIC/Lead)',       15, 2.0, 1.5, 1.0, 0.7, 1.1, 0.9, 1),
+        ('project_impl',      'Project (Implementor)',    10, 2.0, 1.5, 1.0, 0.7, 1.1, 0.9, 2),
+        ('project_member',    'Project (Member Tim)',      7, 2.0, 1.5, 1.0, 0.7, 1.1, 0.9, 3),
+        ('project_issue',     'Issue Project (Programmer)',3, 2.0, 1.5, 1.0, 0.5, 1.1, 0.9, 4),
+        ('project_task',      'Task ProjectCore (Done)',   2, 2.0, 1.5, 1.0, 0.7, 1.1, 0.9, 5),
+        ('poc_presales',      'POC / Presales',            5, 2.0, 1.5, 1.0, 0.7, 1.1, 0.9, 6),
+        ('support_ticket',    'Tiket Support (Closed)',    2, 2.0, 1.5, 1.0, 0.7, 1.1, 0.9, 7),
+    ]
+    for row in _tpc_seed:
+        db.execute('''INSERT OR IGNORE INTO task_perf_config
+            (task_type,label,base_points,priority_critical,priority_high,priority_medium,priority_low,ontime_mult,late_mult,sort_order)
+            VALUES(?,?,?,?,?,?,?,?,?,?)''', row)
+    db.commit()
+
     # Pastikan superadmin punya akses ke semua app (hanya jika belum ada)
     sa = db.execute("SELECT id FROM users WHERE role='superadmin' LIMIT 1").fetchone()
     if sa:
@@ -2726,6 +2762,192 @@ def _version_gt(a, b):
         except Exception:
             return [0]
     return parts(a) > parts(b)
+
+
+def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100.0):
+    """Hitung skor kinerja task otomatis dari semua sumber data.
+
+    Return dict:
+      breakdown: list of {type, label, count, raw_pts}
+      total_raw: total raw points
+      task_score: normalized 0-100
+      detail: list of individual tasks (untuk tabel detail)
+      months: durasi periode dalam bulan
+    """
+    # Load config bobot
+    cfg_rows = db.execute('SELECT * FROM task_perf_config ORDER BY sort_order').fetchall()
+    cfg = {r['task_type']: r for r in cfg_rows}
+
+    def _mult_priority(c, priority):
+        p = (priority or 'Medium').lower()
+        if p in ('critical', 'blocker', 'kritis'):   return float(c['priority_critical'])
+        if p in ('high', 'tinggi'):                  return float(c['priority_high'])
+        if p in ('low', 'rendah'):                   return float(c['priority_low'])
+        return float(c['priority_medium'])
+
+    def _mult_ontime(c, due_date, done_date):
+        if not due_date or not done_date:
+            return 1.0
+        return float(c['ontime_mult']) if done_date <= due_date else float(c['late_mult'])
+
+    # Helper: base WHERE clause untuk filter tanggal
+    def _date_where(col_done, params, df=date_from, dt=date_to):
+        clauses = []
+        if df:
+            clauses.append(f"{col_done} >= ?")
+            params.append(df)
+        if dt:
+            clauses.append(f"{col_done} <= ?")
+            params.append(dt)
+        return (' AND ' + ' AND '.join(clauses)) if clauses else ''
+
+    # Hitung durasi bulan (min 1)
+    months = 1.0
+    if date_from and date_to:
+        try:
+            from datetime import datetime as _dt
+            d0 = _dt.strptime(date_from, '%Y-%m-%d')
+            d1 = _dt.strptime(date_to,   '%Y-%m-%d')
+            months = max(1.0, (d1 - d0).days / 30.44)
+        except Exception:
+            months = 1.0
+
+    detail = []
+    summary = {}
+
+    def _add(task_type, label, source, pts, count=1):
+        summary.setdefault(task_type, {'type': task_type, 'label': label, 'count': 0, 'raw_pts': 0.0})
+        summary[task_type]['count']   += count
+        summary[task_type]['raw_pts'] += pts
+        detail.append({'type': task_type, 'label': label, 'source': source, 'pts': pts})
+
+    # ── 1. Project (sebagai PIC/Lead) ──────────────────────────────────────────
+    if 'project_lead' in cfg:
+        c = cfg['project_lead']
+        p = [emp_id]
+        dw = _date_where('p.end_date', p)
+        rows = db.execute(f'''
+            SELECT p.code, p.name, p.end_date, p.status
+            FROM pc_projects p
+            WHERE p.pic_id=? AND p.deleted_at IS NULL
+              AND p.status IN ('done','closed','selesai'){dw}
+        ''', p).fetchall()
+        for r in rows:
+            pts = round(float(c['base_points']) * _mult_ontime(c, r['end_date'], r['end_date']), 2)
+            _add('project_lead', c['label'], f"Project: {r['name']}", pts)
+
+    # ── 2. Project (sebagai Implementor) ────────────────────────────────────────
+    if 'project_impl' in cfg:
+        c = cfg['project_impl']
+        p = [emp_id, emp_id]
+        dw = _date_where('p.end_date', p)
+        rows = db.execute(f'''
+            SELECT p.code, p.name, p.end_date
+            FROM pc_projects p
+            WHERE (p.implementor_id=? OR p.co_leader_id=?)
+              AND p.pic_id != ? AND p.deleted_at IS NULL
+              AND p.status IN ('done','closed','selesai'){dw}
+        ''', p + [emp_id]).fetchall()
+        for r in rows:
+            pts = round(float(c['base_points']) * _mult_ontime(c, r['end_date'], r['end_date']), 2)
+            _add('project_impl', c['label'], f"Project: {r['name']}", pts)
+
+    # ── 3. Project (sebagai Member Tim) ─────────────────────────────────────────
+    if 'project_member' in cfg:
+        c = cfg['project_member']
+        p = [emp_id]
+        dw = _date_where('p.end_date', p)
+        rows = db.execute(f'''
+            SELECT p.code, p.name, p.end_date
+            FROM pc_members m
+            JOIN pc_projects p ON p.id=m.project_id
+            WHERE m.employee_id=? AND p.deleted_at IS NULL
+              AND p.status IN ('done','closed','selesai')
+              AND p.pic_id != ? AND p.implementor_id != ?
+              AND (p.co_leader_id IS NULL OR p.co_leader_id != ?){dw}
+        ''', p + [emp_id, emp_id, emp_id]).fetchall()
+        for r in rows:
+            pts = round(float(c['base_points']) * _mult_ontime(c, r['end_date'], r['end_date']), 2)
+            _add('project_member', c['label'], f"Project: {r['name']}", pts)
+
+    # ── 4. Project Issues (sebagai Programmer) ──────────────────────────────────
+    if 'project_issue' in cfg:
+        c = cfg['project_issue']
+        difficulty_map = {'hard': 2.0, 'sulit': 2.0, 'normal': 1.0, 'easy': 0.5, 'mudah': 0.5}
+        p = [emp_id]
+        dw = _date_where('i.resolved_date', p)
+        rows = db.execute(f'''
+            SELECT i.issue_no, i.title, i.difficulty, i.priority, i.resolved_date, i.due_date, p.name AS proj_name
+            FROM pc_issues i
+            JOIN pc_projects p ON p.id=i.project_id
+            WHERE i.pic_programmer_id=?
+              AND i.status_programmer IN ('done','closed','resolved'){dw}
+        ''', p).fetchall()
+        for r in rows:
+            diff_mult = difficulty_map.get((r['difficulty'] or 'Normal').lower(), 1.0)
+            pts = round(float(c['base_points']) * diff_mult *
+                        _mult_ontime(c, r['due_date'] or r['resolved_date'], r['resolved_date']), 2)
+            _add('project_issue', c['label'], f"Issue {r['issue_no']}: {r['title'][:40]} ({r['proj_name']})", pts)
+
+    # ── 5. Project Tasks (done, assignee) ───────────────────────────────────────
+    if 'project_task' in cfg:
+        c = cfg['project_task']
+        p = [emp_id]
+        dw = _date_where('t.due_date', p)
+        rows = db.execute(f'''
+            SELECT t.title, t.priority, t.due_date, t.status, p.name AS proj_name
+            FROM pc_task_assignees ta
+            JOIN pc_tasks t ON t.id=ta.task_id
+            JOIN pc_projects p ON p.id=t.project_id
+            WHERE ta.employee_id=? AND t.status IN ('done','closed'){dw}
+        ''', p).fetchall()
+        for r in rows:
+            pts = round(float(c['base_points']) * _mult_priority(c, r['priority']), 2)
+            _add('project_task', c['label'], f"Task: {r['title'][:40]} ({r['proj_name']})", pts)
+
+    # ── 6. POC / Presales ───────────────────────────────────────────────────────
+    if 'poc_presales' in cfg:
+        c = cfg['poc_presales']
+        p = [emp_id]
+        dw = _date_where('r.created_at', p)
+        rows = db.execute(f'''
+            SELECT r.req_no, r.subject, r.request_type, r.status, r.created_at
+            FROM sc_presales_assignees pa
+            JOIN sc_presales_requests r ON r.id=pa.request_id
+            WHERE pa.employee_id=? AND r.status IN ('done','closed','approved'){dw}
+        ''', p).fetchall()
+        for r in rows:
+            pts = round(float(c['base_points']), 2)
+            _add('poc_presales', c['label'], f"{r['request_type'].upper()} {r['req_no']}: {r['subject'][:40]}", pts)
+
+    # ── 7. Support Tickets (assignee) ───────────────────────────────────────────
+    if 'support_ticket' in cfg:
+        c = cfg['support_ticket']
+        p = [emp_id]
+        # Gunakan work_start_date sebagai proxy tanggal penyelesaian jika resolved_at tidak ada
+        dw = _date_where('t.reported_at', p)
+        rows = db.execute(f'''
+            SELECT t.ticket_no, t.subject, t.priority, t.due_date, t.reported_at, t.status
+            FROM sc_ticket_assignees ta
+            JOIN sc_tickets t ON t.id=ta.ticket_id
+            WHERE ta.employee_id=? AND t.status IN ('resolved','closed'){dw}
+        ''', p).fetchall()
+        for r in rows:
+            pts = round(float(c['base_points']) * _mult_priority(c, r['priority'] or 'Medium')
+                        * _mult_ontime(c, r['due_date'], r['reported_at']), 2)
+            _add('support_ticket', c['label'], f"Tiket {r['ticket_no']}: {r['subject'][:40]}", pts)
+
+    total_raw = round(sum(v['raw_pts'] for v in summary.values()), 2)
+    task_score = round(min(total_raw / (benchmark_per_month * months) * 100, 100), 1)
+
+    return {
+        'breakdown': list(summary.values()),
+        'total_raw': total_raw,
+        'task_score': task_score,
+        'months': round(months, 1),
+        'benchmark': benchmark_per_month,
+        'detail': detail,
+    }
 
 
 def start_scheduler():
@@ -7220,6 +7442,116 @@ def portal_update_cancel():
         os.remove(UPDATE_TRIGGER_FILE)
         flash('Trigger dibatalkan (jika deploy sudah berjalan, tidak bisa dihentikan di tengah jalan).', 'warning')
     return redirect(url_for('portal_update'))
+
+
+# ─── Kinerja Task: Individual & Tim ──────────────────────────────────────────
+
+@app.route('/kinerja/individu/<int:emp_id>')
+@login_required
+def kinerja_individu(emp_id):
+    db   = get_db()
+    emp  = db.execute('SELECT * FROM employees WHERE id=?', (emp_id,)).fetchone()
+    if not emp:
+        abort(404)
+
+    date_from = request.args.get('from', '')
+    date_to   = request.args.get('to', '')
+    benchmark = float(request.args.get('benchmark', 100))
+
+    perf = calc_task_perf(db, emp_id, date_from, date_to, benchmark)
+
+    # Riwayat evaluasi terakhir
+    evals = db.execute('''
+        SELECT id, periode, final_total, task_score, status, task_date_from, task_date_to
+        FROM evaluations WHERE employee_id=? ORDER BY id DESC LIMIT 6
+    ''', (emp_id,)).fetchall()
+
+    # Skor rata-rata tim satu divisi (untuk perbandingan)
+    divisi_avg = None
+    if emp['divisi']:
+        row = db.execute('''
+            SELECT AVG(e.final_total) AS avg_score
+            FROM evaluations e JOIN employees em ON em.id=e.employee_id
+            WHERE em.divisi=? AND e.status='final'
+        ''', (emp['divisi'],)).fetchone()
+        divisi_avg = round(row['avg_score'], 1) if row and row['avg_score'] else None
+
+    return render_template('kinerja_individu.html',
+        emp=emp, perf=perf, evals=evals,
+        divisi_avg=divisi_avg,
+        date_from=date_from, date_to=date_to, benchmark=benchmark,
+    )
+
+
+@app.route('/kinerja/tim')
+@login_required
+def kinerja_tim():
+    db      = get_db()
+    divisi  = request.args.get('divisi', '')
+    date_from = request.args.get('from', '')
+    date_to   = request.args.get('to', '')
+    benchmark = float(request.args.get('benchmark', 100))
+
+    # Daftar semua divisi
+    divisi_list = [r['divisi'] for r in db.execute(
+        "SELECT DISTINCT divisi FROM employees WHERE is_active=1 AND divisi!='' ORDER BY divisi"
+    ).fetchall()]
+
+    # Karyawan di divisi terpilih (atau semua jika tidak filter)
+    if divisi:
+        emps = db.execute(
+            "SELECT * FROM employees WHERE is_active=1 AND divisi=? ORDER BY name", (divisi,)
+        ).fetchall()
+    else:
+        emps = db.execute(
+            "SELECT * FROM employees WHERE is_active=1 ORDER BY divisi, name"
+        ).fetchall()
+
+    members = []
+    for emp in emps:
+        perf = calc_task_perf(db, emp['id'], date_from, date_to, benchmark)
+        last_eval = db.execute('''
+            SELECT final_total, task_score, status, periode FROM evaluations
+            WHERE employee_id=? ORDER BY id DESC LIMIT 1
+        ''', (emp['id'],)).fetchone()
+        members.append({
+            'emp':        emp,
+            'perf':       perf,
+            'last_eval':  last_eval,
+        })
+
+    # Urutkan: task_score tertinggi dulu
+    members.sort(key=lambda x: x['perf']['task_score'], reverse=True)
+    # Tambahkan rank
+    for i, m in enumerate(members, 1):
+        m['rank'] = i
+
+    # Statistik tim
+    scores = [m['perf']['task_score'] for m in members if m['perf']['task_score'] > 0]
+    tim_avg  = round(sum(scores) / len(scores), 1) if scores else 0
+    tim_max  = max(scores) if scores else 0
+    tim_min  = min(scores) if scores else 0
+
+    return render_template('kinerja_tim.html',
+        members=members, divisi=divisi, divisi_list=divisi_list,
+        date_from=date_from, date_to=date_to, benchmark=benchmark,
+        tim_avg=tim_avg, tim_max=tim_max, tim_min=tim_min,
+    )
+
+
+@app.route('/api/kinerja/task-score/<int:emp_id>')
+@login_required
+def api_task_score(emp_id):
+    import json as _json
+    db = get_db()
+    date_from = request.args.get('from', '')
+    date_to   = request.args.get('to', '')
+    benchmark = float(request.args.get('benchmark', 100))
+    perf = calc_task_perf(db, emp_id, date_from, date_to, benchmark)
+    return app.response_class(
+        response=_json.dumps(perf, ensure_ascii=False),
+        mimetype='application/json'
+    )
 
 
 # ─── Portal: Audit Trail ───────────────────────────────────────────────────────

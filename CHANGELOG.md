@@ -7,6 +7,18 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.7.0] — 2026-06-27
+### Fitur: Kinerja Task
+- **Scoring otomatis** dari seluruh sumber data: Project (PIC/Implementor/Member), Issue Project, Task ProjectCore, POC/Presales, Tiket Support
+- **Bobot best practice**: base points per tipe × priority multiplier × on-time multiplier, dinormalisasi ke 0–100 vs benchmark (default 100 pts/bulan)
+- **Tabel `task_perf_config`**: bobot dapat dikonfigurasi per tipe task (Admin Sistem)
+- **Dashboard Individu** `/kinerja/individu/<id>`: skor, pie chart distribusi, bar riwayat evaluasi, tabel detail semua task dihitung, filter periode & benchmark
+- **Dashboard Tim** `/kinerja/tim`: ranking seluruh anggota, bar chart perbandingan, pie chart distribusi beban, breakdown mini per orang, filter divisi & periode
+- **API endpoint** `/api/kinerja/task-score/<emp_id>` untuk integrasi data
+- Menu **"Kinerja Task"** ditambahkan di sidebar TalentCore
+
+---
+
 ## [1.4.9] — 2026-06-20
 ### Peningkatan
 - Update Center: halaman auto-refresh setelah deploy selesai dengan countdown (`✓ Selesai — reload (4s)`)

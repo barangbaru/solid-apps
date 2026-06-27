@@ -1,0 +1,296 @@
+{% extends 'base.html' %}
+{% block title %}Kinerja Task — {{ emp.name }}{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Kinerja Task Individu</span>{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  {# ── Filter Bar ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-2">
+        <form class="row g-2 align-items-end" method="get">
+          <div class="col-auto">
+            <label class="form-label small mb-1">Dari</label>
+            <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-1">Sampai</label>
+            <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small mb-1">Benchmark (pts/bln)</label>
+            <input type="number" name="benchmark" class="form-control form-control-sm" style="width:110px"
+                   value="{{ benchmark }}" min="10" step="10">
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary btn-sm">Terapkan</button>
+            <a href="/kinerja/tim{% if request.args.get('divisi') %}?divisi={{ request.args.get('divisi') }}{% endif %}"
+               class="btn btn-outline-secondary btn-sm ms-1">← Tim</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ── Header Profil ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center gap-4 flex-wrap">
+          <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+               style="width:60px;height:60px;background:#eef2ff;font-size:1.5rem;color:#4361ee;font-weight:700">
+            {{ emp.name[:1].upper() }}
+          </div>
+          <div class="flex-grow-1">
+            <h5 class="fw-bold mb-1">{{ emp.name }}</h5>
+            <div class="d-flex gap-3 flex-wrap text-muted small">
+              <span><i class="bi bi-building me-1"></i>{{ emp.divisi or '—' }}</span>
+              <span><i class="bi bi-person-badge me-1"></i>{{ emp.jabatan or '—' }}</span>
+              <span><i class="bi bi-layers me-1"></i>{{ emp.level or '—' }}</span>
+            </div>
+          </div>
+          <div class="text-center">
+            <div class="display-6 fw-bold text-primary">{{ perf.task_score }}</div>
+            <div class="small text-muted">Skor Task</div>
+          </div>
+          {% if divisi_avg %}
+          <div class="text-center">
+            <div class="display-6 fw-bold text-secondary">{{ divisi_avg }}</div>
+            <div class="small text-muted">Avg Divisi</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── KPI Cards ── #}
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-primary">{{ perf.task_score }}</div>
+      <div class="small text-muted">Skor Kinerja Task</div>
+      <div class="progress mt-2" style="height:5px">
+        <div class="progress-bar bg-primary" style="width:{{ perf.task_score }}%"></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-success">{{ perf.total_raw }}</div>
+      <div class="small text-muted">Total Raw Points</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-info">{{ perf.breakdown | sum(attribute='count') }}</div>
+      <div class="small text-muted">Total Task Selesai</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="fs-2 fw-bold text-warning">{{ perf.months }}</div>
+      <div class="small text-muted">Durasi (bulan)</div>
+    </div>
+  </div>
+
+  {# ── Breakdown Chart & Tabel ── #}
+  <div class="col-12 col-lg-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-pie-chart me-1"></i>Distribusi Poin per Tipe Task
+      </div>
+      <div class="card-body">
+        {% if perf.breakdown %}
+        <canvas id="chartBreakdown" height="220"></canvas>
+        {% else %}
+        <div class="text-center text-muted py-5 small">
+          <i class="bi bi-inbox" style="font-size:2rem;opacity:.3"></i>
+          <div class="mt-2">Belum ada task selesai di periode ini.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-bar-chart me-1"></i>Breakdown Tipe Task
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover align-middle mb-0 small">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Tipe Task</th>
+              <th class="text-center">Jumlah</th>
+              <th class="text-center">Raw Pts</th>
+              <th>Kontribusi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in perf.breakdown %}
+            {% set pct = (b.raw_pts / perf.total_raw * 100) | round(1) if perf.total_raw > 0 else 0 %}
+            <tr>
+              <td class="ps-3">{{ b.label }}</td>
+              <td class="text-center fw-semibold">{{ b.count }}</td>
+              <td class="text-center text-primary fw-semibold">{{ b.raw_pts | round(1) }}</td>
+              <td style="min-width:120px">
+                <div class="d-flex align-items-center gap-2">
+                  <div class="progress flex-grow-1" style="height:6px">
+                    <div class="progress-bar" style="width:{{ pct }}%;background:#4361ee"></div>
+                  </div>
+                  <span class="text-muted" style="width:35px;font-size:.75rem">{{ pct }}%</span>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-3">Tidak ada data</td></tr>
+            {% endfor %}
+            {% if perf.total_raw > 0 %}
+            <tr class="table-light fw-semibold">
+              <td class="ps-3">Total</td>
+              <td class="text-center">{{ perf.breakdown | sum(attribute='count') }}</td>
+              <td class="text-center text-primary">{{ perf.total_raw }}</td>
+              <td>100%</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Riwayat Evaluasi ── #}
+  {% if evals %}
+  <div class="col-12 col-lg-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-clock-history me-1"></i>Riwayat Evaluasi
+      </div>
+      <div class="card-body">
+        <canvas id="chartEvalHistory" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Detail Task ── #}
+  <div class="col-12 {% if evals %}col-lg-7{% endif %}">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold small d-flex justify-content-between">
+        <span><i class="bi bi-list-task me-1"></i>Detail Task Dihitung ({{ perf.detail | length }})</span>
+        <input type="text" class="form-control form-control-sm w-auto" id="filterDetail"
+               placeholder="Cari..." style="max-width:180px">
+      </div>
+      <div class="card-body p-0" style="max-height:420px;overflow-y:auto">
+        <table class="table table-hover align-middle mb-0 small" id="detailTable">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th class="ps-3">Tipe</th>
+              <th>Keterangan</th>
+              <th class="text-end pe-3">Pts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in perf.detail %}
+            <tr>
+              <td class="ps-3">
+                <span class="badge rounded-pill
+                  {% if 'Project' in d.type %}bg-primary
+                  {% elif 'poc' in d.type or 'presales' in d.type %}bg-success
+                  {% elif 'support' in d.type %}bg-warning text-dark
+                  {% else %}bg-secondary{% endif %}"
+                  style="font-size:.65rem">
+                  {{ d.label | truncate(20, True, '…') }}
+                </span>
+              </td>
+              <td class="text-truncate" style="max-width:280px" title="{{ d.source }}">{{ d.source }}</td>
+              <td class="text-end pe-3 fw-semibold text-primary">{{ d.pts }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Belum ada task selesai.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Formula Info ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body py-2 small text-muted">
+        <i class="bi bi-info-circle me-1"></i>
+        <strong>Formula:</strong> Skor Task = min(Total Raw Points ÷ (Benchmark × Bulan) × 100, 100) &nbsp;|&nbsp;
+        Benchmark: <strong>{{ benchmark }} pts/bulan</strong> &nbsp;|&nbsp;
+        Durasi: <strong>{{ perf.months }} bulan</strong> &nbsp;|&nbsp;
+        Raw: <strong>{{ perf.total_raw }} pts</strong>
+        &nbsp;→ Skor: <strong class="text-primary">{{ perf.task_score }} / 100</strong>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// Pie chart breakdown
+{% if perf.breakdown %}
+new Chart(document.getElementById('chartBreakdown'), {
+  type: 'doughnut',
+  data: {
+    labels: {{ perf.breakdown | map(attribute='label') | list | tojson }},
+    datasets: [{
+      data: {{ perf.breakdown | map(attribute='raw_pts') | list | tojson }},
+      backgroundColor: ['#4361ee','#3a0ca3','#7209b7','#f72585','#4cc9f0','#06d6a0','#ffd166'],
+      borderWidth: 2, borderColor: '#fff'
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 12 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.label}: ${ctx.parsed} pts (${ctx.dataset.data.reduce((a,b)=>a+b,0) > 0 ? Math.round(ctx.parsed/ctx.dataset.data.reduce((a,b)=>a+b,0)*100) : 0}%)`
+        }
+      }
+    }
+  }
+});
+{% endif %}
+
+// Bar chart riwayat evaluasi
+{% if evals %}
+const evalLabels = {{ evals | map(attribute='periode') | list | tojson }};
+const evalScores = {{ evals | map(attribute='final_total') | list | tojson }};
+const evalTask   = {{ evals | map(attribute='task_score') | list | tojson }};
+new Chart(document.getElementById('chartEvalHistory'), {
+  type: 'bar',
+  data: {
+    labels: evalLabels.slice().reverse(),
+    datasets: [
+      { label: 'Nilai Final', data: evalScores.slice().reverse(),
+        backgroundColor: 'rgba(67,97,238,.7)', borderRadius: 4 },
+      { label: 'Skor Task', data: evalTask.slice().reverse(),
+        backgroundColor: 'rgba(76,201,240,.7)', borderRadius: 4 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    scales: { y: { beginAtZero: true, max: 100 } },
+    plugins: { legend: { labels: { font: { size: 11 } } } }
+  }
+});
+{% endif %}
+
+// Filter tabel detail
+document.getElementById('filterDetail').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#detailTable tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}
