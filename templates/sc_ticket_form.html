@@ -293,6 +293,33 @@
       </div>
     </div>
 
+    {# Assignee Manual (Eksternal) #}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-person-plus me-1"></i>Assignee Manual
+      </div>
+      <div class="card-body pb-2">
+        <div class="text-muted small mb-2">Tambah nama di luar daftar karyawan (vendor, konsultan, dll)</div>
+        <div id="extTagsWrap" class="d-flex flex-wrap gap-1 mb-2">
+          {% for name in ext_assignees %}
+          <span class="badge bg-secondary d-flex align-items-center gap-1" style="font-size:.8rem">
+            {{ name }}
+            <button type="button" class="btn-close btn-close-white" style="font-size:.5rem" onclick="removeExtTag(this)"></button>
+          </span>
+          {% endfor %}
+        </div>
+        <div class="input-group input-group-sm">
+          <input type="text" id="extNameInput" class="form-control form-control-sm"
+                 placeholder="Ketik nama lalu Enter atau klik +"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();addExtTag();}">
+          <button class="btn btn-outline-secondary" type="button" onclick="addExtTag()">
+            <i class="bi bi-plus"></i>
+          </button>
+        </div>
+        <textarea name="external_assignees" id="extNamesHidden" class="d-none">{{ ext_assignees|join('\n') }}</textarea>
+      </div>
+    </div>
+
     {# PIC Customer #}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header py-2 fw-bold small text-uppercase text-muted">
@@ -428,6 +455,32 @@ document.addEventListener('DOMContentLoaded', function() {
     initUpload('upload_' + sec, 'preview_' + sec);
   });
 });
+
+/* ── External assignee tag input ── */
+function syncExtHidden() {
+  const tags = Array.from(document.querySelectorAll('#extTagsWrap .badge'))
+    .map(el => el.childNodes[0].textContent.trim()).filter(Boolean);
+  document.getElementById('extNamesHidden').value = tags.join('\n');
+}
+
+function addExtTag() {
+  const input = document.getElementById('extNameInput');
+  const name  = input.value.trim();
+  if (!name) return;
+  const wrap = document.getElementById('extTagsWrap');
+  const span = document.createElement('span');
+  span.className = 'badge bg-secondary d-flex align-items-center gap-1';
+  span.style.fontSize = '.8rem';
+  span.innerHTML = `${name} <button type="button" class="btn-close btn-close-white" style="font-size:.5rem" onclick="removeExtTag(this)"></button>`;
+  wrap.appendChild(span);
+  input.value = '';
+  syncExtHidden();
+}
+
+function removeExtTag(btn) {
+  btn.closest('.badge').remove();
+  syncExtHidden();
+}
 </script>
 {% endblock %}
 

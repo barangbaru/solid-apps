@@ -804,6 +804,19 @@ document.addEventListener('DOMContentLoaded', function(){
                 {% endfor %}
               </select>
             </div>
+            <div class="col-12">
+              <label class="form-label small fw-semibold">Assignee Manual <span class="text-muted fw-normal">(vendor, konsultan, dll)</span></label>
+              <div id="taskExtTagsWrap" class="d-flex flex-wrap gap-1 mb-1"></div>
+              <div class="input-group input-group-sm">
+                <input type="text" id="taskExtInput" class="form-control form-control-sm"
+                       placeholder="Ketik nama lalu Enter atau +"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskExtTag();}">
+                <button class="btn btn-outline-secondary" type="button" onclick="addTaskExtTag()">
+                  <i class="bi bi-plus"></i>
+                </button>
+              </div>
+              <textarea name="external_assignees" id="taskExtHidden" class="d-none"></textarea>
+            </div>
           </div>
         </div>
         <div class="modal-footer py-2">
@@ -956,6 +969,32 @@ document.querySelectorAll('.kanban-col').forEach(function(col){
       body: JSON.stringify({status: newStatus})
     }).then(function(){ location.reload(); });
   });
+});
+
+/* ── External assignee tag input (Add Task modal) ── */
+function syncTaskExtHidden() {
+  const tags = Array.from(document.querySelectorAll('#taskExtTagsWrap .badge'))
+    .map(el => el.childNodes[0].textContent.trim()).filter(Boolean);
+  document.getElementById('taskExtHidden').value = tags.join('\n');
+}
+function addTaskExtTag() {
+  const input = document.getElementById('taskExtInput');
+  const name  = input.value.trim();
+  if (!name) return;
+  const wrap = document.getElementById('taskExtTagsWrap');
+  const span = document.createElement('span');
+  span.className = 'badge bg-secondary d-flex align-items-center gap-1';
+  span.style.fontSize = '.8rem';
+  span.innerHTML = `${name} <button type="button" class="btn-close btn-close-white" style="font-size:.5rem" onclick="this.closest('.badge').remove();syncTaskExtHidden()"></button>`;
+  wrap.appendChild(span);
+  input.value = '';
+  syncTaskExtHidden();
+}
+/* Reset tag wrap saat modal dibuka ulang */
+document.getElementById('addTaskModal') && document.getElementById('addTaskModal').addEventListener('show.bs.modal', function() {
+  document.getElementById('taskExtTagsWrap').innerHTML = '';
+  document.getElementById('taskExtHidden').value = '';
+  document.getElementById('taskExtInput').value = '';
 });
 </script>
 {% endblock %}

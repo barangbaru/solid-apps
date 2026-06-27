@@ -581,6 +581,23 @@ CREATE TABLE IF NOT EXISTS sc_ticket_history (
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY(ticket_id) REFERENCES sc_tickets(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS sc_ticket_external_assignees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    role_note TEXT DEFAULT '',
+    added_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(ticket_id) REFERENCES sc_tickets(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS pc_task_external_assignees (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    added_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(task_id) REFERENCES pc_tasks(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS sc_ticket_assignees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
@@ -1602,6 +1619,8 @@ def init_db():
         ('idx_sc_tickets_reported_at',    'sc_tickets',             'reported_at'),
         ('idx_sc_assignees_ticket',       'sc_ticket_assignees',    'ticket_id'),
         ('idx_sc_attachments_ticket',     'sc_ticket_attachments',  'ticket_id'),
+        ('idx_sc_ext_assignees_ticket',   'sc_ticket_external_assignees', 'ticket_id'),
+        ('idx_pc_ext_assignees_task',     'pc_task_external_assignees',   'task_id'),
         ('idx_sc_presales_assignees',     'sc_presales_assignees',  'request_id'),
         ('idx_bk_bookings_resource',      'bk_bookings',            'resource_id, start_dt'),
         ('idx_bk_bookings_booked_by',     'bk_bookings',            'booked_by'),
@@ -5249,6 +5268,15 @@ def _save_ticket_attachments(db, ticket_id, section):
                        (ticket_id, section, url, f.filename,
                         session.get('user_id'), session.get('user_name','')))
 
+def _sync_external_assignees(db, table, fk_col, fk_val, names):
+    """Ganti seluruh external assignees dengan daftar nama baru."""
+    db.execute(f'DELETE FROM {table} WHERE {fk_col}=?', (fk_val,))
+    for name in names:
+        name = name.strip()
+        if name:
+            db.execute(f'INSERT INTO {table}({fk_col},name,added_by) VALUES(?,?,?)',
+                       (fk_val, name, session.get('user_id')))
+
 def _sc_ticket_history(db, ticket_id, action, field_name='', old_value='', new_value='', notes=''):
     """Catat history perubahan tiket (tidak menimpa, selalu tambah baris baru)."""
     try:
@@ -5964,6 +5992,8 @@ def sc_ticket_add():
             _sc_ticket_history(db, new_id, 'created', notes=f'Tiket dibuat oleh {session.get("user_name","")}')
             for sec in ('description', 'status_note', 'solution_note'):
                 _save_ticket_attachments(db, new_id, sec)
+            ext_names = [n for n in request.form.get('external_assignees','').split('\n') if n.strip()]
+            _sync_external_assignees(db, 'sc_ticket_external_assignees', 'ticket_id', new_id, ext_names)
             db.commit()
             _sc_sync_assignees(db, new_id, assignee_ids)
             _sc_notify_ticket(db, new_id, 'created')
@@ -5975,7 +6005,8 @@ def sc_ticket_add():
             return redirect(url_for('sc_tickets'))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
-    return render_template('sc_ticket_form.html', row=None, sel_assignees=[], customers=customers,
+    return render_template('sc_ticket_form.html', row=None, sel_assignees=[], ext_assignees=[],
+                           customers=customers,
                            support_types=support_types, sla_cats=sla_cats, contracts=contracts,
                            modules=modules, employees=employees,
                            sc_ticket_statuses=SC_TICKET_STATUSES,
@@ -6033,6 +6064,8 @@ def sc_ticket_edit(tid):
             db.commit()
             for sec in ('description', 'status_note', 'solution_note'):
                 _save_ticket_attachments(db, tid, sec)
+            ext_names = [n for n in request.form.get('external_assignees','').split('\n') if n.strip()]
+            _sync_external_assignees(db, 'sc_ticket_external_assignees', 'ticket_id', tid, ext_names)
             db.commit()
             for field, label, old, new in changed:
                 _sc_ticket_history(db, tid, 'update', field, old, new, f'{label} diubah')
@@ -6043,7 +6076,11 @@ def sc_ticket_edit(tid):
             return redirect(url_for('sc_ticket_detail', tid=tid))
         except Exception as e:
             flash(f'Error: {e}', 'danger')
-    return render_template('sc_ticket_form.html', row=row, sel_assignees=sel_assignees, customers=customers,
+    sel_ext = db.execute(
+        'SELECT name FROM sc_ticket_external_assignees WHERE ticket_id=? ORDER BY id', (tid,)).fetchall()
+    return render_template('sc_ticket_form.html', row=row, sel_assignees=sel_assignees,
+                           ext_assignees=[r['name'] for r in sel_ext],
+                           customers=customers,
                            support_types=support_types, sla_cats=sla_cats, contracts=contracts,
                            modules=modules, employees=employees,
                            sc_ticket_statuses=SC_TICKET_STATUSES,
@@ -6079,8 +6116,11 @@ def sc_ticket_detail(tid):
     att_by_section = {}
     for a in attachments:
         att_by_section.setdefault(a['section'], []).append(a)
+    ext_assignees = db.execute(
+        'SELECT * FROM sc_ticket_external_assignees WHERE ticket_id=? ORDER BY id', (tid,)).fetchall()
     can_manage = has_permission(session.get('user_role',''), 'sc_manage_tickets', db)
     return render_template('sc_ticket_detail.html', t=t, history=history, assignees=assignees,
+                           ext_assignees=ext_assignees,
                            att_by_section=att_by_section, can_manage=can_manage,
                            sc_ticket_statuses=SC_TICKET_STATUSES)
 
@@ -9494,13 +9534,27 @@ def pc_project_detail(pid):
            LEFT JOIN employees et ON et.id=i.pic_tester_id
            WHERE i.project_id=? ORDER BY i.id DESC''', (pid,)
     ).fetchall()
-    tasks = db.execute(
+    _raw_tasks = db.execute(
         '''SELECT t.*, GROUP_CONCAT(e.name, ', ') as assignees
            FROM pc_tasks t
            LEFT JOIN pc_task_assignees ta ON ta.task_id=t.id
            LEFT JOIN employees e ON e.id=ta.employee_id
            WHERE t.project_id=? GROUP BY t.id ORDER BY t.sort_order, t.id''', (pid,)
     ).fetchall()
+    _ext_map = {}
+    for row in db.execute(
+        '''SELECT ea.task_id, GROUP_CONCAT(ea.name, ', ') as ext_names
+           FROM pc_task_external_assignees ea
+           JOIN pc_tasks t ON t.id=ea.task_id
+           WHERE t.project_id=? GROUP BY ea.task_id''', (pid,)
+    ).fetchall():
+        _ext_map[row['task_id']] = row['ext_names']
+    tasks = []
+    for t in _raw_tasks:
+        t = dict(t)
+        parts = [p for p in [t.get('assignees'), _ext_map.get(t['id'])] if p]
+        t['assignees'] = ', '.join(parts) if parts else ''
+        tasks.append(t)
     milestones = db.execute(
         "SELECT * FROM pc_milestones WHERE project_id=? ORDER BY due_date, sort_order", (pid,)
     ).fetchall()
@@ -9772,6 +9826,8 @@ def pc_task_add(pid):
         tid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         for eid in request.form.getlist('assignee_ids'):
             db.execute("INSERT OR IGNORE INTO pc_task_assignees(task_id,employee_id) VALUES(?,?)", (tid, eid))
+        ext_names = [n for n in request.form.get('external_assignees','').split('\n') if n.strip()]
+        _sync_external_assignees(db, 'pc_task_external_assignees', 'task_id', tid, ext_names)
         db.commit()
         flash('Task ditambahkan', 'success')
     return redirect(url_for('pc_project_detail', pid=pid) + '#kanban')
