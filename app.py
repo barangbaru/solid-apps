@@ -2927,13 +2927,13 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
         # Gunakan work_start_date sebagai proxy tanggal penyelesaian jika resolved_at tidak ada
         dw = _date_where('t.reported_at', p)
         rows = db.execute(f'''
-            SELECT t.ticket_no, t.subject, t.priority, t.due_date, t.reported_at, t.status
+            SELECT t.ticket_no, t.subject, t.due_date, t.reported_at, t.status
             FROM sc_ticket_assignees ta
             JOIN sc_tickets t ON t.id=ta.ticket_id
             WHERE ta.employee_id=? AND t.status IN ('resolved','closed'){dw}
         ''', p).fetchall()
         for r in rows:
-            pts = round(float(c['base_points']) * _mult_priority(c, r['priority'] or 'Medium')
+            pts = round(float(c['base_points']) * _mult_priority(c, 'Medium')
                         * _mult_ontime(c, r['due_date'], r['reported_at']), 2)
             _add('support_ticket', c['label'], f"Tiket {r['ticket_no']}: {r['subject'][:40]}", pts)
 
@@ -3127,20 +3127,20 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
     # ── Support Tickets ─────────────────────────────────────────────────────
     p = [emp_id]
     rows = db.execute(f'''
-        SELECT t.ticket_no, t.subject, t.priority, t.due_date, t.reported_at, t.status
+        SELECT t.ticket_no, t.subject, t.due_date, t.reported_at, t.status
         FROM sc_ticket_assignees ta JOIN sc_tickets t ON t.id=ta.ticket_id
         WHERE ta.employee_id=?{_dw("t.reported_at", p)}
     ''', p).fetchall()
     for r in rows:
         is_done = r['status'] in ('resolved','closed')
         done_date = r['due_date'] if is_done else None  # proxy
-        pts = round(_bpts('support_ticket') * _pmult('support_ticket', r['priority'] or 'Medium')
+        pts = round(_bpts('support_ticket') * _pmult('support_ticket', 'Medium')
                     * _omult('support_ticket', r['due_date'], done_date), 2)
         _add('support_ticket', 'Tiket Support',
              f"#{r['ticket_no']}: {r['subject'][:40]}",
              r['due_date'],
              r['reported_at'][:10] if r['reported_at'] else None,
-             done_date, pts, r['priority'] or 'Medium')
+             done_date, pts, 'Medium')
 
     # ── Hitung timeliness ───────────────────────────────────────────────────
     def _cnt(tl): return sum(1 for t in tasks_all if t['timeliness'] == tl)

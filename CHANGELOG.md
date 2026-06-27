@@ -7,6 +7,20 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.7.5] — 2026-06-27
+### Bug Fix
+- Fix error `column t.priority does not exist` di `sc_tickets`: tabel tiket support tidak memiliki kolom `priority`
+- Hapus `t.priority` dari query `calc_task_perf` dan `calc_task_analytics` untuk support tickets; gunakan nilai default `'Medium'` sebagai multiplier prioritas
+
+---
+
+## [1.7.4] — 2026-06-27
+### Bug Fix & Peningkatan
+- Fix error 500 tidak tercatat di `audit_errors`: error handler kini membuka koneksi DB baru (fresh) untuk logging, menghindari koneksi yang stuck di *aborted transaction* setelah psycopg2 error
+- Audit Trail tab "Log Error": tambah toggle switch **Pesan Error** dan **Traceback (Stack Trace)** — setting tersimpan di localStorage untuk troubleshoot tanpa perlu ke server
+
+---
+
 ## [1.7.3] — 2026-06-27
 ### Bug Fix
 - Fix error `column i.due_date does not exist` di PostgreSQL: tabel `pc_issues` tidak memiliki kolom `due_date` (hanya ada `resolved_date`, `issued_date`, `created_at`)
