@@ -1342,7 +1342,6 @@ DEFAULT_SETTINGS = {
     'github_repo':           'barangbaru/solid-apps',
     # AI Chatbot
     'chatbot_enabled':       '0',
-    'chatbot_roles':         'superadmin,admin,user',
     'ai_provider':           'anthropic',      # anthropic | openai | openai_compat
     'ai_api_key':            '',
     'ai_model':              '',               # kosong = pakai default per provider
@@ -4449,7 +4448,7 @@ PORTAL_SYSTEM_KEYS = [
     'openwa_session_evaluasi', 'openwa_session_support', 'openwa_session_booking', 'openwa_session_aset',
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
     'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
-    'chatbot_enabled', 'chatbot_roles',
+    'chatbot_enabled',
     'ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url',
     'anthropic_api_key',  # backward compat
 ]
@@ -4524,6 +4523,22 @@ def portal_test_whatsapp():
     chat_id = normalize_phone_wa(phone)
     return jsonify({'ok': ok, 'chat_id': chat_id,
                     'msg': f'Pesan terkirim ke {chat_id}' if ok else str(err)})
+
+@app.route('/portal/system-settings/save-ai', methods=['POST'])
+@login_required
+def portal_save_ai_settings():
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    db = get_db()
+    AI_KEYS = ['chatbot_enabled', 'ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url', 'anthropic_api_key']
+    for k in AI_KEYS:
+        if k == 'chatbot_enabled':
+            v = '1' if request.form.get(k) else '0'
+        else:
+            v = request.form.get(k, '').strip()
+        save_setting(db, k, v)
+    db.commit()
+    return jsonify({'ok': True, 'msg': 'Konfigurasi AI Assistant berhasil disimpan.'})
 
 @app.route('/portal/system-settings/reload', methods=['POST'])
 @login_required
@@ -8301,10 +8316,6 @@ def chatbot():
     settings = get_settings(db)
     if settings.get('chatbot_enabled','0') != '1':
         flash('Fitur chatbot belum diaktifkan. Hubungi administrator.', 'warning')
-        return redirect(url_for('portal'))
-    allowed = [r.strip() for r in settings.get('chatbot_roles','superadmin,admin,user').split(',')]
-    if session.get('user_role','') not in allowed:
-        flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     return render_template('chatbot.html')
 

@@ -387,24 +387,29 @@
   <div class="col-lg-4">
 
     {# ── AI Assistant ── #}
-    <div class="card mb-3">
-      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
-        <i class="bi bi-robot text-primary me-1"></i>AI Assistant (Chatbot)
+    <div class="card mb-3 border-primary border-opacity-25">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-robot text-primary me-1"></i>AI Assistant (Chatbot)</span>
+        <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:.7rem">
+          <i class="bi bi-shield-check me-1"></i>Gaji & evaluasi pribadi dilindungi
+        </span>
       </div>
       <div class="card-body">
 
         <div class="mb-3">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" name="chatbot_enabled" id="chatbotEnabled"
+                   form="aiConfigForm"
                    {{ 'checked' if cfg.get('chatbot_enabled') == '1' }}>
             <label class="form-check-label fw-semibold" for="chatbotEnabled">Aktifkan AI Assistant</label>
           </div>
-          <div class="form-text">Chatbot dengan akses data real-time dari database Hive.</div>
+          <div class="form-text">Semua pengguna yang login dapat mengakses chatbot.</div>
         </div>
 
         <div class="mb-3">
           <label class="form-label fw-semibold small">Provider AI</label>
           <select name="ai_provider" id="aiProviderSel" class="form-select form-select-sm"
+                  form="aiConfigForm"
                   onchange="onProviderChange(this.value)">
             <option value="anthropic"    {{ 'selected' if cfg.get('ai_provider','anthropic')=='anthropic' }}>
               Claude (Anthropic)
@@ -423,6 +428,7 @@
           <div class="input-group input-group-sm">
             <input type="password" name="ai_api_key" id="aiApiKey"
                    class="form-control form-control-sm font-monospace"
+                   form="aiConfigForm"
                    value="{{ cfg.get('ai_api_key','') or cfg.get('anthropic_api_key','') }}"
                    placeholder="Masukkan API key..."
                    autocomplete="off">
@@ -439,6 +445,7 @@
           <label class="form-label fw-semibold small">Model</label>
           <input type="text" name="ai_model" id="aiModelInput"
                  class="form-control form-control-sm font-monospace"
+                 form="aiConfigForm"
                  value="{{ cfg.get('ai_model','') }}"
                  placeholder="Kosongkan untuk default">
           <div class="form-text" id="aiModelHint">
@@ -457,6 +464,7 @@
         <div class="mb-3" id="aiBaseUrlRow" style="display:none">
           <label class="form-label fw-semibold small">Base URL <span class="text-muted fw-normal">(untuk OpenAI-Compatible)</span></label>
           <input type="text" name="ai_base_url" class="form-control form-control-sm font-monospace"
+                 form="aiConfigForm"
                  value="{{ cfg.get('ai_base_url','') }}"
                  placeholder="https://api.deepseek.com/v1">
           <div class="form-text" id="aiBaseUrlHint">
@@ -472,13 +480,10 @@
           </div>
         </div>
 
-        <div class="mb-0">
-          <label class="form-label fw-semibold small">Role yang Bisa Akses</label>
-          <input type="text" name="chatbot_roles" class="form-control form-control-sm"
-                 value="{{ cfg.get('chatbot_roles','superadmin,admin,user') }}"
-                 placeholder="superadmin,admin,user">
-          <div class="form-text">Pisahkan dengan koma.</div>
-        </div>
+        <div id="aiSaveResult" class="mb-2 d-none small"></div>
+        <button type="button" class="btn btn-primary btn-sm w-100" onclick="saveAiConfig(this)">
+          <i class="bi bi-robot me-1"></i>Simpan Konfigurasi AI
+        </button>
 
       </div>
     </div>
@@ -664,6 +669,33 @@ function testWaApp(appSlug, btn) {
     btn.innerHTML = '<i class="bi bi-send"></i>';
     showResult('waResult', d.ok, (d.ok ? '✓ ' : '✗ ') + d.msg);
   }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="bi bi-send"></i>'; });
+}
+
+async function saveAiConfig(btn) {
+  const fd = new FormData();
+  fd.append('chatbot_enabled', document.getElementById('chatbotEnabled').checked ? '1' : '');
+  fd.append('ai_provider',     document.getElementById('aiProviderSel').value);
+  fd.append('ai_api_key',      document.getElementById('aiApiKey').value);
+  fd.append('ai_model',        document.getElementById('aiModelInput').value);
+  fd.append('ai_base_url',     document.querySelector('[name="ai_base_url"]').value);
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menyimpan...';
+  const res  = document.getElementById('aiSaveResult');
+  res.className = 'mb-2 small';
+
+  try {
+    const r = await fetch('/portal/system-settings/save-ai', {method:'POST', body:fd});
+    const d = await r.json();
+    res.innerHTML = d.ok
+      ? `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${d.msg}</span>`
+      : `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>${d.msg}</span>`;
+  } catch(e) {
+    res.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Gagal menghubungi server.</span>';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-robot me-1"></i>Simpan Konfigurasi AI';
 }
 
 async function reloadApp(btn) {
