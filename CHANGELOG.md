@@ -7,6 +7,13 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.7.1] — 2026-06-27
+### Dokumentasi & Transparansi
+- README.md diperbarui lengkap: nama app (Hive), stack PostgreSQL, semua modul, Scoring Framework tabel, arsitektur file, deploy guide
+- Panel **"Cara Sistem Menilai Kinerja Task"** (collapsible) ditambahkan di dashboard Kinerja Individu & Kinerja Tim: formula, tabel base points, priority multiplier, on-time multiplier, kategori skor, syarat task terhitung
+
+---
+
 ## [1.7.0] — 2026-06-27
 ### Fitur: Kinerja Task
 - **Scoring otomatis** dari seluruh sumber data: Project (PIC/Implementor/Member), Issue Project, Task ProjectCore, POC/Presales, Tiket Support
