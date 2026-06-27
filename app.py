@@ -1146,6 +1146,7 @@ MIGRATIONS = [
     ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
     ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
     ('sc_sla_categories',  'maintenance_type',        "TEXT DEFAULT 'corrective'"),
+    ('sc_sla_categories',  'priority',                "TEXT DEFAULT 'Medium'"),
     ('ac_assets',            'manual_employee_name',    "TEXT DEFAULT ''"),
     ('ac_assets',            'status',                  "TEXT DEFAULT 'Aktif'"),
     ('ac_assets',            'started_using',           "TEXT DEFAULT ''"),
