@@ -557,6 +557,17 @@ CREATE TABLE IF NOT EXISTS user_app_access (
 );
 
 -- ─── SupportCore: Ticket History & Multi-Assignee ────────────────────────────
+CREATE TABLE IF NOT EXISTS sc_ticket_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    section TEXT NOT NULL DEFAULT 'description',
+    filename TEXT NOT NULL,
+    original_name TEXT DEFAULT '',
+    uploaded_by INTEGER,
+    uploaded_by_name TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY(ticket_id) REFERENCES sc_tickets(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS sc_ticket_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
@@ -1590,6 +1601,7 @@ def init_db():
         ('idx_sc_tickets_status',         'sc_tickets',             'status'),
         ('idx_sc_tickets_reported_at',    'sc_tickets',             'reported_at'),
         ('idx_sc_assignees_ticket',       'sc_ticket_assignees',    'ticket_id'),
+        ('idx_sc_attachments_ticket',     'sc_ticket_attachments',  'ticket_id'),
         ('idx_sc_presales_assignees',     'sc_presales_assignees',  'request_id'),
         ('idx_bk_bookings_resource',      'bk_bookings',            'resource_id, start_dt'),
         ('idx_bk_bookings_booked_by',     'bk_bookings',            'booked_by'),
@@ -5224,6 +5236,19 @@ def sc_customer_delete(cid):
     return redirect(url_for('sc_customers'))
 
 # ── Notification helper ────────────────────────────────────────────────────────
+def _save_ticket_attachments(db, ticket_id, section):
+    """Simpan file upload dari request.files (multiple) ke tabel sc_ticket_attachments."""
+    files = request.files.getlist(f'attach_{section}')
+    for f in files:
+        if not f or not f.filename:
+            continue
+        url = _save_upload(f, f'tickets/{ticket_id}/{section}')
+        if url:
+            db.execute('''INSERT INTO sc_ticket_attachments(ticket_id,section,filename,original_name,uploaded_by,uploaded_by_name)
+                          VALUES(?,?,?,?,?,?)''',
+                       (ticket_id, section, url, f.filename,
+                        session.get('user_id'), session.get('user_name','')))
+
 def _sc_ticket_history(db, ticket_id, action, field_name='', old_value='', new_value='', notes=''):
     """Catat history perubahan tiket (tidak menimpa, selalu tambah baris baru)."""
     try:
@@ -5937,6 +5962,9 @@ def sc_ticket_add():
             new_id = cur.lastrowid
             db.commit()
             _sc_ticket_history(db, new_id, 'created', notes=f'Tiket dibuat oleh {session.get("user_name","")}')
+            for sec in ('description', 'status_note', 'solution_note'):
+                _save_ticket_attachments(db, new_id, sec)
+            db.commit()
             _sc_sync_assignees(db, new_id, assignee_ids)
             _sc_notify_ticket(db, new_id, 'created')
             if assignee_ids:
@@ -6003,6 +6031,9 @@ def sc_ticket_edit(tid):
                         module_id, status_note, mandays, pct_done,
                         solution_type, solution_note, due_date, work_start_date, media_lapor, priority, tid))
             db.commit()
+            for sec in ('description', 'status_note', 'solution_note'):
+                _save_ticket_attachments(db, tid, sec)
+            db.commit()
             for field, label, old, new in changed:
                 _sc_ticket_history(db, tid, 'update', field, old, new, f'{label} diubah')
             _sc_sync_assignees(db, tid, assignee_ids)
@@ -6043,8 +6074,33 @@ def sc_ticket_detail(tid):
                               FROM sc_ticket_assignees ta
                               JOIN employees e ON e.id=ta.employee_id
                               WHERE ta.ticket_id=? ORDER BY e.divisi, e.name''', (tid,)).fetchall()
+    attachments = db.execute('SELECT * FROM sc_ticket_attachments WHERE ticket_id=? ORDER BY section, id',
+                             (tid,)).fetchall()
+    att_by_section = {}
+    for a in attachments:
+        att_by_section.setdefault(a['section'], []).append(a)
+    can_manage = has_permission(session.get('user_role',''), 'sc_manage_tickets', db)
     return render_template('sc_ticket_detail.html', t=t, history=history, assignees=assignees,
+                           att_by_section=att_by_section, can_manage=can_manage,
                            sc_ticket_statuses=SC_TICKET_STATUSES)
+
+@app.route('/support/tickets/<int:tid>/attachments/<int:att_id>/delete', methods=['POST'])
+@login_required
+def sc_ticket_attachment_delete(tid, att_id):
+    if not sc_require('sc_manage_tickets'): return redirect(url_for('sc_ticket_detail', tid=tid))
+    db = get_db()
+    att = db.execute('SELECT * FROM sc_ticket_attachments WHERE id=? AND ticket_id=?', (att_id, tid)).fetchone()
+    if att:
+        try:
+            import os as _os
+            fpath = _os.path.join(_os.path.dirname(__file__), att['filename'].lstrip('/'))
+            if _os.path.exists(fpath):
+                _os.remove(fpath)
+        except Exception:
+            pass
+        db.execute('DELETE FROM sc_ticket_attachments WHERE id=?', (att_id,))
+        db.commit()
+    return redirect(url_for('sc_ticket_detail', tid=tid))
 
 @app.route('/support/tickets/<int:tid>/status', methods=['POST'])
 @login_required

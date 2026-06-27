@@ -13,7 +13,7 @@
   </a>
 </div>
 
-<form method="post">
+<form method="post" enctype="multipart/form-data">
 <div class="row g-3">
 
   {# ── Kolom kiri ── #}
@@ -117,9 +117,10 @@
           </div>
 
           <div class="col-12">
-            <label class="form-label fw-semibold small">Deskripsi Detail</label>
-            <textarea name="description" class="form-control form-control-sm" rows="3"
-                      placeholder="Detail masalah, langkah reproduksi, dll...">{{ row.description if row else '' }}</textarea>
+            <label class="form-label fw-semibold small">Deskripsi Detail <span class="text-danger">*</span></label>
+            <textarea name="description" class="form-control form-control-sm" rows="4" required
+                      placeholder="Detail masalah, langkah reproduksi, kondisi saat terjadi...">{{ row.description if row else '' }}</textarea>
+            {{ _upload_widget('description', 'Screenshot / Lampiran Deskripsi', row)|safe }}
           </div>
 
           <div class="col-md-6">
@@ -198,6 +199,7 @@
             <label class="form-label fw-semibold small">Keterangan Status</label>
             <textarea name="status_note" class="form-control form-control-sm" rows="2"
                       placeholder="Keterangan tambahan terkait status (opsional)...">{{ row.status_note if row else '' }}</textarea>
+            {{ _upload_widget('status_note', 'Screenshot / Lampiran Keterangan Status', row)|safe }}
           </div>
 
         </div>
@@ -238,6 +240,7 @@
             <label class="form-label fw-semibold small">Catatan Solusi / Suggestion</label>
             <textarea name="solution_note" class="form-control form-control-sm" rows="3"
                       placeholder="Detail solusi, langkah penyelesaian, atau suggestion...">{{ row.solution_note if row else '' }}</textarea>
+            {{ _upload_widget('solution_note', 'Screenshot / Lampiran Solusi', row)|safe }}
           </div>
 
         </div>
@@ -391,6 +394,27 @@ function updatePctBar(val) {
   document.getElementById('pctBar').style.width = Math.min(100, Math.max(0, val)) + '%';
 }
 
+/* ── Upload preview ── */
+function initUpload(inputId, previewId) {
+  const input   = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  if (!input || !preview) return;
+  input.addEventListener('change', function() {
+    preview.innerHTML = '';
+    Array.from(this.files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const div = document.createElement('div');
+        div.className = 'position-relative d-inline-block me-2 mb-2';
+        div.innerHTML = `<img src="${e.target.result}" class="rounded border" style="width:80px;height:60px;object-fit:cover" title="${file.name}">
+          <span class="position-absolute top-0 end-0 badge bg-dark" style="font-size:.6rem;padding:2px 4px">${(file.size/1024).toFixed(0)}K</span>`;
+        preview.appendChild(div);
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   const sel = document.getElementById('customerSelect');
   if (sel && sel.value) {
@@ -399,6 +423,25 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   const modSel = document.getElementById('moduleSelect');
   if (modSel && modSel.value) onModuleChange(modSel);
+
+  ['description', 'status_note', 'solution_note'].forEach(sec => {
+    initUpload('upload_' + sec, 'preview_' + sec);
+  });
 });
 </script>
 {% endblock %}
+
+{% macro _upload_widget(section, label, row) %}
+<div class="mt-2">
+  <label class="form-label small text-muted mb-1">
+    <i class="bi bi-images me-1"></i>{{ label }}
+  </label>
+  <input type="file" name="attach_{{ section }}" id="upload_{{ section }}"
+         class="form-control form-control-sm" multiple accept="image/*"
+         style="font-size:.8rem">
+  <div id="preview_{{ section }}" class="mt-2 d-flex flex-wrap"></div>
+  {% if row %}
+  {# Lampiran yang sudah ada ditampilkan di halaman detail, bukan form #}
+  {% endif %}
+</div>
+{% endmacro %}
