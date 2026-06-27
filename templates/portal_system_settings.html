@@ -424,7 +424,8 @@
             <input type="password" name="ai_api_key" id="aiApiKey"
                    class="form-control form-control-sm font-monospace"
                    value="{{ cfg.get('ai_api_key','') or cfg.get('anthropic_api_key','') }}"
-                   placeholder="Masukkan API key...">
+                   placeholder="Masukkan API key..."
+                   autocomplete="off">
             <button class="btn btn-outline-secondary" type="button" onclick="toggleVis('aiApiKey',this)">
               <i class="bi bi-eye"></i>
             </button>
