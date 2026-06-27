@@ -7535,14 +7535,25 @@ def err_404(e):
 def err_500(e):
     import traceback as _tb
     tb = _tb.format_exc()
+    # Gunakan koneksi BARU — koneksi lama (g.db) mungkin dalam state aborted transaction
+    # (misal setelah psycopg2 error), sehingga tidak bisa digunakan untuk INSERT.
     try:
-        db = get_db()
-        db.execute('''INSERT INTO audit_errors(app_slug,user_id,username,url,method,error_code,error_type,error_msg,traceback,ip)
-                      VALUES(?,?,?,?,?,?,?,?,?,?)''',
-                   (session.get('active_app','portal'), session.get('user_id'), session.get('user_name',''),
-                    request.path, request.method, 500, type(e).__name__, str(e), tb[:3000],
-                    _real_ip()))
-        db.commit()
+        if DB_TYPE == 'postgresql':
+            _econn = _pg_connect()
+            _econn.autocommit = False
+            _edb = _DBWrapper(_econn, is_pg=True)
+        else:
+            import sqlite3 as _sq3
+            _raw = _sq3.connect(DB_PATH)
+            _raw.row_factory = _sq3.Row
+            _edb = _DBWrapper(_raw, is_pg=False)
+        _edb.execute('''INSERT INTO audit_errors(app_slug,user_id,username,url,method,error_code,error_type,error_msg,traceback,ip)
+                        VALUES(?,?,?,?,?,?,?,?,?,?)''',
+                     (session.get('active_app','portal'), session.get('user_id'), session.get('user_name',''),
+                      request.path, request.method, 500, type(e).__name__, str(e), tb[:3000],
+                      _real_ip()))
+        _edb.commit()
+        _edb.close()
     except Exception:
         pass
     return render_template('error.html', code=500, msg='Terjadi kesalahan server'), 500

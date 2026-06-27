@@ -141,6 +141,18 @@
 
     {# ── TAB: Log Error ── #}
     {% elif tab == 'errors' %}
+    <div class="d-flex align-items-center gap-3 px-3 py-2 border-bottom bg-light" style="font-size:.82rem">
+      <span class="text-muted fw-semibold"><i class="bi bi-sliders me-1"></i>Tampilkan detail:</span>
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="toggleErrMsg" checked onchange="setMsgMode(this.checked)">
+        <label class="form-check-label small" for="toggleErrMsg">Pesan Error</label>
+      </div>
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="toggleTraceback" onchange="setTracebackMode(this.checked)">
+        <label class="form-check-label small" for="toggleTraceback">Traceback (Stack Trace)</label>
+      </div>
+      <span class="ms-auto text-muted small"><i class="bi bi-info-circle me-1"></i>Pengaturan tersimpan otomatis</span>
+    </div>
     <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
       <thead class="table-light">
         <tr>
@@ -175,12 +187,11 @@
               <span class="badge bg-light border text-dark me-1">{{ r.method }}</span>
               <code>{{ r.url }}</code>
             </div>
-            <div class="mt-1">{{ r.error_msg or '—' }}</div>
+            <div class="err-msg mt-1">{{ r.error_msg or '—' }}</div>
             {% if r.traceback %}
-            <details class="mt-1">
-              <summary class="text-muted small" style="cursor:pointer">Traceback</summary>
-              <pre class="mt-1 p-2 bg-light rounded small" style="font-size:.72rem;max-height:150px;overflow:auto;white-space:pre-wrap">{{ r.traceback }}</pre>
-            </details>
+            <div class="err-traceback mt-1" style="display:none">
+              <pre class="p-2 bg-dark text-success rounded" style="font-size:.72rem;max-height:300px;overflow:auto;white-space:pre-wrap">{{ r.traceback }}</pre>
+            </div>
             {% endif %}
           </td>
         </tr>
@@ -192,6 +203,26 @@
         {% endfor %}
       </tbody>
     </table>
+    <script>
+    function setMsgMode(on) {
+      document.querySelectorAll('.err-msg').forEach(el => el.style.display = on ? '' : 'none');
+      on ? localStorage.removeItem('audit_hide_msg') : localStorage.setItem('audit_hide_msg', '1');
+    }
+    function setTracebackMode(on) {
+      document.querySelectorAll('.err-traceback').forEach(el => el.style.display = on ? '' : 'none');
+      on ? localStorage.setItem('audit_traceback', '1') : localStorage.removeItem('audit_traceback');
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      if (localStorage.getItem('audit_hide_msg')) {
+        document.getElementById('toggleErrMsg').checked = false;
+        setMsgMode(false);
+      }
+      if (localStorage.getItem('audit_traceback')) {
+        document.getElementById('toggleTraceback').checked = true;
+        setTracebackMode(true);
+      }
+    });
+    </script>
 
     {# ── TAB: Log Notifikasi ── #}
     {% else %}
