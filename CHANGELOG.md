@@ -7,6 +7,14 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.9.3] — 2026-06-27
+### Bug Fix
+- Fix `psycopg2.errors.SyntaxError: ON CONFLICT DO UPDATE requires inference specification` saat simpan pengaturan sistem
+- `_fix()` di `_DBWrapper`: `INSERT OR REPLACE` kini menghasilkan `ON CONFLICT (col_pertama) DO UPDATE SET ...` — kolom pertama digunakan sebagai conflict target
+- Query dengan UNIQUE constraint multi-kolom (`user_app_access`, `eval_tokens`, `eval_reviews`) diubah langsung ke sintaks `ON CONFLICT(col1,col2) DO UPDATE SET ...` agar kompatibel PostgreSQL maupun SQLite
+
+---
+
 ## [1.9.2] — 2026-06-27
 ### Bug Fix
 - Fix `psycopg2.errors.InFailedSqlTransaction` di `inject_globals`: `chatbot_enabled` sekarang dibungkus try/except tersendiri, tidak akan crash jika koneksi DB sedang dalam state aborted

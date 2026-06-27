@@ -1,3 +1,3 @@
-VERSION = "1.9.2"
+VERSION = "1.9.3"
 RELEASE_DATE = "2026-06-27"
-RELEASE_NOTES = "Fix: inject_globals chatbot_enabled aman dari aborted transaction"
+RELEASE_NOTES = "Fix: INSERT OR REPLACE ke PostgreSQL ON CONFLICT syntax yang benar"

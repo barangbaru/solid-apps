@@ -83,10 +83,13 @@ class _DBWrapper:
             sql_stripped, re.IGNORECASE | re.DOTALL)
         if m_replace:
             cols = [c.strip() for c in m_replace.group(2).split(',')]
-            update_set = ', '.join(f'{c}=EXCLUDED.{c}' for c in cols)
+            # Kolom pertama dijadikan conflict target; kolom lainnya di-update
+            conflict_col = cols[0]
+            update_cols  = cols[1:] if len(cols) > 1 else cols
+            update_set   = ', '.join(f'{c}=EXCLUDED.{c}' for c in update_cols)
             sql = re.sub(r'\bINSERT\s+OR\s+REPLACE\s+INTO\b', 'INSERT INTO', sql, flags=re.IGNORECASE)
             sql = re.sub(r'\?', '%s', sql)
-            sql = sql.rstrip().rstrip(';') + f' ON CONFLICT DO UPDATE SET {update_set}'
+            sql = sql.rstrip().rstrip(';') + f' ON CONFLICT ({conflict_col}) DO UPDATE SET {update_set}'
             return sql
         # INSERT OR IGNORE → ON CONFLICT DO NOTHING (tandai agar execute tahu tidak perlu RETURNING)
         is_or_ignore = bool(re.search(r'\bINSERT\s+OR\s+IGNORE\b', sql, re.IGNORECASE))
@@ -3982,8 +3985,10 @@ def portal_settings():
                 role_k = f"role_{u['id']}_{a['slug']}"
                 if request.form.get(key):
                     app_role = request.form.get(role_k, 'user')
-                    db.execute('''INSERT OR REPLACE INTO user_app_access(user_id,app_slug,app_role,is_active)
-                                  VALUES(?,?,?,1)''', (u['id'], a['slug'], app_role))
+                    db.execute('''INSERT INTO user_app_access(user_id,app_slug,app_role,is_active)
+                                  VALUES(?,?,?,1)
+                                  ON CONFLICT(user_id,app_slug) DO UPDATE SET app_role=excluded.app_role,is_active=1''',
+                               (u['id'], a['slug'], app_role))
         db.commit()
         flash('Pengaturan akses berhasil disimpan.', 'success')
         return redirect(url_for('portal_settings'))
@@ -4203,7 +4208,8 @@ def portal_user_add():
                 for a in apps:
                     if request.form.get(f'access_{a["slug"]}'):
                         app_role = request.form.get(f'role_{a["slug"]}', 'admin')
-                        db.execute('INSERT OR REPLACE INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)',
+                        db.execute('''INSERT INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,1)
+                                      ON CONFLICT(user_id,app_slug) DO UPDATE SET app_role=excluded.app_role,is_active=1''',
                                    (new_uid, a['slug'], app_role))
                 db.commit()
                 flash(f'User {username} berhasil dibuat', 'success')
@@ -6871,8 +6877,10 @@ def _send_self_assessment(db, eval_id, emp, periode, base_url, triggered_by='aut
         ok, err = send_email(settings, emp['email'], subject, html_body)
         log_reminder(db, emp['id'], 'email', subject, html_body, ok, err, triggered_by)
         if ok:
-            db.execute('''INSERT OR REPLACE INTO eval_tokens(eval_id, token, email_sent_to, sent_at)
-                          VALUES(?,?,?,?)''', (eval_id, token, emp['email'], now_str))
+            db.execute('''INSERT INTO eval_tokens(eval_id, token, email_sent_to, sent_at)
+                          VALUES(?,?,?,?)
+                          ON CONFLICT(eval_id) DO UPDATE SET token=excluded.token,email_sent_to=excluded.email_sent_to,sent_at=excluded.sent_at''',
+                       (eval_id, token, emp['email'], now_str))
             results.append(f'Email {emp["email"]} ✓')
         else:
             results.append(f'Email gagal: {err}')
@@ -7082,9 +7090,10 @@ def eval_review(eval_id):
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         reviewer_role = _reviewer_role()
 
-        db.execute('''INSERT OR REPLACE INTO eval_reviews
+        db.execute('''INSERT INTO eval_reviews
                       (eval_id, reviewer_user_id, reviewer_role, notes, status, submitted_at)
-                      VALUES(?,?,?,?,'submitted',?)''',
+                      VALUES(?,?,?,?,'submitted',?)
+                      ON CONFLICT(eval_id,reviewer_user_id) DO UPDATE SET reviewer_role=excluded.reviewer_role,notes=excluded.notes,status=excluded.status,submitted_at=excluded.submitted_at''',
                    (eval_id, uid, reviewer_role, notes, now_str))
 
         if action == 'approve':
