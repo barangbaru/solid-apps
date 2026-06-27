@@ -81,7 +81,7 @@
               <option value="">— Tanpa SLA —</option>
               {% for s in sla_cats %}
               <option value="{{ s.id }}" {{ 'selected' if row and row.sla_category_id == s.id }}>
-                {{ s.name }} ({{ s.priority }})
+                {{ s.name }}
               </option>
               {% endfor %}
             </select>
