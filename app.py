@@ -1338,9 +1338,14 @@ DEFAULT_SETTINGS = {
     'update_check_last':     '',
     'github_repo':           'barangbaru/solid-apps',
     # AI Chatbot
-    'anthropic_api_key':     '',
     'chatbot_enabled':       '0',
-    'chatbot_roles':         'superadmin,admin,user',  # role yang bisa akses
+    'chatbot_roles':         'superadmin,admin,user',
+    'ai_provider':           'anthropic',      # anthropic | openai | openai_compat
+    'ai_api_key':            '',
+    'ai_model':              '',               # kosong = pakai default per provider
+    'ai_base_url':           '',               # hanya untuk openai_compat
+    # backward compat
+    'anthropic_api_key':     '',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -4432,7 +4437,9 @@ PORTAL_SYSTEM_KEYS = [
     'openwa_session_evaluasi', 'openwa_session_support', 'openwa_session_booking', 'openwa_session_aset',
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
     'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
-    'anthropic_api_key', 'chatbot_enabled', 'chatbot_roles',
+    'chatbot_enabled', 'chatbot_roles',
+    'ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url',
+    'anthropic_api_key',  # backward compat
 ]
 
 @app.route('/portal/system-settings', methods=['GET', 'POST'])
@@ -8243,6 +8250,90 @@ def chatbot():
         return redirect(url_for('portal'))
     return render_template('chatbot.html')
 
+AI_PROVIDER_MODELS = {
+    'anthropic':    ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-8'],
+    'openai':       ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+    'openai_compat': [],  # user isi manual
+}
+
+AI_PROVIDER_DEFAULTS = {
+    'anthropic':    'claude-sonnet-4-6',
+    'openai':       'gpt-4o',
+    'openai_compat': 'gpt-4o',
+}
+
+# Tools dalam format OpenAI (function calling)
+def _tools_openai():
+    result = []
+    for t in CHATBOT_TOOLS:
+        result.append({
+            'type': 'function',
+            'function': {
+                'name': t['name'],
+                'description': t['description'],
+                'parameters': t['input_schema'],
+            }
+        })
+    return result
+
+def _chatbot_call_anthropic(api_key, model, messages, system, tools):
+    import anthropic as _ant
+    client = _ant.Anthropic(api_key=api_key)
+    for _ in range(5):
+        resp = client.messages.create(
+            model=model,
+            max_tokens=2048,
+            system=system,
+            tools=tools,
+            messages=messages,
+        )
+        if resp.stop_reason == 'end_turn':
+            return next((b.text for b in resp.content if hasattr(b,'text')), '')
+        if resp.stop_reason == 'tool_use':
+            messages.append({'role': 'assistant', 'content': resp.content})
+            tool_results = []
+            for blk in resp.content:
+                if blk.type == 'tool_use':
+                    from flask import g as _g
+                    db = get_db()
+                    result = _chatbot_exec_tool(db, blk.name, blk.input)
+                    tool_results.append({'type': 'tool_result', 'tool_use_id': blk.id, 'content': result})
+            messages.append({'role': 'user', 'content': tool_results})
+            continue
+        break
+    return 'Tidak ada respons dari AI.'
+
+def _chatbot_call_openai(api_key, model, messages, system, tools_oa, base_url=None):
+    import openai as _oai
+    kwargs = {'api_key': api_key}
+    if base_url:
+        kwargs['base_url'] = base_url
+    client = _oai.OpenAI(**kwargs)
+    oai_msgs = [{'role': 'system', 'content': system}] + messages
+    for _ in range(5):
+        resp = client.chat.completions.create(
+            model=model,
+            max_tokens=2048,
+            tools=tools_oa,
+            tool_choice='auto',
+            messages=oai_msgs,
+        )
+        choice = resp.choices[0]
+        if choice.finish_reason == 'stop':
+            return choice.message.content or ''
+        if choice.finish_reason == 'tool_calls':
+            msg = choice.message
+            oai_msgs.append(msg)
+            for tc in msg.tool_calls:
+                import json as _json
+                inp = _json.loads(tc.function.arguments)
+                db = get_db()
+                result = _chatbot_exec_tool(db, tc.function.name, inp)
+                oai_msgs.append({'role': 'tool', 'tool_call_id': tc.id, 'content': result})
+            continue
+        break
+    return 'Tidak ada respons dari AI.'
+
 @app.route('/api/chatbot/send', methods=['POST'])
 @login_required
 def chatbot_send():
@@ -8251,56 +8342,29 @@ def chatbot_send():
     if settings.get('chatbot_enabled','0') != '1':
         return jsonify({'error': 'Chatbot tidak aktif'}), 403
 
-    api_key = settings.get('anthropic_api_key','').strip()
+    provider = settings.get('ai_provider','anthropic').strip()
+    api_key  = settings.get('ai_api_key','').strip()
+    # backward compat: jika ai_api_key kosong, cek anthropic_api_key lama
     if not api_key:
-        return jsonify({'error': 'Anthropic API key belum dikonfigurasi di System Settings'}), 503
+        api_key = settings.get('anthropic_api_key','').strip()
+    if not api_key:
+        return jsonify({'error': f'API key belum dikonfigurasi. Isi di System Settings → AI Assistant.'}), 503
+
+    model    = settings.get('ai_model','').strip() or AI_PROVIDER_DEFAULTS.get(provider, 'gpt-4o')
+    base_url = settings.get('ai_base_url','').strip() or None
 
     data = request.get_json()
     messages = data.get('messages', [])
     if not messages:
         return jsonify({'error': 'Pesan kosong'}), 400
-
-    # Batas riwayat chat: 20 pesan terakhir
     messages = messages[-20:]
 
     try:
-        import anthropic as _ant
-        client = _ant.Anthropic(api_key=api_key)
-
-        # Agentic loop: max 5 iterasi tool use
-        for _iter in range(5):
-            resp = client.messages.create(
-                model='claude-sonnet-4-6',
-                max_tokens=2048,
-                system=CHATBOT_SYSTEM,
-                tools=CHATBOT_TOOLS,
-                messages=messages,
-            )
-
-            if resp.stop_reason == 'end_turn':
-                text = next((b.text for b in resp.content if hasattr(b,'text')), '')
-                return jsonify({'reply': text})
-
-            if resp.stop_reason == 'tool_use':
-                # Tambah response AI ke messages
-                messages.append({'role': 'assistant', 'content': resp.content})
-                # Eksekusi semua tool calls
-                tool_results = []
-                for blk in resp.content:
-                    if blk.type == 'tool_use':
-                        result = _chatbot_exec_tool(db, blk.name, blk.input)
-                        tool_results.append({
-                            'type': 'tool_result',
-                            'tool_use_id': blk.id,
-                            'content': result,
-                        })
-                messages.append({'role': 'user', 'content': tool_results})
-                continue
-
-            break
-
-        return jsonify({'reply': 'Tidak ada respons dari AI.'})
-
+        if provider == 'anthropic':
+            reply = _chatbot_call_anthropic(api_key, model, messages, CHATBOT_SYSTEM, CHATBOT_TOOLS)
+        else:
+            reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai(), base_url)
+        return jsonify({'reply': reply})
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500
 
