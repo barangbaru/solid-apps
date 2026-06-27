@@ -2877,7 +2877,7 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
         p = [emp_id]
         dw = _date_where('i.resolved_date', p)
         rows = db.execute(f'''
-            SELECT i.issue_no, i.title, i.difficulty, i.priority, i.resolved_date, i.due_date, p.name AS proj_name
+            SELECT i.issue_no, i.title, i.difficulty, i.priority, i.resolved_date, p.name AS proj_name
             FROM pc_issues i
             JOIN pc_projects p ON p.id=i.project_id
             WHERE i.pic_programmer_id=?
@@ -2886,7 +2886,7 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
         for r in rows:
             diff_mult = difficulty_map.get((r['difficulty'] or 'Normal').lower(), 1.0)
             pts = round(float(c['base_points']) * diff_mult *
-                        _mult_ontime(c, r['due_date'] or r['resolved_date'], r['resolved_date']), 2)
+                        _mult_ontime(c, r['resolved_date'], r['resolved_date']), 2)
             _add('project_issue', c['label'], f"Issue {r['issue_no']}: {r['title'][:40]} ({r['proj_name']})", pts)
 
     # ── 5. Project Tasks (done, assignee) ───────────────────────────────────────
@@ -3075,7 +3075,7 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
     difficulty_map = {'hard':2.0,'sulit':2.0,'normal':1.0,'easy':0.5,'mudah':0.5}
     p = [emp_id]
     rows = db.execute(f'''
-        SELECT i.issue_no, i.title, i.difficulty, i.priority, i.due_date,
+        SELECT i.issue_no, i.title, i.difficulty, i.priority,
                i.resolved_date, i.created_at, i.status_programmer, p.name AS proj
         FROM pc_issues i JOIN pc_projects p ON p.id=i.project_id
         WHERE i.pic_programmer_id=?{_dw("i.created_at", p)}
@@ -3086,10 +3086,10 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
         done_date = r['resolved_date'] if is_done else None
         pts = round(_bpts('project_issue') * dm
                     * _pmult('project_issue', r['priority'])
-                    * _omult('project_issue', r['due_date'], done_date), 2)
+                    * _omult('project_issue', done_date, done_date), 2)
         _add('project_issue', f"Issue ({r['difficulty'] or 'Normal'})",
              f"#{r['issue_no']} {r['title'][:35]} ({r['proj']})",
-             r['due_date'], r['created_at'][:10] if r['created_at'] else None,
+             done_date, r['created_at'][:10] if r['created_at'] else None,
              done_date, pts, r['priority'] or 'Medium', r['proj'])
 
     # ── Project Tasks ───────────────────────────────────────────────────────

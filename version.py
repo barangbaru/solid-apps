@@ -1,3 +1,3 @@
-VERSION = "1.7.2"
+VERSION = "1.7.3"
 RELEASE_DATE = "2026-06-27"
-RELEASE_NOTES = "Analitik Divisi: timeliness breakdown, concurrency, bubble chart volume vs skor per karyawan"
+RELEASE_NOTES = "Fix: kolom due_date tidak ada di pc_issues (PostgreSQL)"
