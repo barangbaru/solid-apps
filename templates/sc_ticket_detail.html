@@ -171,6 +171,13 @@
             <th class="text-muted fw-normal ps-3">Tipe Support</th>
             <td>{{ t.type_name }}</td>
           </tr>
+          <tr class="border-bottom">
+            <th class="text-muted fw-normal ps-3">Prioritas</th>
+            <td>
+              {% set pcolor = {'Critical':'danger','High':'warning','Medium':'primary','Low':'secondary'}.get(t.priority or 'Medium','primary') %}
+              <span class="badge bg-{{ pcolor }}">{{ t.priority or 'Medium' }}</span>
+            </td>
+          </tr>
           {% if t.sla_name %}
           <tr class="border-bottom">
             <th class="text-muted fw-normal ps-3">Kategori SLA</th>

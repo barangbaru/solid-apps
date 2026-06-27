@@ -7,6 +7,15 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [1.7.6] — 2026-06-27
+### Fitur: Prioritas Tiket Support
+- Kolom `priority` ditambahkan ke tabel `sc_tickets` (migrasi otomatis, default `'Medium'`)
+- Pilihan: Critical / High / Medium / Low dengan badge warna di daftar & detail tiket
+- Form tambah/edit tiket: dropdown Prioritas di antara Tipe Support dan Kategori SLA
+- Skor kinerja tiket support kini mempertimbangkan priority multiplier (sesuai `task_perf_config`)
+
+---
+
 ## [1.7.5] — 2026-06-27
 ### Bug Fix
 - Fix error `column t.priority does not exist` di `sc_tickets`: tabel tiket support tidak memiliki kolom `priority`

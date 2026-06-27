@@ -70,6 +70,7 @@
           <th>Subjek</th>
           <th>Customer</th>
           <th>Tipe</th>
+          <th class="text-center" style="width:80px">Prioritas</th>
           <th class="text-center">Status</th>
           <th class="text-center">SLA</th>
           <th>Dilaporkan</th>
@@ -92,6 +93,10 @@
           </td>
           <td class="small">{{ t.customer_name }}</td>
           <td class="small">{{ t.type_name }}</td>
+          <td class="text-center">
+            {% set pcolor = {'Critical':'danger','High':'warning','Medium':'primary','Low':'secondary'}.get(t.priority or 'Medium','primary') %}
+            <span class="badge bg-{{ pcolor }}" style="font-size:.7rem">{{ t.priority or 'Medium' }}</span>
+          </td>
           <td class="text-center">
             {% if t.status=='open' %}<span class="badge bg-secondary">Open</span>
             {% elif t.status=='in_progress' %}<span class="badge bg-primary">In Progress</span>

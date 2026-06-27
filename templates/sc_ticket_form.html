@@ -52,7 +52,7 @@
             </select>
           </div>
 
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label fw-semibold small">Tipe Support <span class="text-danger">*</span></label>
             <select name="support_type_id" class="form-select form-select-sm" required>
               <option value="">— Pilih Tipe —</option>
@@ -64,7 +64,18 @@
             </select>
           </div>
 
-          <div class="col-md-6">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Prioritas</label>
+            <select name="priority" class="form-select form-select-sm">
+              {% for val, label, color in sc_ticket_priorities %}
+              <option value="{{ val }}" {{ 'selected' if row and (row.priority or 'Medium') == val else ('selected' if not row and val == 'Medium') }}>
+                {{ label }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-md-4">
             <label class="form-label fw-semibold small">Kategori SLA (opsional)</label>
             <select name="sla_category_id" class="form-select form-select-sm">
               <option value="">— Tanpa SLA —</option>

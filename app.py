@@ -1141,6 +1141,7 @@ MIGRATIONS = [
     ('sc_tickets',         'due_date',                "TEXT DEFAULT NULL"),
     ('sc_tickets',         'work_start_date',         "TEXT DEFAULT NULL"),
     ('sc_tickets',         'media_lapor',             "TEXT DEFAULT ''"),
+    ('sc_tickets',         'priority',                "TEXT DEFAULT 'Medium'"),
     ('sc_customers',       'customer_type',           "TEXT DEFAULT 'aktif'"),
     ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
     ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
@@ -1172,6 +1173,13 @@ MIGRATIONS = [
     ('evaluations',          'task_date_from',          "TEXT DEFAULT ''"),
     ('evaluations',          'task_date_to',            "TEXT DEFAULT ''"),
     ('evaluations',          'task_benchmark',          'REAL DEFAULT 100'),
+]
+
+SC_TICKET_PRIORITIES = [
+    ('Critical', 'Critical', 'danger'),
+    ('High',     'High',     'warning'),
+    ('Medium',   'Medium',   'primary'),
+    ('Low',      'Low',      'secondary'),
 ]
 
 SC_TICKET_STATUSES = [
@@ -2927,13 +2935,13 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
         # Gunakan work_start_date sebagai proxy tanggal penyelesaian jika resolved_at tidak ada
         dw = _date_where('t.reported_at', p)
         rows = db.execute(f'''
-            SELECT t.ticket_no, t.subject, t.due_date, t.reported_at, t.status
+            SELECT t.ticket_no, t.subject, t.priority, t.due_date, t.reported_at, t.status
             FROM sc_ticket_assignees ta
             JOIN sc_tickets t ON t.id=ta.ticket_id
             WHERE ta.employee_id=? AND t.status IN ('resolved','closed'){dw}
         ''', p).fetchall()
         for r in rows:
-            pts = round(float(c['base_points']) * _mult_priority(c, 'Medium')
+            pts = round(float(c['base_points']) * _mult_priority(c, r['priority'] or 'Medium')
                         * _mult_ontime(c, r['due_date'], r['reported_at']), 2)
             _add('support_ticket', c['label'], f"Tiket {r['ticket_no']}: {r['subject'][:40]}", pts)
 
@@ -3127,20 +3135,20 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
     # ── Support Tickets ─────────────────────────────────────────────────────
     p = [emp_id]
     rows = db.execute(f'''
-        SELECT t.ticket_no, t.subject, t.due_date, t.reported_at, t.status
+        SELECT t.ticket_no, t.subject, t.priority, t.due_date, t.reported_at, t.status
         FROM sc_ticket_assignees ta JOIN sc_tickets t ON t.id=ta.ticket_id
         WHERE ta.employee_id=?{_dw("t.reported_at", p)}
     ''', p).fetchall()
     for r in rows:
         is_done = r['status'] in ('resolved','closed')
         done_date = r['due_date'] if is_done else None  # proxy
-        pts = round(_bpts('support_ticket') * _pmult('support_ticket', 'Medium')
+        pts = round(_bpts('support_ticket') * _pmult('support_ticket', r['priority'] or 'Medium')
                     * _omult('support_ticket', r['due_date'], done_date), 2)
         _add('support_ticket', 'Tiket Support',
              f"#{r['ticket_no']}: {r['subject'][:40]}",
              r['due_date'],
              r['reported_at'][:10] if r['reported_at'] else None,
-             done_date, pts, 'Medium')
+             done_date, pts, r['priority'] or 'Medium')
 
     # ── Hitung timeliness ───────────────────────────────────────────────────
     def _cnt(tl): return sum(1 for t in tasks_all if t['timeliness'] == tl)
@@ -5911,6 +5919,7 @@ def sc_ticket_add():
         due_date      = request.form.get('due_date','').strip() or None
         work_start_date = request.form.get('work_start_date','').strip() or None
         media_lapor   = request.form.get('media_lapor','').strip()
+        priority      = request.form.get('priority','Medium').strip()
         from datetime import datetime as _dt
         if not reported_at:
             reported_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -5918,12 +5927,12 @@ def sc_ticket_add():
             cur = db.execute('''INSERT INTO sc_tickets(ticket_no,contract_id,customer_id,support_type_id,
                           sla_category_id,subject,description,reported_by,reported_at,notes,created_by,
                           module_id,status_note,mandays,pct_done,solution_type,solution_note,
-                          due_date,work_start_date,media_lapor)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                          due_date,work_start_date,media_lapor,priority)
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                        (ticket_no, contract_id, customer_id, support_type_id, sla_cat_id,
                         subject, description, reported_by, reported_at, notes, session.get('user_id'),
                         module_id, status_note, mandays, pct_done,
-                        solution_type, solution_note, due_date, work_start_date, media_lapor))
+                        solution_type, solution_note, due_date, work_start_date, media_lapor, priority))
             new_id = cur.lastrowid
             db.commit()
             _sc_ticket_history(db, new_id, 'created', notes=f'Tiket dibuat oleh {session.get("user_name","")}')
@@ -5942,7 +5951,8 @@ def sc_ticket_add():
                            modules=modules, employees=employees,
                            sc_ticket_statuses=SC_TICKET_STATUSES,
                            sc_solution_types=SC_SOLUTION_TYPES,
-                           sc_media_lapor=SC_MEDIA_LAPOR)
+                           sc_media_lapor=SC_MEDIA_LAPOR,
+                           sc_ticket_priorities=SC_TICKET_PRIORITIES)
 
 @app.route('/support/tickets/<int:tid>/edit', methods=['GET','POST'])
 @login_required
@@ -5974,21 +5984,23 @@ def sc_ticket_edit(tid):
         due_date        = request.form.get('due_date','').strip() or None
         work_start_date = request.form.get('work_start_date','').strip() or None
         media_lapor     = request.form.get('media_lapor','').strip()
+        priority        = request.form.get('priority','Medium').strip()
         # Track changed fields for history
         changed = []
         if row['status_note'] != status_note: changed.append(('status_note','Keterangan',row['status_note'],status_note))
         if str(row['pct_done'] or 0) != str(pct_done): changed.append(('pct_done','% Done',row['pct_done'],pct_done))
         if (row['solution_type'] or '') != solution_type: changed.append(('solution_type','Tipe Solusi',row['solution_type'],solution_type))
+        if (row['priority'] or 'Medium') != priority: changed.append(('priority','Prioritas',row['priority'],priority))
         try:
             db.execute('''UPDATE sc_tickets SET contract_id=?,customer_id=?,support_type_id=?,
                           sla_category_id=?,subject=?,description=?,reported_by=?,reported_at=?,notes=?,
                           module_id=?,status_note=?,mandays=?,pct_done=?,
-                          solution_type=?,solution_note=?,due_date=?,work_start_date=?,media_lapor=?
+                          solution_type=?,solution_note=?,due_date=?,work_start_date=?,media_lapor=?,priority=?
                           WHERE id=?''',
                        (contract_id, customer_id, support_type_id, sla_cat_id,
                         subject, description, reported_by, reported_at, notes,
                         module_id, status_note, mandays, pct_done,
-                        solution_type, solution_note, due_date, work_start_date, media_lapor, tid))
+                        solution_type, solution_note, due_date, work_start_date, media_lapor, priority, tid))
             db.commit()
             for field, label, old, new in changed:
                 _sc_ticket_history(db, tid, 'update', field, old, new, f'{label} diubah')
@@ -6004,7 +6016,8 @@ def sc_ticket_edit(tid):
                            modules=modules, employees=employees,
                            sc_ticket_statuses=SC_TICKET_STATUSES,
                            sc_solution_types=SC_SOLUTION_TYPES,
-                           sc_media_lapor=SC_MEDIA_LAPOR)
+                           sc_media_lapor=SC_MEDIA_LAPOR,
+                           sc_ticket_priorities=SC_TICKET_PRIORITIES)
 
 @app.route('/support/tickets/<int:tid>')
 @login_required
