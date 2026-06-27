@@ -385,6 +385,48 @@
 
   <!-- Right: Actions -->
   <div class="col-lg-4">
+
+    {# ── AI Chatbot ── #}
+    <div class="card mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-robot text-primary me-1"></i>AI Assistant (Chatbot)
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="chatbot_enabled" id="chatbotEnabled"
+                   {{ 'checked' if cfg.get('chatbot_enabled') == '1' }}>
+            <label class="form-check-label fw-semibold" for="chatbotEnabled">Aktifkan AI Assistant</label>
+          </div>
+          <div class="form-text">Fitur chatbot dengan akses data real-time dari database.</div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Anthropic API Key</label>
+          <div class="input-group input-group-sm">
+            <input type="password" name="anthropic_api_key" id="anthropicKey"
+                   class="form-control form-control-sm font-monospace"
+                   value="{{ cfg.get('anthropic_api_key','') }}"
+                   placeholder="sk-ant-api03-...">
+            <button class="btn btn-outline-secondary" type="button"
+                    onclick="toggleVis('anthropicKey',this)">
+              <i class="bi bi-eye"></i>
+            </button>
+          </div>
+          <div class="form-text">Dapatkan API key di <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a></div>
+        </div>
+
+        <div class="mb-0">
+          <label class="form-label fw-semibold small">Role yang Bisa Akses</label>
+          <input type="text" name="chatbot_roles" class="form-control form-control-sm"
+                 value="{{ cfg.get('chatbot_roles','superadmin,admin,user') }}"
+                 placeholder="superadmin,admin,user">
+          <div class="form-text">Pisahkan dengan koma.</div>
+        </div>
+      </div>
+    </div>
+
+
     <div class="card sticky-score">
       <div class="card-header py-2 fw-bold">
         <i class="bi bi-floppy text-primary me-1"></i>Simpan Pengaturan

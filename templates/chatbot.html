@@ -1,0 +1,248 @@
+{% extends 'base.html' %}
+{% block title %}AI Assistant — Hive{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">AI Assistant</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-robot text-primary me-2"></i>AI Assistant</h5>
+    <div class="text-muted small mt-1">Tanya tentang tiket, project, karyawan, aset, atau troubleshooting IT</div>
+  </div>
+  <button class="btn btn-sm btn-outline-secondary" onclick="clearChat()">
+    <i class="bi bi-trash me-1"></i>Bersihkan Chat
+  </button>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-8 col-xl-9">
+
+    {# Chat box #}
+    <div class="card border-0 shadow-sm d-flex flex-column" style="height:calc(100vh - 220px);min-height:400px">
+      <div class="card-body p-0 d-flex flex-column">
+
+        {# Messages area #}
+        <div id="chatMessages" class="flex-grow-1 overflow-auto p-3" style="scroll-behavior:smooth">
+          <div class="chat-msg assistant mb-3">
+            <div class="d-flex gap-2 align-items-start">
+              <div class="ai-avatar flex-shrink-0">
+                <i class="bi bi-robot"></i>
+              </div>
+              <div class="bubble bubble-ai">
+                Halo! Saya AI Assistant Hive. Saya bisa membantu kamu mencari informasi tentang:
+                <ul class="mb-0 mt-1">
+                  <li>Tiket support — status, solusi, riwayat</li>
+                  <li>Project &amp; task — progress, assignee, milestone</li>
+                  <li>Karyawan — nama, jabatan, divisi</li>
+                  <li>Aset IT — inventori, lisensi, infrastruktur</li>
+                  <li>Troubleshooting teknis umum</li>
+                </ul>
+                <div class="mt-2 text-muted" style="font-size:.8rem">Ketik pertanyaan di bawah untuk mulai.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# Input area #}
+        <div class="border-top p-3">
+          <div id="typingIndicator" class="text-muted small mb-2 d-none">
+            <i class="bi bi-three-dots"></i> AI sedang berpikir...
+          </div>
+          <div class="d-flex gap-2">
+            <textarea id="chatInput" class="form-control form-control-sm" rows="2"
+                      placeholder="Ketik pertanyaan... (Shift+Enter untuk baris baru, Enter untuk kirim)"
+                      style="resize:none;font-size:.9rem"
+                      onkeydown="handleKey(event)"></textarea>
+            <button class="btn btn-primary px-3" onclick="sendMessage()" id="sendBtn">
+              <i class="bi bi-send-fill"></i>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  {# Sidebar: contoh pertanyaan #}
+  <div class="col-lg-4 col-xl-3">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-semibold small text-uppercase text-muted">
+        <i class="bi bi-lightbulb me-1"></i>Contoh Pertanyaan
+      </div>
+      <div class="card-body p-2">
+        {% set examples = [
+          ('bi-ticket-detailed text-danger', 'Tiket open tentang database error?'),
+          ('bi-ticket-detailed text-danger', 'Apa solusi tiket TKT-001?'),
+          ('bi-kanban text-primary',         'Project aktif apa saja sekarang?'),
+          ('bi-person text-success',         'Siapa saja di divisi IT?'),
+          ('bi-hdd-stack text-warning',      'Lisensi software apa yang kita punya?'),
+          ('bi-tools text-info',             'Cara troubleshoot koneksi database timeout?'),
+          ('bi-bar-chart text-secondary',    'Berapa total tiket bulan ini?'),
+          ('bi-person-workspace text-purple','Assignee project terbaru siapa?'),
+        ] %}
+        {% for icon, text in examples %}
+        <button class="btn btn-light btn-sm w-100 text-start mb-1 py-2 px-2"
+                style="font-size:.8rem;white-space:normal"
+                onclick="insertExample(this.dataset.q)" data-q="{{ text }}">
+          <i class="bi {{ icon }} me-2"></i>{{ text }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-semibold small text-uppercase text-muted">
+        <i class="bi bi-info-circle me-1"></i>Info
+      </div>
+      <div class="card-body small text-muted p-3">
+        <div class="mb-2"><i class="bi bi-shield-check text-success me-1"></i>Data gaji &amp; evaluasi pribadi tidak dapat diakses.</div>
+        <div class="mb-2"><i class="bi bi-database text-primary me-1"></i>AI mengakses data real-time dari database.</div>
+        <div><i class="bi bi-globe text-info me-1"></i>Jika tidak ada di aplikasi, AI akan menjawab dari pengetahuan umum.</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.ai-avatar {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg,#6366f1,#0ea5e9);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: .9rem; flex-shrink: 0;
+}
+.user-avatar {
+  width: 30px; height: 30px;
+  background: #e2e8f0;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #475569; font-size: .85rem; flex-shrink: 0;
+}
+.bubble {
+  max-width: 100%;
+  padding: .6rem .85rem;
+  border-radius: .75rem;
+  font-size: .88rem;
+  line-height: 1.55;
+}
+.bubble-ai {
+  background: #f1f5f9;
+  border-top-left-radius: .2rem;
+}
+.bubble-user {
+  background: #0ea5e9;
+  color: #fff;
+  border-top-right-radius: .2rem;
+}
+.bubble pre {
+  background: rgba(0,0,0,.06);
+  border-radius: .35rem;
+  padding: .5rem .75rem;
+  font-size: .8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bubble-user pre {
+  background: rgba(255,255,255,.15);
+}
+.bubble ul, .bubble ol { padding-left: 1.3rem; margin-bottom: 0; }
+.bubble p:last-child { margin-bottom: 0; }
+</style>
+<script>
+let messages = [];
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(text) {
+  return text
+    .replace(/```([\s\S]*?)```/g, (_,c) => `<pre>${escHtml(c.trim())}</pre>`)
+    .replace(/`([^`]+)`/g, (_,c) => `<code>${escHtml(c)}</code>`)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^### (.+)$/gm, '<h6 class="fw-bold mt-2 mb-1">$1</h6>')
+    .replace(/^## (.+)$/gm, '<h5 class="fw-bold mt-2 mb-1">$1</h5>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)+/g, s => `<ul>${s}</ul>`)
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+}
+
+function appendMsg(role, text) {
+  const wrap = document.getElementById('chatMessages');
+  const isUser = role === 'user';
+  const div = document.createElement('div');
+  div.className = 'chat-msg mb-3';
+  div.innerHTML = isUser
+    ? `<div class="d-flex gap-2 align-items-start flex-row-reverse">
+         <div class="user-avatar"><i class="bi bi-person-fill"></i></div>
+         <div class="bubble bubble-user">${escHtml(text)}</div>
+       </div>`
+    : `<div class="d-flex gap-2 align-items-start">
+         <div class="ai-avatar"><i class="bi bi-robot"></i></div>
+         <div class="bubble bubble-ai">${renderMarkdown(text)}</div>
+       </div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function setLoading(on) {
+  document.getElementById('typingIndicator').classList.toggle('d-none', !on);
+  document.getElementById('sendBtn').disabled = on;
+  document.getElementById('chatInput').disabled = on;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  appendMsg('user', text);
+  messages.push({ role: 'user', content: text });
+  setLoading(true);
+
+  try {
+    const res = await fetch('/api/chatbot/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      appendMsg('assistant', `⚠️ Error: ${data.error}`);
+    } else {
+      appendMsg('assistant', data.reply);
+      messages.push({ role: 'assistant', content: data.reply });
+    }
+  } catch(e) {
+    appendMsg('assistant', '⚠️ Gagal menghubungi server. Coba lagi.');
+  } finally {
+    setLoading(false);
+    input.focus();
+  }
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function clearChat() {
+  messages = [];
+  const wrap = document.getElementById('chatMessages');
+  wrap.innerHTML = '';
+  appendMsg('assistant', 'Chat dibersihkan. Ada yang bisa saya bantu?');
+}
+
+function insertExample(q) {
+  document.getElementById('chatInput').value = q;
+  document.getElementById('chatInput').focus();
+}
+</script>
+{% endblock %}

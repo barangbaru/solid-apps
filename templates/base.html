@@ -369,6 +369,13 @@
         {% endif %}
       </a>
     </li>
+    {% if chatbot_enabled %}
+    <li>
+      <a href="/chatbot" class="{{ 'active' if '/chatbot' in request.path }}">
+        <i class="bi bi-robot nav-icon"></i> AI Assistant
+      </a>
+    </li>
+    {% endif %}
     {% endif %}
   </ul>
 

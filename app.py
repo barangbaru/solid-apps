@@ -1337,6 +1337,10 @@ DEFAULT_SETTINGS = {
     'update_release_notes':  '',
     'update_check_last':     '',
     'github_repo':           'barangbaru/solid-apps',
+    # AI Chatbot
+    'anthropic_api_key':     '',
+    'chatbot_enabled':       '0',
+    'chatbot_roles':         'superadmin,admin,user',  # role yang bisa akses
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -2005,6 +2009,7 @@ def inject_globals():
         'app_version':         VERSION,
         'app_release_date':    RELEASE_DATE,
         'update_badge':        _get_update_badge(session),
+        'chatbot_enabled':     (get_settings(get_db()).get('chatbot_enabled','0') == '1') if 'user_id' in session else False,
     }
 
 # ─── Auto-set active_app dari URL path ────────────────────────────────────────
@@ -4427,6 +4432,7 @@ PORTAL_SYSTEM_KEYS = [
     'openwa_session_evaluasi', 'openwa_session_support', 'openwa_session_booking', 'openwa_session_aset',
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
     'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
+    'anthropic_api_key', 'chatbot_enabled', 'chatbot_roles',
 ]
 
 @app.route('/portal/system-settings', methods=['GET', 'POST'])
@@ -4438,7 +4444,7 @@ def portal_system_settings():
     db = get_db()
     if request.method == 'POST':
         for k in PORTAL_SYSTEM_KEYS:
-            if k in ('smtp_ssl', 'openwa_enabled', 'google_oauth_enabled', 'recaptcha_enabled'):
+            if k in ('smtp_ssl', 'openwa_enabled', 'google_oauth_enabled', 'recaptcha_enabled', 'chatbot_enabled'):
                 v = '1' if request.form.get(k) else '0'
             else:
                 v = request.form.get(k, '').strip()
@@ -8013,6 +8019,290 @@ def api_task_score(emp_id):
         mimetype='application/json'
     )
 
+
+# ─── AI Chatbot ────────────────────────────────────────────────────────────────
+
+CHATBOT_TOOLS = [
+    {
+        "name": "cari_tiket_support",
+        "description": "Cari tiket support berdasarkan kata kunci subjek, nomor tiket, customer, atau status. Gunakan untuk pertanyaan tentang masalah/issue yang pernah dilaporkan.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "Kata kunci pencarian (subjek, nomor tiket, atau nama customer)"},
+                "status":  {"type": "string", "description": "Filter status: open, in_progress, resolved, closed (opsional)"},
+                "limit":   {"type": "integer", "description": "Jumlah hasil maksimum (default 5)"}
+            },
+            "required": ["keyword"]
+        }
+    },
+    {
+        "name": "detail_tiket",
+        "description": "Ambil detail lengkap satu tiket support termasuk deskripsi, riwayat, dan solusi.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticket_no": {"type": "string", "description": "Nomor tiket (misal TKT-001)"}
+            },
+            "required": ["ticket_no"]
+        }
+    },
+    {
+        "name": "cari_project",
+        "description": "Cari project dan task berdasarkan nama atau status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "Nama project atau kata kunci"},
+                "status":  {"type": "string", "description": "Filter status project (opsional): active, completed, on_hold"}
+            },
+            "required": ["keyword"]
+        }
+    },
+    {
+        "name": "cari_karyawan",
+        "description": "Cari data karyawan berdasarkan nama, jabatan, atau divisi. TIDAK menampilkan data gaji.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "Nama, jabatan, atau divisi karyawan"}
+            },
+            "required": ["keyword"]
+        }
+    },
+    {
+        "name": "cari_aset",
+        "description": "Cari data aset, lisensi software, atau infrastruktur IT.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string", "description": "Nama aset, vendor, atau kategori"},
+                "category": {"type": "string", "description": "Kategori aset (opsional)"}
+            },
+            "required": ["keyword"]
+        }
+    },
+    {
+        "name": "statistik_aplikasi",
+        "description": "Ambil ringkasan statistik aplikasi: jumlah tiket, project aktif, karyawan, aset, dll.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "module": {"type": "string", "description": "Modul: support, project, talent, asset, atau all"}
+            },
+            "required": ["module"]
+        }
+    },
+]
+
+def _chatbot_exec_tool(db, name, inp):
+    """Eksekusi tool chatbot dan return hasil sebagai string."""
+    try:
+        if name == 'cari_tiket_support':
+            kw = f"%{inp.get('keyword','')}%"
+            st = inp.get('status','')
+            lm = min(int(inp.get('limit', 5)), 20)
+            where = "AND t.status=?" if st else ""
+            params = [kw, kw, kw] + ([st] if st else []) + [lm]
+            rows = db.execute(f'''
+                SELECT t.ticket_no, t.subject, t.status, t.priority,
+                       cu.name as customer, t.reported_at, t.resolved_at
+                FROM sc_tickets t
+                JOIN sc_customers cu ON cu.id=t.customer_id
+                WHERE (t.ticket_no LIKE ? OR t.subject LIKE ? OR cu.name LIKE ?) {where}
+                ORDER BY t.id DESC LIMIT ?
+            ''', params).fetchall()
+            if not rows: return "Tidak ditemukan tiket yang cocok."
+            out = []
+            for r in rows:
+                out.append(f"[{r['ticket_no']}] {r['subject']} | Status: {r['status']} | Prioritas: {r['priority'] or 'Medium'} | Customer: {r['customer']} | Lapor: {r['reported_at']}")
+            return "\n".join(out)
+
+        elif name == 'detail_tiket':
+            tno = inp.get('ticket_no','').strip()
+            row = db.execute('''
+                SELECT t.*, cu.name as customer, st.name as type_name
+                FROM sc_tickets t
+                JOIN sc_customers cu ON cu.id=t.customer_id
+                JOIN sc_support_types st ON st.id=t.support_type_id
+                WHERE t.ticket_no=?
+            ''', (tno,)).fetchone()
+            if not row: return f"Tiket {tno} tidak ditemukan."
+            hist = db.execute('''
+                SELECT action, notes, new_value, created_at FROM sc_ticket_history
+                WHERE ticket_id=? ORDER BY id DESC LIMIT 5
+            ''', (row['id'],)).fetchall()
+            out = [
+                f"Tiket: {row['ticket_no']}",
+                f"Subjek: {row['subject']}",
+                f"Customer: {row['customer']}",
+                f"Tipe: {row['type_name']}",
+                f"Status: {row['status']} | Prioritas: {row['priority'] or 'Medium'}",
+                f"Deskripsi: {row['description'] or '—'}",
+                f"Solusi: {row['solution_note'] or '—'}",
+            ]
+            if hist:
+                out.append("Riwayat terakhir:")
+                for h in hist:
+                    out.append(f"  [{h['created_at']}] {h['action']} — {h['notes'] or h['new_value'] or ''}")
+            return "\n".join(out)
+
+        elif name == 'cari_project':
+            kw = f"%{inp.get('keyword','')}%"
+            st = inp.get('status','')
+            where = "AND p.status=?" if st else ""
+            params = [kw, kw] + ([st] if st else [])
+            rows = db.execute(f'''
+                SELECT p.name, p.status, p.start_date, p.end_date, p.description,
+                       COUNT(DISTINCT t.id) as task_count
+                FROM pc_projects p
+                LEFT JOIN pc_tasks t ON t.project_id=p.id
+                WHERE (p.name LIKE ? OR p.description LIKE ?) {where}
+                GROUP BY p.id ORDER BY p.id DESC LIMIT 10
+            ''', params).fetchall()
+            if not rows: return "Tidak ditemukan project yang cocok."
+            out = []
+            for r in rows:
+                out.append(f"[{r['status']}] {r['name']} | Tasks: {r['task_count']} | {r['start_date'] or '?'} s/d {r['end_date'] or '?'}")
+            return "\n".join(out)
+
+        elif name == 'cari_karyawan':
+            kw = f"%{inp.get('keyword','')}%"
+            rows = db.execute('''
+                SELECT name, jabatan, divisi, email, is_active FROM employees
+                WHERE (name LIKE ? OR jabatan LIKE ? OR divisi LIKE ?) AND is_active=1
+                ORDER BY divisi, name LIMIT 15
+            ''', (kw, kw, kw)).fetchall()
+            if not rows: return "Tidak ditemukan karyawan yang cocok."
+            out = []
+            for r in rows:
+                out.append(f"{r['name']} | {r['jabatan'] or '—'} | {r['divisi'] or '—'} | {r['email'] or '—'}")
+            return "\n".join(out)
+
+        elif name == 'cari_aset':
+            kw = f"%{inp.get('keyword','')}%"
+            cat = f"%{inp.get('category','')}%" if inp.get('category') else '%'
+            rows = db.execute('''
+                SELECT label, category, vendor, status, location, notes
+                FROM ac_assets
+                WHERE (label LIKE ? OR vendor LIKE ? OR notes LIKE ?) AND category LIKE ?
+                ORDER BY id DESC LIMIT 15
+            ''', (kw, kw, kw, cat)).fetchall()
+            if not rows: return "Tidak ditemukan aset yang cocok."
+            out = []
+            for r in rows:
+                out.append(f"{r['label']} | {r['category'] or '—'} | {r['vendor'] or '—'} | Status: {r['status']} | Lokasi: {r['location'] or '—'}")
+            return "\n".join(out)
+
+        elif name == 'statistik_aplikasi':
+            mod = inp.get('module','all')
+            out = []
+            if mod in ('support','all'):
+                t = db.execute("SELECT COUNT(*) as n FROM sc_tickets").fetchone()['n']
+                o = db.execute("SELECT COUNT(*) as n FROM sc_tickets WHERE status NOT IN ('resolved','closed')").fetchone()['n']
+                out.append(f"Support: {t} total tiket, {o} open")
+            if mod in ('project','all'):
+                p = db.execute("SELECT COUNT(*) as n FROM pc_projects WHERE status='active'").fetchone()['n']
+                tk = db.execute("SELECT COUNT(*) as n FROM pc_tasks WHERE status NOT IN ('done','cancelled')").fetchone()['n']
+                out.append(f"Project: {p} project aktif, {tk} task open")
+            if mod in ('talent','all'):
+                e = db.execute("SELECT COUNT(*) as n FROM employees WHERE is_active=1").fetchone()['n']
+                out.append(f"Talent: {e} karyawan aktif")
+            if mod in ('asset','all'):
+                a = db.execute("SELECT COUNT(*) as n FROM ac_assets WHERE status='active'").fetchone()['n']
+                out.append(f"Aset: {a} aset aktif")
+            return "\n".join(out) if out else "Tidak ada data statistik."
+
+    except Exception as ex:
+        return f"Error mengambil data: {ex}"
+    return "Tool tidak dikenal."
+
+CHATBOT_SYSTEM = """Kamu adalah asisten AI untuk aplikasi Hive — sistem manajemen IT internal perusahaan.
+Hive terdiri dari modul: TalentCore (karyawan & evaluasi), SupportCore (tiket support), ProjectCore (project & task), AssetCore (aset IT), BookingCore (ruangan & kendaraan).
+
+PANDUAN:
+- Jawab pertanyaan tentang data di aplikasi dengan memanggil tools yang tersedia
+- Untuk troubleshooting teknis, gunakan kombinasi data tiket + pengetahuan umum IT
+- Data RAHASIA yang TIDAK BOLEH ditampilkan: gaji, komponen kompensasi, data evaluasi pribadi yang sensitif
+- Jika pertanyaan di luar lingkup aplikasi, gunakan pengetahuan umum kamu
+- Jawab dalam Bahasa Indonesia kecuali ditanya dalam bahasa lain
+- Singkat dan langsung ke inti, gunakan format poin jika ada beberapa item
+"""
+
+@app.route('/chatbot')
+@login_required
+def chatbot():
+    db = get_db()
+    settings = get_settings(db)
+    if settings.get('chatbot_enabled','0') != '1':
+        flash('Fitur chatbot belum diaktifkan. Hubungi administrator.', 'warning')
+        return redirect(url_for('portal'))
+    allowed = [r.strip() for r in settings.get('chatbot_roles','superadmin,admin,user').split(',')]
+    if session.get('user_role','') not in allowed:
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    return render_template('chatbot.html')
+
+@app.route('/api/chatbot/send', methods=['POST'])
+@login_required
+def chatbot_send():
+    db = get_db()
+    settings = get_settings(db)
+    if settings.get('chatbot_enabled','0') != '1':
+        return jsonify({'error': 'Chatbot tidak aktif'}), 403
+
+    api_key = settings.get('anthropic_api_key','').strip()
+    if not api_key:
+        return jsonify({'error': 'Anthropic API key belum dikonfigurasi di System Settings'}), 503
+
+    data = request.get_json()
+    messages = data.get('messages', [])
+    if not messages:
+        return jsonify({'error': 'Pesan kosong'}), 400
+
+    # Batas riwayat chat: 20 pesan terakhir
+    messages = messages[-20:]
+
+    try:
+        import anthropic as _ant
+        client = _ant.Anthropic(api_key=api_key)
+
+        # Agentic loop: max 5 iterasi tool use
+        for _iter in range(5):
+            resp = client.messages.create(
+                model='claude-sonnet-4-6',
+                max_tokens=2048,
+                system=CHATBOT_SYSTEM,
+                tools=CHATBOT_TOOLS,
+                messages=messages,
+            )
+
+            if resp.stop_reason == 'end_turn':
+                text = next((b.text for b in resp.content if hasattr(b,'text')), '')
+                return jsonify({'reply': text})
+
+            if resp.stop_reason == 'tool_use':
+                # Tambah response AI ke messages
+                messages.append({'role': 'assistant', 'content': resp.content})
+                # Eksekusi semua tool calls
+                tool_results = []
+                for blk in resp.content:
+                    if blk.type == 'tool_use':
+                        result = _chatbot_exec_tool(db, blk.name, blk.input)
+                        tool_results.append({
+                            'type': 'tool_result',
+                            'tool_use_id': blk.id,
+                            'content': result,
+                        })
+                messages.append({'role': 'user', 'content': tool_results})
+                continue
+
+            break
+
+        return jsonify({'reply': 'Tidak ada respons dari AI.'})
+
+    except Exception as ex:
+        return jsonify({'error': str(ex)}), 500
 
 # ─── Portal: Audit Trail ───────────────────────────────────────────────────────
 
