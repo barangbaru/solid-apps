@@ -503,6 +503,28 @@
       </div>
     </div>
 
+    {# ── Reload Aplikasi ── #}
+    <div class="card mt-3">
+      <div class="card-header py-2 fw-bold small">
+        <i class="bi bi-arrow-clockwise text-warning me-1"></i>Reload Aplikasi
+      </div>
+      <div class="card-body small">
+        <div id="versionInfoBox" class="mb-3 p-2 rounded bg-light border" style="font-size:.78rem">
+          <div><span class="text-muted">Versi terpasang:</span> <strong>{{ app_version }}</strong> <span class="text-muted">({{ app_release_date }})</span></div>
+          <div id="versionGitRow" class="text-muted mt-1">
+            <i class="bi bi-hourglass-split"></i> Memuat info git...
+          </div>
+        </div>
+        <button class="btn btn-warning btn-sm w-100 mb-2" type="button" onclick="reloadApp(this)">
+          <i class="bi bi-arrow-clockwise me-1"></i>Reload Gunicorn Worker
+        </button>
+        <div class="text-muted" style="font-size:.75rem">
+          Kirim sinyal SIGHUP ke gunicorn master — worker restart gracefully, tanpa downtime.<br>
+          Gunakan setelah <code>git pull</code> di server.
+        </div>
+      </div>
+    </div>
+
     <div class="card mt-3">
       <div class="card-header py-2 fw-bold small">
         <i class="bi bi-info-circle text-info me-1"></i>Konfigurasi per Aplikasi
@@ -643,5 +665,45 @@ function testWaApp(appSlug, btn) {
     showResult('waResult', d.ok, (d.ok ? '✓ ' : '✗ ') + d.msg);
   }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="bi bi-send"></i>'; });
 }
+
+async function reloadApp(btn) {
+  if (!confirm('Reload gunicorn worker sekarang?\nWorker akan restart gracefully — request yang sedang berjalan akan selesai dulu.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Mengirim sinyal...';
+  try {
+    const res = await fetch('/portal/system-settings/reload', {method:'POST', headers:{'X-CSRFToken': '{{ csrf_token() if csrf_token is defined else "" }}'}});
+    const d = await res.json();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Reload Gunicorn Worker';
+    showResult('versionGitRow', d.ok, (d.ok ? '✓ ' : '✗ ') + d.msg, true);
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Reload Gunicorn Worker';
+  }
+}
+
+function showResult(elId, ok, msg, replace=false) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const html = `<span class="text-${ok?'success':'danger'}">${msg}</span>`;
+  if (replace) el.innerHTML = html; else el.innerHTML = html;
+}
+
+// Load git version info on page load
+(async function() {
+  try {
+    const d = await (await fetch('/portal/system-settings/version-info')).json();
+    const row = document.getElementById('versionGitRow');
+    if (!row) return;
+    if (d.git_hash && d.git_hash !== '-') {
+      row.innerHTML = `<span class="text-muted">Git HEAD:</span> <code>${d.git_hash}</code> — ${d.git_msg}<br><span class="text-muted">${d.git_date}</span>`;
+    } else {
+      row.innerHTML = '<span class="text-muted">Info git tidak tersedia di server.</span>';
+    }
+  } catch(e) {
+    const row = document.getElementById('versionGitRow');
+    if (row) row.innerHTML = '<span class="text-muted">-</span>';
+  }
+})();
 </script>
 {% endblock %}

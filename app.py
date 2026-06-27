@@ -2,7 +2,7 @@ from flask import (Flask, render_template, request, redirect, url_for,
                    flash, g, session, jsonify, Response, abort)
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-import sqlite3, os, smtplib, json, secrets, requests as req_lib, io, base64
+import sqlite3, os, smtplib, json, secrets, requests as req_lib, io, base64, signal, subprocess
 try:
     from cryptography.fernet import Fernet, InvalidToken as _FernetInvalidToken
     _CRYPTO_OK = True
@@ -4524,6 +4524,40 @@ def portal_test_whatsapp():
     chat_id = normalize_phone_wa(phone)
     return jsonify({'ok': ok, 'chat_id': chat_id,
                     'msg': f'Pesan terkirim ke {chat_id}' if ok else str(err)})
+
+@app.route('/portal/system-settings/reload', methods=['POST'])
+@login_required
+def portal_reload_app():
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    try:
+        # Cari PID master gunicorn (parent dari proses ini)
+        ppid = os.getppid()
+        os.kill(ppid, signal.SIGHUP)
+        return jsonify({'ok': True, 'msg': f'Sinyal reload dikirim ke gunicorn master (PID {ppid}). Worker akan restart dalam beberapa detik.'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+@app.route('/portal/system-settings/version-info', methods=['GET'])
+@login_required
+def portal_version_info():
+    if not is_portal_admin():
+        return jsonify({'ok': False})
+    info = {'deployed': VERSION, 'release_date': RELEASE_DATE}
+    try:
+        git_hash = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                           cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
+                                           timeout=3).decode().strip()
+        git_msg  = subprocess.check_output(['git', 'log', '-1', '--pretty=%s'],
+                                           cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
+                                           timeout=3).decode().strip()
+        git_date = subprocess.check_output(['git', 'log', '-1', '--pretty=%ci'],
+                                           cwd=os.path.dirname(__file__), stderr=subprocess.DEVNULL,
+                                           timeout=3).decode().strip()
+        info.update({'git_hash': git_hash, 'git_msg': git_msg, 'git_date': git_date})
+    except Exception:
+        info.update({'git_hash': '-', 'git_msg': '-', 'git_date': '-'})
+    return jsonify(info)
 
 @app.route('/')
 @login_required
