@@ -4528,16 +4528,57 @@ def portal_test_whatsapp():
 def portal_save_ai_settings():
     if not is_portal_admin():
         return jsonify({'ok': False, 'msg': 'Akses ditolak'})
-    db = get_db()
-    AI_KEYS = ['chatbot_enabled', 'ai_api_key', 'ai_model']
-    for k in AI_KEYS:
-        if k == 'chatbot_enabled':
-            v = '1' if request.form.get(k) else '0'
-        else:
-            v = request.form.get(k, '').strip()
-        save_setting(db, k, v)
-    db.commit()
-    return jsonify({'ok': True, 'msg': 'Konfigurasi AI Assistant berhasil disimpan.'})
+    try:
+        db = get_db()
+        AI_KEYS = ['chatbot_enabled', 'ai_api_key', 'ai_model']
+        saved = {}
+        for k in AI_KEYS:
+            if k == 'chatbot_enabled':
+                v = '1' if request.form.get(k) else '0'
+            else:
+                v = request.form.get(k, '').strip()
+            save_setting(db, k, v)
+            saved[k] = v
+        db.commit()
+        # Verify: baca kembali dari DB
+        verify = get_settings(db)
+        return jsonify({
+            'ok': True,
+            'msg': 'Konfigurasi AI Assistant berhasil disimpan.',
+            'saved': saved,
+            'verified_enabled': verify.get('chatbot_enabled','?'),
+            'verified_key_len': len(verify.get('ai_api_key','')),
+            'verified_model': verify.get('ai_model',''),
+        })
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'Error saat menyimpan: {str(ex)}'}), 500
+
+@app.route('/portal/system-settings/diag-ai', methods=['GET'])
+@login_required
+def portal_diag_ai():
+    """Diagnostik AI settings — superadmin only."""
+    if not is_portal_admin():
+        return jsonify({'error': 'Akses ditolak'}), 403
+    try:
+        db = get_db()
+        cfg = get_settings(db)
+        api_key = cfg.get('ai_api_key', '')
+        # Cek openai package
+        try:
+            import openai as _oai
+            oai_version = getattr(_oai, '__version__', 'ok')
+        except ImportError:
+            oai_version = 'NOT INSTALLED'
+        return jsonify({
+            'chatbot_enabled':    cfg.get('chatbot_enabled', '0'),
+            'ai_model':           cfg.get('ai_model', '(kosong → default gpt-4o)'),
+            'ai_api_key_length':  len(api_key),
+            'ai_api_key_prefix':  api_key[:7] + '...' if len(api_key) > 7 else '(kosong)',
+            'openai_package':     oai_version,
+            'app_version':        VERSION,
+        })
+    except Exception as ex:
+        return jsonify({'error': str(ex)}), 500
 
 @app.route('/portal/system-settings/reload', methods=['POST'])
 @login_required

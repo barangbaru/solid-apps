@@ -439,9 +439,13 @@
         </div>
 
         <div id="aiSaveResult" class="mb-2 d-none small"></div>
-        <button type="button" class="btn btn-primary btn-sm w-100" onclick="saveAiConfig(this)">
+        <button type="button" class="btn btn-primary btn-sm w-100 mb-2" onclick="saveAiConfig(this)">
           <i class="bi bi-robot me-1"></i>Simpan Konfigurasi AI
         </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="diagAi(this)">
+          <i class="bi bi-stethoscope me-1"></i>Cek Status AI
+        </button>
+        <div id="aiDiagResult" class="mt-2 d-none p-2 rounded bg-light border" style="font-size:.77rem;font-family:monospace"></div>
 
       </div>
     </div>
@@ -580,6 +584,34 @@ function testWaApp(appSlug, btn) {
     btn.innerHTML = '<i class="bi bi-send"></i>';
     showResult('waResult', d.ok, (d.ok ? '✓ ' : '✗ ') + d.msg);
   }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="bi bi-send"></i>'; });
+}
+
+async function diagAi(btn) {
+  btn.disabled = true;
+  const box = document.getElementById('aiDiagResult');
+  box.className = 'mt-2 p-2 rounded bg-light border';
+  box.style.fontSize = '.77rem';
+  box.style.fontFamily = 'monospace';
+  box.innerHTML = 'Mengecek...';
+  try {
+    const d = await (await fetch('/portal/system-settings/diag-ai')).json();
+    if (d.error) {
+      box.innerHTML = `<span class="text-danger">ERROR: ${d.error}</span>`;
+    } else {
+      const ok = v => `<span class="text-success fw-bold">${v}</span>`;
+      const bad = v => `<span class="text-danger fw-bold">${v}</span>`;
+      box.innerHTML = [
+        `chatbot_enabled : ${d.chatbot_enabled === '1' ? ok('AKTIF') : bad('nonaktif')}`,
+        `api_key         : ${d.ai_api_key_length > 0 ? ok(d.ai_api_key_prefix + ' (' + d.ai_api_key_length + ' chars)') : bad('KOSONG — belum diisi')}`,
+        `model           : ${d.ai_model || '<span class="text-muted">default gpt-4o</span>'}`,
+        `openai package  : ${d.openai_package === 'NOT INSTALLED' ? bad('TIDAK TERINSTALL — pip install openai') : ok('v' + d.openai_package)}`,
+        `app version     : ${d.app_version}`,
+      ].join('<br>');
+    }
+  } catch(e) {
+    box.innerHTML = '<span class="text-danger">Gagal fetch diagnostik.</span>';
+  }
+  btn.disabled = false;
 }
 
 async function saveAiConfig(btn) {
