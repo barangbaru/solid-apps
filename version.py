@@ -1,3 +1,3 @@
-VERSION = "2.1.3"
+VERSION = "2.1.4"
 RELEASE_DATE = "2026-06-28"
-RELEASE_NOTES = "Fix: menu TalentCore tidak muncul — URL diganti /karyawan, active_app logic diperbaiki"
+RELEASE_NOTES = "Feat: Google user baru otomatis terdaftar tanpa akses, badge Menunggu Akses di admin"

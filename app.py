@@ -3543,6 +3543,7 @@ def login_google_callback():
                 audit_log('merge_google', 'users', user['id'],
                           f'Akun manual digabung dengan Google ({google_email})', app_slug='portal')
 
+    is_new_user = False
     if not user:
         # Auto-create user baru tanpa akses app — admin harus grant via Akses Aplikasi
         username_base = google_email.split('@')[0].lower().replace('.', '_')
@@ -3554,7 +3555,7 @@ def login_google_callback():
         cur = db.execute(
             'INSERT INTO users(username,password_hash,full_name,role,email,google_id,is_active) VALUES(?,?,?,?,?,?,1)',
             (username, generate_password_hash(secrets.token_hex(32), method='pbkdf2:sha256'),
-             google_name, 'user', google_email, google_id))
+             google_name, 'viewer', google_email, google_id))
         db.commit()
         new_uid = cur.lastrowid
         # Auto-link ke karyawan jika email cocok dan belum punya user
@@ -3562,8 +3563,12 @@ def login_google_callback():
             db.execute('UPDATE employees SET user_id=? WHERE id=?', (new_uid, emp['id']))
             db.commit()
         user = db.execute('SELECT * FROM users WHERE id=?', (new_uid,)).fetchone()
+        is_new_user = True
         audit_log('register_google', 'users', user['id'],
-                  f'Akun baru via Google ({google_email})', app_slug='portal')
+                  f'Akun baru via Google ({google_email}) — menunggu pemberian akses', app_slug='portal')
+
+    # Pastikan tidak ada sisa akses aktif dari akun lama (seharusnya tidak ada, tapi defensive)
+    # Tidak lakukan apa-apa — akses dikontrol sepenuhnya via user_app_access
 
     # Update google_id dan last_login
     db.execute("UPDATE users SET google_id=?, last_login=? WHERE id=?",
@@ -3577,7 +3582,14 @@ def login_google_callback():
     session['show_mfa_prompt'] = not bool(user['mfa_enabled'])
     audit_log('login_google', 'users', user['id'],
               f'Login via Google ({google_email})', app_slug='portal')
-    flash(f'Selamat datang, {session["user_name"]}!', 'success')
+    if is_new_user:
+        flash(
+            f'Selamat datang, {session["user_name"]}! '
+            'Akun Anda telah terdaftar. Hubungi administrator untuk mendapatkan akses aplikasi.',
+            'info'
+        )
+    else:
+        flash(f'Selamat datang, {session["user_name"]}!', 'success')
     return redirect(url_for('portal'))
 
 @app.route('/mfa/challenge', methods=['GET', 'POST'])
