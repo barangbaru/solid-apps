@@ -1,0 +1,266 @@
+{% extends 'base.html' %}
+{% block title %}Pengaturan Notifikasi — Hive{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Pengaturan Notifikasi</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h5 class="fw-bold mb-0"><i class="bi bi-bell-fill text-primary me-2"></i>Pengaturan Notifikasi</h5>
+    <div class="text-muted small mt-1">Kelola tipe notifikasi aktif dan daftar penerima per channel</div>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- ── Kolom Kiri: Tipe Notifikasi ── -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white border-bottom py-3 d-flex align-items-center gap-2">
+        <i class="bi bi-list-check text-primary fs-5"></i>
+        <span class="fw-bold">Tipe Notifikasi</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">Aktifkan atau nonaktifkan tipe notifikasi yang dikirimkan sistem.</p>
+        <form method="post" id="form-types">
+          <input type="hidden" name="action" value="save_types">
+          {% for nt in notif_types %}
+          <div class="p-3 rounded-3 mb-2 border d-flex align-items-start gap-3"
+               style="background:{{ '#f0fdf4' if nt.is_active else '#f8f9fa' }}">
+            <div class="form-check form-switch mb-0 flex-shrink-0 mt-1">
+              <input class="form-check-input" type="checkbox" role="switch"
+                     name="active_notif_types" value="{{ nt.slug }}"
+                     id="nt_{{ nt.slug }}"
+                     {{ 'checked' if nt.is_active }}>
+            </div>
+            <label for="nt_{{ nt.slug }}" class="flex-grow-1" style="cursor:pointer">
+              <div class="fw-semibold small">{{ nt.label }}</div>
+              <div class="text-muted" style="font-size:.75rem">{{ nt.description }}</div>
+            </label>
+          </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-primary btn-sm w-100 mt-3">
+            <i class="bi bi-check2 me-1"></i>Simpan Pengaturan
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Kolom Kanan: Penerima ── -->
+  <div class="col-lg-8">
+
+    <!-- Tab channel -->
+    <ul class="nav nav-tabs border-bottom mb-0" role="tablist">
+      {% set ch_meta = [
+        ('email',    'bi-envelope-fill',  'Email',     '#0d6efd'),
+        ('telegram', 'bi-telegram',       'Telegram',  '#0088cc'),
+        ('wa',       'bi-whatsapp',       'WhatsApp',  '#25d366'),
+      ] %}
+      {% for ch, icon, label, color in ch_meta %}
+      <li class="nav-item" role="presentation">
+        <button class="nav-link {{ 'active' if loop.first }}" id="tab-{{ ch }}"
+                data-bs-toggle="tab" data-bs-target="#panel-{{ ch }}"
+                type="button" role="tab">
+          <i class="bi {{ icon }} me-1" style="color:{{ color }}"></i>{{ label }}
+          <span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ by_channel[ch]|length }}</span>
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <div class="tab-content border border-top-0 rounded-bottom shadow-sm bg-white">
+
+      {% for ch, icon, ch_label, color in ch_meta %}
+      <div class="tab-pane fade {{ 'show active' if loop.first }}" id="panel-{{ ch }}" role="tabpanel">
+        <div class="p-3">
+
+          <!-- Daftar penerima -->
+          {% if by_channel[ch] %}
+          <div class="table-responsive mb-3">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-2">Nama</th>
+                  <th>{{ 'Email' if ch == 'email' else ('Chat ID / @username' if ch == 'telegram' else 'Nomor HP') }}</th>
+                  <th>Tipe Notifikasi</th>
+                  <th class="text-center">Status</th>
+                  <th class="text-end pe-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for rec in by_channel[ch] %}
+                {% set types = rec.notif_types | from_json %}
+                <tr>
+                  <td class="ps-2 fw-semibold small">{{ rec.name }}</td>
+                  <td class="small font-monospace text-muted">{{ rec.address }}</td>
+                  <td class="small">
+                    {% if '*' in types %}
+                    <span class="badge" style="background:#e8f4fd;color:#1e6fa5;font-size:.65rem">
+                      <i class="bi bi-infinity me-1"></i>Semua
+                    </span>
+                    {% else %}
+                      {% for t in types %}
+                        {% set tinfo = all_notif_types | selectattr('0', 'equalto', t) | list %}
+                        <span class="badge bg-light border text-dark me-1" style="font-size:.62rem"
+                              title="{{ tinfo[0][2] if tinfo else t }}">
+                          {{ tinfo[0][1] if tinfo else t }}
+                        </span>
+                      {% endfor %}
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
+                    <span class="badge {{ 'bg-success' if rec.is_active else 'bg-secondary' }}"
+                          style="font-size:.65rem">
+                      {{ 'Aktif' if rec.is_active else 'Nonaktif' }}
+                    </span>
+                  </td>
+                  <td class="text-end pe-2">
+                    <div class="d-flex gap-1 justify-content-end">
+                      <!-- Edit -->
+                      <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                              onclick="openEdit({{ rec.id }}, {{ rec.name|tojson }}, {{ rec.address|tojson }}, {{ rec.notif_types|tojson }}, '{{ ch }}')"
+                              title="Edit">
+                        <i class="bi bi-pencil" style="font-size:.7rem"></i>
+                      </button>
+                      <!-- Toggle -->
+                      <form method="post" class="d-inline">
+                        <input type="hidden" name="action" value="toggle_recipient">
+                        <input type="hidden" name="recipient_id" value="{{ rec.id }}">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Toggle Aktif">
+                          <i class="bi bi-power" style="font-size:.7rem"></i>
+                        </button>
+                      </form>
+                      <!-- Delete -->
+                      <form method="post" class="d-inline"
+                            onsubmit="return confirm('Hapus penerima {{ rec.name }}?')">
+                        <input type="hidden" name="action" value="delete_recipient">
+                        <input type="hidden" name="recipient_id" value="{{ rec.id }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Hapus">
+                          <i class="bi bi-trash3" style="font-size:.7rem"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-4 text-muted small mb-3">
+            <i class="bi {{ icon }} d-block mb-2" style="font-size:2rem;opacity:.2;color:{{ color }}"></i>
+            Belum ada penerima {{ ch_label }}
+          </div>
+          {% endif %}
+
+          <!-- Form tambah penerima -->
+          <div class="border rounded-3 p-3 bg-light">
+            <div class="fw-semibold small mb-3">
+              <i class="bi bi-person-plus me-1 text-primary"></i>Tambah Penerima {{ ch_label }}
+            </div>
+            <form method="post">
+              <input type="hidden" name="action" value="add_recipient">
+              <input type="hidden" name="recipient_channel" value="{{ ch }}">
+              <div class="row g-2 mb-2">
+                <div class="col-sm-4">
+                  <input type="text" class="form-control form-control-sm" name="recipient_name"
+                         placeholder="Nama (misal: Tim IT)" required>
+                </div>
+                <div class="col-sm-4">
+                  <input type="{{ 'email' if ch == 'email' else 'text' }}" class="form-control form-control-sm"
+                         name="recipient_address"
+                         placeholder="{{ 'nama@domain.com' if ch == 'email' else ('@username / -100xxx' if ch == 'telegram' else '6281234xxxxx') }}"
+                         required>
+                </div>
+                <div class="col-sm-4">
+                  <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-plus me-1"></i>Tambah
+                  </button>
+                </div>
+              </div>
+              <div class="mb-1 small text-muted">Tipe notifikasi (kosong = semua):</div>
+              <div class="d-flex flex-wrap gap-2">
+                {% for nt in notif_types %}
+                <div class="form-check form-check-inline mb-0">
+                  <input class="form-check-input" type="checkbox"
+                         name="recipient_notif_types" value="{{ nt.slug }}"
+                         id="add_{{ ch }}_{{ nt.slug }}">
+                  <label class="form-check-label small" for="add_{{ ch }}_{{ nt.slug }}">
+                    {{ nt.label }}
+                  </label>
+                </div>
+                {% endfor %}
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </div>
+      {% endfor %}
+
+    </div><!-- /tab-content -->
+  </div><!-- /col-lg-8 -->
+</div><!-- /row -->
+
+<!-- Modal Edit -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" class="modal-content">
+      <input type="hidden" name="action" value="edit_recipient">
+      <input type="hidden" name="recipient_id" id="edit_id">
+      <input type="hidden" name="recipient_channel" id="edit_channel">
+      <div class="modal-header py-3">
+        <h6 class="modal-title fw-bold"><i class="bi bi-pencil-square me-1"></i>Edit Penerima</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Nama</label>
+          <input type="text" class="form-control form-control-sm" name="recipient_name" id="edit_name" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Address</label>
+          <input type="text" class="form-control form-control-sm" name="recipient_address" id="edit_address" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Tipe Notifikasi <span class="text-muted fw-normal">(kosong = semua)</span></label>
+          <div class="d-flex flex-wrap gap-2" id="edit_types_container">
+            {% for nt in notif_types %}
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input edit-type-cb" type="checkbox"
+                     name="recipient_notif_types" value="{{ nt.slug }}"
+                     id="edit_nt_{{ nt.slug }}">
+              <label class="form-check-label small" for="edit_nt_{{ nt.slug }}">{{ nt.label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-check2 me-1"></i>Simpan
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEdit(id, name, address, notifTypesJson, channel) {
+  document.getElementById('edit_id').value      = id;
+  document.getElementById('edit_name').value    = name;
+  document.getElementById('edit_address').value = address;
+  document.getElementById('edit_channel').value = channel;
+
+  let types = [];
+  try { types = JSON.parse(notifTypesJson); } catch(e) { types = ['*']; }
+
+  document.querySelectorAll('.edit-type-cb').forEach(cb => {
+    cb.checked = types.includes('*') || types.includes(cb.value);
+  });
+
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+</script>
+{% endblock %}
