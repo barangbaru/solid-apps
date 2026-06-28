@@ -4582,7 +4582,7 @@ def portal_diag_ai():
             'ai_model':           cfg.get('ai_model', '(kosong → default gemini-2.0-flash)'),
             'ai_api_key_length':  len(api_key),
             'ai_api_key_prefix':  api_key[:7] + '...' if len(api_key) > 7 else '(kosong)',
-            'openai_package':     oai_version,
+            'openai_sdk':         oai_version,
             'app_version':        VERSION,
         })
     except Exception as ex:

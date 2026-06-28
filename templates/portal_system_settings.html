@@ -604,7 +604,7 @@ async function diagAi(btn) {
         `chatbot_enabled : ${d.chatbot_enabled === '1' ? ok('AKTIF') : bad('nonaktif')}`,
         `api_key         : ${d.ai_api_key_length > 0 ? ok(d.ai_api_key_prefix + ' (' + d.ai_api_key_length + ' chars)') : bad('KOSONG — belum diisi')}`,
         `model           : ${d.ai_model || '<span class="text-muted">default gpt-4o</span>'}`,
-        `openai package  : ${d.openai_package === 'NOT INSTALLED' ? bad('TIDAK TERINSTALL — pip install openai') : ok('v' + d.openai_package)} <span class="text-muted">(digunakan untuk Gemini API)</span>`,
+        `openai SDK      : ${d.openai_sdk === 'NOT INSTALLED' ? bad('TIDAK TERINSTALL — pip install openai') : ok('v' + d.openai_sdk)} <span class="text-muted">(SDK untuk Gemini API)</span>`,
         `app version     : ${d.app_version}`,
       ].join('<br>');
     }
