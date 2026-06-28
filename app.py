@@ -4579,7 +4579,7 @@ def portal_diag_ai():
             oai_version = 'NOT INSTALLED'
         return jsonify({
             'chatbot_enabled':    cfg.get('chatbot_enabled', '0'),
-            'ai_model':           cfg.get('ai_model', '(kosong → default gpt-4o)'),
+            'ai_model':           cfg.get('ai_model', '(kosong → default gemini-2.0-flash)'),
             'ai_api_key_length':  len(api_key),
             'ai_api_key_prefix':  api_key[:7] + '...' if len(api_key) > 7 else '(kosong)',
             'openai_package':     oai_version,
@@ -8461,9 +8461,9 @@ def chatbot_send():
 
     api_key = settings.get('ai_api_key','').strip()
     if not api_key:
-        return jsonify({'error': 'API key ChatGPT belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
+        return jsonify({'error': 'API key Google AI Studio belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
 
-    model = settings.get('ai_model','').strip() or 'gpt-4o'
+    model = settings.get('ai_model','').strip() or 'gemini-2.0-flash'
 
     data = request.get_json()
     messages = data.get('messages', [])
@@ -8472,7 +8472,8 @@ def chatbot_send():
     messages = messages[-20:]
 
     try:
-        reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai())
+        reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai(),
+                                     base_url='https://generativelanguage.googleapis.com/v1beta/openai/')
         return jsonify({'reply': reply})
     except Exception as ex:
         return jsonify({'error': str(ex)}), 500

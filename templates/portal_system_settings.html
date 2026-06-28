@@ -389,7 +389,7 @@
     {# ── AI Assistant ── #}
     <div class="card mb-3 border-primary border-opacity-25">
       <div class="card-header py-2 fw-bold small text-uppercase text-muted d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-robot text-primary me-1"></i>AI Assistant — ChatGPT</span>
+        <span><i class="bi bi-robot text-primary me-1"></i>AI Assistant — Gemini (Google)</span>
         <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:.7rem">
           <i class="bi bi-shield-check me-1"></i>Gaji & evaluasi pribadi dilindungi
         </span>
@@ -406,19 +406,19 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label fw-semibold small">OpenAI API Key</label>
+          <label class="form-label fw-semibold small">Google AI Studio API Key</label>
           <div class="input-group input-group-sm">
             <input type="password" name="ai_api_key" id="aiApiKey"
                    class="form-control form-control-sm font-monospace"
                    value="{{ cfg.get('ai_api_key','') }}"
-                   placeholder="sk-..."
+                   placeholder="AIza..."
                    autocomplete="off">
             <button class="btn btn-outline-secondary" type="button" onclick="toggleVis('aiApiKey',this)">
               <i class="bi bi-eye"></i>
             </button>
           </div>
           <div class="form-text">
-            Dapatkan API key di <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>
+            Dapatkan API key gratis di <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
           </div>
         </div>
 
@@ -427,14 +427,14 @@
           <input type="text" name="ai_model" id="aiModelInput"
                  class="form-control form-control-sm font-monospace"
                  value="{{ cfg.get('ai_model','') }}"
-                 placeholder="Kosongkan untuk default (gpt-4o)">
+                 placeholder="Kosongkan untuk default (gemini-2.0-flash)">
           <div class="d-flex flex-wrap gap-1 mt-1">
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-                  onclick="document.getElementById('aiModelInput').value='gpt-4o'">gpt-4o</span>
+                  onclick="document.getElementById('aiModelInput').value='gemini-2.0-flash'">gemini-2.0-flash</span>
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-                  onclick="document.getElementById('aiModelInput').value='gpt-4o-mini'">gpt-4o-mini</span>
+                  onclick="document.getElementById('aiModelInput').value='gemini-2.5-flash'">gemini-2.5-flash</span>
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-                  onclick="document.getElementById('aiModelInput').value='gpt-4-turbo'">gpt-4-turbo</span>
+                  onclick="document.getElementById('aiModelInput').value='gemini-1.5-pro'">gemini-1.5-pro</span>
           </div>
         </div>
 
@@ -604,7 +604,7 @@ async function diagAi(btn) {
         `chatbot_enabled : ${d.chatbot_enabled === '1' ? ok('AKTIF') : bad('nonaktif')}`,
         `api_key         : ${d.ai_api_key_length > 0 ? ok(d.ai_api_key_prefix + ' (' + d.ai_api_key_length + ' chars)') : bad('KOSONG — belum diisi')}`,
         `model           : ${d.ai_model || '<span class="text-muted">default gpt-4o</span>'}`,
-        `openai package  : ${d.openai_package === 'NOT INSTALLED' ? bad('TIDAK TERINSTALL — pip install openai') : ok('v' + d.openai_package)}`,
+        `openai package  : ${d.openai_package === 'NOT INSTALLED' ? bad('TIDAK TERINSTALL — pip install openai') : ok('v' + d.openai_package)} <span class="text-muted">(digunakan untuk Gemini API)</span>`,
         `app version     : ${d.app_version}`,
       ].join('<br>');
     }
