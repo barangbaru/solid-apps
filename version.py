@@ -1,3 +1,3 @@
-VERSION = "2.0.6"
+VERSION = "2.0.7"
 RELEASE_DATE = "2026-06-28"
-RELEASE_NOTES = "Feat: dukungan Open WebUI dan Ollama sebagai alternatif Gemini"
+RELEASE_NOTES = "Fix: fallback tanpa tool calling untuk Ollama; pesan error AI lebih kontekstual"

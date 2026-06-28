@@ -8451,16 +8451,28 @@ def _chatbot_call_openai(api_key, model, messages, system, tools_oa, base_url=No
     last_user = next((m['content'] for m in reversed(messages) if m.get('role') == 'user'), '')
     use_tools = tools_oa and not _is_simple_question(last_user)
 
-    for _ in range(2):  # max 2 iterasi — cukup untuk 1 tool call + 1 respons
-        create_kwargs = dict(model=model, max_tokens=1024, messages=oai_msgs)
-        if use_tools:
-            create_kwargs['tools'] = tools_oa
-            create_kwargs['tool_choice'] = 'auto'
-        resp = client.chat.completions.create(**create_kwargs)
+    def _call_once(with_tools):
+        kwargs = dict(model=model, max_tokens=1024, messages=oai_msgs)
+        if with_tools and tools_oa:
+            kwargs['tools'] = tools_oa
+            kwargs['tool_choice'] = 'auto'
+        return client.chat.completions.create(**kwargs)
+
+    for _ in range(2):
+        try:
+            resp = _call_once(use_tools)
+        except Exception as e:
+            # Jika gagal karena tool calling tidak didukung, retry tanpa tools
+            err = str(e).lower()
+            if use_tools and ('tool' in err or 'function' in err or 'unsupported' in err or '400' in err):
+                use_tools = False
+                resp = _call_once(False)
+            else:
+                raise
         choice = resp.choices[0]
         if choice.finish_reason == 'stop':
             return choice.message.content or ''
-        if choice.finish_reason == 'tool_calls':
+        if choice.finish_reason == 'tool_calls' and use_tools:
             import json as _json
             msg = choice.message
             oai_msgs.append(msg)
@@ -8488,25 +8500,43 @@ def _chatbot_check_rate(user_id):
     _chatbot_rate[user_id] = hits
     return True
 
-def _friendly_ai_error(ex):
+def _friendly_ai_error(ex, base_url=''):
     """Ubah error API menjadi pesan yang mudah dipahami."""
     msg = str(ex)
+    is_gemini  = not base_url or 'googleapis' in base_url
+    is_ollama  = 'ollama' in base_url or '11434' in base_url
+    is_openwebui = '3000' in base_url or 'openwebui' in base_url.lower()
+    provider = 'Gemini' if is_gemini else ('Ollama' if is_ollama else ('Open WebUI' if is_openwebui else 'AI'))
+
     if '429' in msg or 'RESOURCE_EXHAUSTED' in msg or 'quota' in msg.lower():
-        if 'limit: 0' in msg or 'free_tier' in msg:
+        if is_gemini and ('limit: 0' in msg or 'free_tier' in msg):
             return ('Quota Gemini free tier habis atau API key tidak punya akses free tier. '
-                    'Pastikan API key dibuat dari aistudio.google.com/apikey menggunakan "Create API key in new project".')
-        return 'Quota Gemini tercapai. Coba lagi dalam beberapa menit.'
-    if '401' in msg or 'UNAUTHENTICATED' in msg or 'API key' in msg.lower():
-        return 'API key tidak valid atau sudah kadaluarsa. Periksa konfigurasi di Pengaturan Sistem → AI Assistant.'
+                    'Buat API key baru dari aistudio.google.com/apikey → "Create API key in new project".')
+        return f'Quota {provider} tercapai. Coba lagi dalam beberapa menit.'
+    if '401' in msg or 'UNAUTHENTICATED' in msg or 'unauthorized' in msg.lower():
+        if is_ollama:
+            return 'Ollama: tidak perlu API key. Kosongkan field API key di Pengaturan Sistem.'
+        return f'API key {provider} tidak valid. Periksa konfigurasi di Pengaturan Sistem → AI Assistant.'
     if '403' in msg or 'PERMISSION_DENIED' in msg:
-        return 'API key tidak punya izin menggunakan model ini. Pastikan Gemini API sudah diaktifkan.'
-    if 'model' in msg.lower() and ('not found' in msg.lower() or 'does not exist' in msg.lower()):
-        return f'Model tidak ditemukan. Coba ganti model ke "gemini-2.0-flash" di Pengaturan Sistem.'
-    if 'connect' in msg.lower() or 'timeout' in msg.lower():
-        return 'Tidak bisa terhubung ke Gemini API. Periksa koneksi internet server.'
-    # Potong pesan panjang, ambil baris pertama saja
-    first_line = msg.split('\n')[0][:200]
-    return f'Error dari Gemini: {first_line}'
+        return f'API key tidak punya izin menggunakan model ini ({provider}).'
+    if 'model' in msg.lower() and ('not found' in msg.lower() or 'does not exist' in msg.lower() or 'pull' in msg.lower()):
+        if is_ollama:
+            return ('Model Ollama tidak ditemukan. Jalankan: '
+                    f'ollama pull {{}}'.format('<nama_model>') +
+                    ' di server, lalu coba lagi.')
+        if is_openwebui:
+            return 'Model tidak ditemukan di Open WebUI. Pastikan model sudah di-pull via Ollama atau tersedia di Open WebUI.'
+        return 'Model tidak ditemukan. Ganti model di Pengaturan Sistem → AI Assistant (contoh: gemini-2.0-flash).'
+    if 'tool' in msg.lower() and ('not support' in msg.lower() or 'unsupported' in msg.lower()):
+        return f'Model ini tidak mendukung tool calling. Coba model lain yang support function calling.'
+    if 'connect' in msg.lower() or 'timeout' in msg.lower() or 'connection' in msg.lower():
+        if is_ollama:
+            return f'Tidak bisa terhubung ke Ollama ({base_url}). Pastikan Ollama berjalan: systemctl status ollama'
+        if is_openwebui:
+            return f'Tidak bisa terhubung ke Open WebUI ({base_url}). Pastikan container/service berjalan.'
+        return 'Tidak bisa terhubung ke server AI. Periksa koneksi internet server.'
+    first_line = msg.split('\n')[0][:250]
+    return f'Error {provider}: {first_line}'
 
 @app.route('/api/chatbot/send', methods=['POST'])
 @login_required
@@ -8547,7 +8577,7 @@ def chatbot_send():
                                      base_url=ai_base_url)
         return jsonify({'reply': reply})
     except Exception as ex:
-        return jsonify({'error': _friendly_ai_error(ex)}), 500
+        return jsonify({'error': _friendly_ai_error(ex, ai_base_url)}), 500
 
 # ─── Portal: Audit Trail ───────────────────────────────────────────────────────
 
