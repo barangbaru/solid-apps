@@ -2044,7 +2044,7 @@ _SCANNER_PATHS = (
     '/wp-', '/wordpress', '/wp-login', '/wp-admin', '/xmlrpc',
     '/.env', '/.git', '/.htaccess', '/.htpasswd', '/config',
     '/admin/config', '/phpmyadmin', '/pma', '/mysql', '/myadmin',
-    '/manager/', '/administrator', '/shell', '/cmd', '/eval',
+    '/manager/', '/administrator', '/shell', '/cmd',
     '/cgi-bin', '/cgi/', '/api/v1/version', '/actuator', '/debug',
     '/vendor/', '/composer', '/package.json', '/package-lock',
     '/node_modules', '/proc/', '/etc/', '/usr/', '/var/log',
