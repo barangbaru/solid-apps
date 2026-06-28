@@ -86,7 +86,8 @@ if $IS_UPDATE; then
             NEWER_TAGS="$ALL_TAGS"
         fi
 
-        TAG_COUNT=$(echo "$NEWER_TAGS" | grep -c '^v' 2>/dev/null || echo 0)
+        TAG_COUNT=$(echo "$NEWER_TAGS" | grep -c '^v' 2>/dev/null | tr -d '[:space:]' || echo 0)
+        TAG_COUNT=${TAG_COUNT:-0}
 
         if [ "$TAG_COUNT" -gt 1 ]; then
             echo ""
