@@ -8950,7 +8950,7 @@ def portal_notifications():
     # GET
     tab = request.args.get('tab', 'sistem')
     notif_types = db.execute(
-        'SELECT slug, is_active, label, description FROM notif_type_settings ORDER BY rowid'
+        'SELECT slug, is_active, label, description FROM notif_type_settings ORDER BY slug'
     ).fetchall()
     recipients = db.execute(
         'SELECT * FROM notif_recipients ORDER BY channel, name'
