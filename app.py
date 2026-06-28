@@ -8420,6 +8420,18 @@ def _chatbot_call_anthropic(api_key, model, messages, system, tools):
         break
     return 'Tidak ada respons dari AI.'
 
+_SIMPLE_QUESTION_PATTERNS = (
+    'halo', 'hai', 'hi', 'selamat', 'terima kasih', 'makasih', 'oke', 'ok',
+    'siapa kamu', 'apa itu', 'bantu', 'help', 'tolong',
+)
+
+def _is_simple_question(text):
+    """True jika pertanyaan tidak perlu tool calling (salam/umum/singkat)."""
+    t = text.lower().strip()
+    if len(t) < 30:
+        return any(p in t for p in _SIMPLE_QUESTION_PATTERNS)
+    return False
+
 def _chatbot_call_openai(api_key, model, messages, system, tools_oa, base_url=None):
     import openai as _oai
     kwargs = {'api_key': api_key}
@@ -8427,29 +8439,47 @@ def _chatbot_call_openai(api_key, model, messages, system, tools_oa, base_url=No
         kwargs['base_url'] = base_url
     client = _oai.OpenAI(**kwargs)
     oai_msgs = [{'role': 'system', 'content': system}] + messages
-    for _ in range(5):
-        resp = client.chat.completions.create(
-            model=model,
-            max_tokens=2048,
-            tools=tools_oa,
-            tool_choice='auto',
-            messages=oai_msgs,
-        )
+
+    # Deteksi apakah perlu tool calling — skip jika pertanyaan sederhana
+    last_user = next((m['content'] for m in reversed(messages) if m.get('role') == 'user'), '')
+    use_tools = tools_oa and not _is_simple_question(last_user)
+
+    for _ in range(2):  # max 2 iterasi — cukup untuk 1 tool call + 1 respons
+        create_kwargs = dict(model=model, max_tokens=1024, messages=oai_msgs)
+        if use_tools:
+            create_kwargs['tools'] = tools_oa
+            create_kwargs['tool_choice'] = 'auto'
+        resp = client.chat.completions.create(**create_kwargs)
         choice = resp.choices[0]
         if choice.finish_reason == 'stop':
             return choice.message.content or ''
         if choice.finish_reason == 'tool_calls':
+            import json as _json
             msg = choice.message
             oai_msgs.append(msg)
+            db = get_db()
             for tc in msg.tool_calls:
-                import json as _json
                 inp = _json.loads(tc.function.arguments)
-                db = get_db()
                 result = _chatbot_exec_tool(db, tc.function.name, inp)
                 oai_msgs.append({'role': 'tool', 'tool_call_id': tc.id, 'content': result})
             continue
         break
     return 'Tidak ada respons dari AI.'
+
+# Rate limiter sederhana: max N request per menit per user
+_chatbot_rate: dict = {}  # {user_id: [timestamp, ...]}
+_CHATBOT_MAX_RPM = 8       # max 8 request/menit per user
+
+def _chatbot_check_rate(user_id):
+    """Return True jika masih dalam batas, False jika over limit."""
+    now = datetime.now().timestamp()
+    window = 60.0
+    hits = [t for t in _chatbot_rate.get(user_id, []) if now - t < window]
+    if len(hits) >= _CHATBOT_MAX_RPM:
+        return False
+    hits.append(now)
+    _chatbot_rate[user_id] = hits
+    return True
 
 def _friendly_ai_error(ex):
     """Ubah error API menjadi pesan yang mudah dipahami."""
@@ -8485,11 +8515,15 @@ def chatbot_send():
 
     model = settings.get('ai_model','').strip() or 'gemini-2.0-flash'
 
+    # Rate limit per user
+    if not _chatbot_check_rate(session.get('user_id', 0)):
+        return jsonify({'error': f'Terlalu banyak permintaan. Maksimal {_CHATBOT_MAX_RPM} pesan per menit. Tunggu sebentar.'}), 429
+
     data = request.get_json()
     messages = data.get('messages', [])
     if not messages:
         return jsonify({'error': 'Pesan kosong'}), 400
-    messages = messages[-20:]
+    messages = messages[-8:]  # max 8 pesan terakhir untuk hemat token
 
     try:
         reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai(),

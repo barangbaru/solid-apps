@@ -1,3 +1,3 @@
-VERSION = "2.0.3"
+VERSION = "2.0.4"
 RELEASE_DATE = "2026-06-28"
-RELEASE_NOTES = "Fix: label diagnostik AI — model default & SDK label"
+RELEASE_NOTES = "Feat: optimasi request Gemini API — rate limit, iterasi, history"
