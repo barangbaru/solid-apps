@@ -2083,12 +2083,16 @@ def set_security_headers(response):
     return response
 
 
+_EVALUASI_PREFIXES = (
+    '/emp', '/eval', '/salary', '/contracts', '/karyawan',
+    '/reminders', '/reviews', '/assess', '/settings',
+)
+
 @app.before_request
 def auto_set_active_app():
     path = request.path
     skip = ('/login', '/logout', '/static', '/mfa', '/portal/open')
     if any(path.startswith(p) for p in skip):
-        # Halaman MFA & login tetap pakai konteks portal agar sidebar tidak salah
         if path.startswith('/mfa'):
             session['active_app'] = 'portal'
         return
@@ -2102,8 +2106,11 @@ def auto_set_active_app():
         session['active_app'] = 'aset'
     elif path.startswith('/project'):
         session['active_app'] = 'project'
-    else:
+    elif any(path.startswith(p) for p in _EVALUASI_PREFIXES):
         session['active_app'] = 'evaluasi'
+    else:
+        # Default: portal — untuk /, /profile, /users, /chatbot, dll
+        session['active_app'] = 'portal'
 
 # ─── Enforce app-level access dari user_app_access ──────────────────────────────
 
