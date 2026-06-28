@@ -8228,6 +8228,17 @@ CHATBOT_TOOLS = [
             "required": ["module"]
         }
     },
+    {
+        "name": "detail_karyawan",
+        "description": "Ambil detail lengkap satu karyawan: jabatan, divisi, tipe kontrak, masa kerja, dan status probasi. Gunakan untuk pertanyaan seperti 'apakah X sudah selesai probasi?' atau 'berapa lama masa kerja si Y?'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nama": {"type": "string", "description": "Nama karyawan yang dicari"}
+            },
+            "required": ["nama"]
+        }
+    },
 ]
 
 def _chatbot_exec_tool(db, name, inp):
@@ -8304,14 +8315,72 @@ def _chatbot_exec_tool(db, name, inp):
         elif name == 'cari_karyawan':
             kw = f"%{inp.get('keyword','')}%"
             rows = db.execute('''
-                SELECT name, jabatan, divisi, email, is_active FROM employees
+                SELECT name, jabatan, divisi, email, employment_type, contract_start FROM employees
                 WHERE (name LIKE ? OR jabatan LIKE ? OR divisi LIKE ?) AND is_active=1
                 ORDER BY divisi, name LIMIT 15
             ''', (kw, kw, kw)).fetchall()
             if not rows: return "Tidak ditemukan karyawan yang cocok."
             out = []
             for r in rows:
-                out.append(f"{r['name']} | {r['jabatan'] or '—'} | {r['divisi'] or '—'} | {r['email'] or '—'}")
+                tipe = r['employment_type'] or 'tetap'
+                out.append(f"{r['name']} | {r['jabatan'] or '—'} | {r['divisi'] or '—'} | {tipe} | {r['email'] or '—'}")
+            return "\n".join(out)
+
+        elif name == 'detail_karyawan':
+            import datetime as _dt
+            nama = f"%{inp.get('nama', '').strip()}%"
+            row = db.execute('''
+                SELECT name, jabatan, divisi, level, employment_type,
+                       contract_start, contract_end, email, phone, notes
+                FROM employees
+                WHERE name LIKE ? AND is_active=1
+                ORDER BY name LIMIT 1
+            ''', (nama,)).fetchone()
+            if not row:
+                return f"Karyawan '{inp.get('nama','')}' tidak ditemukan."
+            tipe = (row['employment_type'] or 'tetap').lower()
+            cs   = row['contract_start'] or ''
+            ce   = row['contract_end'] or ''
+            # Hitung masa kerja dan status probasi
+            masa_kerja = '—'
+            status_probasi = '—'
+            if cs:
+                try:
+                    tgl_masuk = _dt.date.fromisoformat(cs[:10])
+                    hari_ini  = _dt.date.today()
+                    delta     = hari_ini - tgl_masuk
+                    bulan     = delta.days // 30
+                    tahun     = bulan // 12
+                    sisa      = bulan % 12
+                    if tahun > 0:
+                        masa_kerja = f"{tahun} tahun {sisa} bulan"
+                    else:
+                        masa_kerja = f"{bulan} bulan"
+                    # Probasi dihitung 3 bulan (atau 6 bulan jika kontrak/probasi)
+                    batas_probasi = 6 if tipe in ('kontrak', 'probasi') else 3
+                    if bulan >= batas_probasi:
+                        status_probasi = f"Selesai (mulai kerja {cs[:10]}, sudah {masa_kerja})"
+                    else:
+                        sisa_hari = (tgl_masuk.replace(year=tgl_masuk.year + (1 if tgl_masuk.month > 12 - batas_probasi else 0),
+                                     month=((tgl_masuk.month + batas_probasi - 1) % 12) + 1) - hari_ini).days
+                        status_probasi = f"Masih probasi — sisa ±{max(sisa_hari,0)} hari"
+                except Exception:
+                    pass
+            out = [
+                f"Nama        : {row['name']}",
+                f"Jabatan     : {row['jabatan'] or '—'}",
+                f"Divisi      : {row['divisi'] or '—'}",
+                f"Level       : {row['level'] or '—'}",
+                f"Tipe kontrak: {tipe}",
+                f"Mulai kerja : {cs or '—'}",
+                f"Akhir kontrak: {ce or '—'}",
+                f"Masa kerja  : {masa_kerja}",
+                f"Status probasi: {status_probasi}",
+                f"Email       : {row['email'] or '—'}",
+                f"Phone       : {row['phone'] or '—'}",
+            ]
+            if row['notes']:
+                out.append(f"Catatan     : {row['notes']}")
             return "\n".join(out)
 
         elif name == 'cari_aset':
@@ -8352,16 +8421,16 @@ def _chatbot_exec_tool(db, name, inp):
         return f"Error mengambil data: {ex}"
     return "Tool tidak dikenal."
 
-CHATBOT_SYSTEM = """Kamu adalah asisten AI untuk aplikasi Hive — sistem manajemen IT internal perusahaan.
-Hive terdiri dari modul: TalentCore (karyawan & evaluasi), SupportCore (tiket support), ProjectCore (project & task), AssetCore (aset IT), BookingCore (ruangan & kendaraan).
+CHATBOT_SYSTEM = """You are an AI assistant for Hive — an internal IT management application.
+Hive modules: TalentCore (employees & evaluations), SupportCore (support tickets), ProjectCore (projects & tasks), AssetCore (IT assets), BookingCore (rooms & vehicles).
 
-PANDUAN:
-- Jawab pertanyaan tentang data di aplikasi dengan memanggil tools yang tersedia
-- Untuk troubleshooting teknis, gunakan kombinasi data tiket + pengetahuan umum IT
-- Data RAHASIA yang TIDAK BOLEH ditampilkan: gaji, komponen kompensasi, data evaluasi pribadi yang sensitif
-- Jika pertanyaan di luar lingkup aplikasi, gunakan pengetahuan umum kamu
-- Jawab dalam Bahasa Indonesia kecuali ditanya dalam bahasa lain
-- Singkat dan langsung ke inti, gunakan format poin jika ada beberapa item
+RULES:
+- LANGUAGE: Always reply in the SAME language the user used. If they write in Indonesian → reply in Indonesian. If English → reply in English. Detect from each message.
+- Use available tools to answer questions about application data.
+- For employee data: use 'cari_karyawan' for search, 'detail_karyawan' for probation status / work duration / contract details.
+- CONFIDENTIAL — NEVER show: salary, compensation components, personal evaluation scores.
+- For questions outside app scope, use your general knowledge.
+- Keep answers concise and direct; use bullet points when listing multiple items.
 """
 
 @app.route('/chatbot')
