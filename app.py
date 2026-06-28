@@ -1441,7 +1441,11 @@ def init_db():
     db.commit()
 
     # Migrations
+    import re as _re
+    _valid_ident = _re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
     for table, col, col_def in MIGRATIONS:
+        if not _valid_ident.match(table) or not _valid_ident.match(col):
+            raise ValueError(f"Invalid identifier in migration: table={table!r}, col={col!r}")
         if DB_TYPE == 'postgresql':
             # Konversi tipe kolom SQLite → PostgreSQL jika perlu
             col_def_pg = col_def.replace('INTEGER', 'INTEGER').replace(
@@ -1454,7 +1458,8 @@ def init_db():
                 db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {col_def}')
     db.commit()
     # Seed evaluation data
-    if db.execute('SELECT COUNT(*) FROM skill_categories').fetchone()[0] == 0:
+    cnt_row = db.execute('SELECT COUNT(*) as c FROM skill_categories').fetchone()
+    if not cnt_row or cnt_row['c'] == 0:
         seed_db(db)
     # Default settings
     for k, v in DEFAULT_SETTINGS.items():
@@ -2183,7 +2188,7 @@ def calc_hs_total(db, eval_id, divisi):
     if not rows: return 0.0
     sum_bobot = sum(r['bobot'] for r in rows)
     if sum_bobot == 0: return 0.0
-    return round(sum((r['score'] / 4.0) * r['bobot'] for r in rows) / sum_bobot * 100, 4)
+    return round(sum(((r['score'] or 0) / 4.0) * (r['bobot'] or 0) for r in rows) / sum_bobot * 100, 4)
 
 def calc_competency_total(db, eval_id, divisi, hs_total):
     items = db.execute('''
@@ -2193,7 +2198,7 @@ def calc_competency_total(db, eval_id, divisi, hs_total):
         WHERE ci.divisi = ? ORDER BY ci.sort_order
     ''', (eval_id, divisi)).fetchall()
     return round(sum(
-        hs_total * i['bobot'] if i['is_hardskill'] else i['rating'] * 20.0 * i['bobot']
+        hs_total * (i['bobot'] or 0) if i['is_hardskill'] else (i['rating'] or 0) * 20.0 * (i['bobot'] or 0)
         for i in items
     ), 4)
 
@@ -2253,7 +2258,7 @@ def normalize_phone_wa(phone):
     p = ''.join(c for c in (phone or '') if c.isdigit())
     if not p:
         return ''
-    if p.startswith('0'):
+    if p.startswith('0') and len(p) > 1:
         p = '62' + p[1:]
     elif not p.startswith('62'):
         p = '62' + p
@@ -2334,29 +2339,31 @@ def log_reminder(db, emp_id, channel, subject, message, ok, err, triggered_by='a
                 'sent' if ok else 'failed', err or '', triggered_by))
 
 def compose_contract_message(emp, days_left):
+    from html import escape as _esc
     status = 'berakhir hari ini' if days_left == 0 else \
              f'berakhir dalam <b>{days_left} hari</b>' if days_left > 0 else \
              f'<b>sudah berakhir {abs(days_left)} hari lalu</b>'
     return f"""<h3>⚠️ Reminder Kontrak Karyawan</h3>
 <table>
-  <tr><td><b>Nama</b></td><td>: {emp['name']}</td></tr>
-  <tr><td><b>Jabatan</b></td><td>: {emp['jabatan'] or '-'}</td></tr>
-  <tr><td><b>Divisi</b></td><td>: {emp['divisi']}</td></tr>
+  <tr><td><b>Nama</b></td><td>: {_esc(emp['name'] or '')}</td></tr>
+  <tr><td><b>Jabatan</b></td><td>: {_esc(emp['jabatan'] or '-')}</td></tr>
+  <tr><td><b>Divisi</b></td><td>: {_esc(emp['divisi'] or '')}</td></tr>
   <tr><td><b>Tipe Kontrak</b></td><td>: Kontrak</td></tr>
-  <tr><td><b>Akhir Kontrak</b></td><td>: {emp['contract_end']}</td></tr>
+  <tr><td><b>Akhir Kontrak</b></td><td>: {_esc(emp['contract_end'] or '')}</td></tr>
   <tr><td><b>Status</b></td><td>: Kontrak {status}</td></tr>
 </table>
 <p>Mohon segera tindak lanjut perpanjangan atau pemutusan kontrak.</p>"""
 
 def compose_telegram_message(emp, days_left):
+    from html import escape as _esc
     icon = '🔴' if days_left <= 7 else '🟡' if days_left <= 30 else '🟢'
     status = 'Berakhir HARI INI!' if days_left == 0 else \
              f'Berakhir dalam {days_left} hari' if days_left > 0 else \
              f'SUDAH BERAKHIR {abs(days_left)} hari lalu!'
     return (f"{icon} <b>Reminder Kontrak Karyawan</b>\n\n"
-            f"👤 <b>{emp['name']}</b>\n"
-            f"🏢 {emp['divisi']} — {emp['jabatan'] or '-'}\n"
-            f"📅 Akhir kontrak: <b>{emp['contract_end']}</b>\n"
+            f"👤 <b>{_esc(emp['name'] or '')}</b>\n"
+            f"🏢 {_esc(emp['divisi'] or '')} — {_esc(emp['jabatan'] or '-')}\n"
+            f"📅 Akhir kontrak: <b>{_esc(emp['contract_end'] or '')}</b>\n"
             f"⏳ {status}\n\n"
             f"<i>Segera tindak lanjut perpanjangan / pemutusan kontrak.</i>")
 
@@ -2958,8 +2965,8 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
         ''', p).fetchall()
         for r in rows:
             diff_mult = difficulty_map.get((r['difficulty'] or 'Normal').lower(), 1.0)
-            pts = round(float(c['base_points']) * diff_mult *
-                        _mult_ontime(c, r['resolved_date'], r['resolved_date']), 2)
+            pts = round(float(c.get('base_points') or 0) * diff_mult *
+                        (_mult_ontime(c, r['resolved_date'], r['resolved_date']) or 1.0), 2)
             _add('project_issue', c['label'], f"Issue {r['issue_no']}: {r['title'][:40]} ({r['proj_name']})", pts)
 
     # ── 5. Project Tasks (done, assignee) ───────────────────────────────────────
@@ -2975,7 +2982,7 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
             WHERE ta.employee_id=? AND t.status IN ('done','closed'){dw}
         ''', p).fetchall()
         for r in rows:
-            pts = round(float(c['base_points']) * _mult_priority(c, r['priority']), 2)
+            pts = round(float(c.get('base_points') or 0) * (_mult_priority(c, r['priority'] or 'Medium') or 1.0), 2)
             _add('project_task', c['label'], f"Task: {r['title'][:40]} ({r['proj_name']})", pts)
 
     # ── 6. POC / Presales ───────────────────────────────────────────────────────
@@ -3006,8 +3013,8 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
             WHERE ta.employee_id=? AND t.status IN ('resolved','closed'){dw}
         ''', p).fetchall()
         for r in rows:
-            pts = round(float(c['base_points']) * _mult_priority(c, r['priority'] or 'Medium')
-                        * _mult_ontime(c, r['due_date'], r['reported_at']), 2)
+            pts = round(float(c.get('base_points') or 0) * (_mult_priority(c, r['priority'] or 'Medium') or 1.0)
+                        * (_mult_ontime(c, r['due_date'], r['reported_at']) or 1.0), 2)
             _add('support_ticket', c['label'], f"Tiket {r['ticket_no']}: {r['subject'][:40]}", pts)
 
     total_raw = round(sum(v['raw_pts'] for v in summary.values()), 2)
@@ -4135,8 +4142,9 @@ def portal_user_merge_all():
                 db.execute("UPDATE users SET email=? WHERE id=?", (keep_email, keep['id']))
             # Pindahkan google_id ke keep
             db.execute("UPDATE users SET google_id=? WHERE id=?", (donor['google_id'], keep['id']))
-            # Pindahkan akses app
-            for a in db.execute('SELECT * FROM user_app_access WHERE user_id=?', (donor['id'],)).fetchall():
+            # Pindahkan akses app (query sekali per donor, bukan dalam outer loop)
+            donor_access = db.execute('SELECT * FROM user_app_access WHERE user_id=?', (donor['id'],)).fetchall()
+            for a in donor_access:
                 db.execute('INSERT OR IGNORE INTO user_app_access(user_id,app_slug,app_role,is_active) VALUES(?,?,?,?)',
                            (keep['id'], a['app_slug'], a['app_role'], a['is_active']))
             # Update link karyawan
@@ -6354,7 +6362,13 @@ def sc_sla_monitor():
     date_from = month + '-01'
     # last day
     import calendar
-    y, m = int(month[:4]), int(month[5:7])
+    try:
+        y, m = int(month[:4]), int(month[5:7])
+        if not (1 <= m <= 12): raise ValueError
+    except (ValueError, IndexError):
+        from datetime import date as _d2
+        month = _d2.today().strftime('%Y-%m')
+        y, m = int(month[:4]), int(month[5:7])
     last_day = calendar.monthrange(y, m)[1]
     date_to = f'{month}-{last_day:02d} 23:59:59'
     tickets = db.execute('''SELECT t.*, cu.name as customer_name, st.name as type_name,
@@ -7292,9 +7306,13 @@ def admin():
 def admin_divisi(divisi):
     db = get_db()
     cats = db.execute('SELECT * FROM skill_categories WHERE divisi=? ORDER BY sort_order', (divisi,)).fetchall()
-    items_by_cat = {cat['id']: db.execute(
-        'SELECT * FROM skill_items WHERE category_id=? ORDER BY sort_order', (cat['id'],)
-    ).fetchall() for cat in cats}
+    _all_items = db.execute(
+        'SELECT * FROM skill_items WHERE category_id IN (SELECT id FROM skill_categories WHERE divisi=?) ORDER BY sort_order',
+        (divisi,)
+    ).fetchall()
+    items_by_cat: dict = {}
+    for _it in _all_items:
+        items_by_cat.setdefault(_it['category_id'], []).append(_it)
     comp_items    = db.execute('SELECT * FROM competency_items WHERE divisi=? ORDER BY sort_order', (divisi,)).fetchall()
     ability_items = db.execute('SELECT * FROM ability_items WHERE divisi=? ORDER BY sort_order', (divisi,)).fetchall()
     return render_template('admin_divisi.html', divisi=divisi, cats=cats,
@@ -8376,8 +8394,11 @@ def _chatbot_exec_tool(db, name, inp):
                     if bulan >= batas_probasi:
                         status_probasi = f"Selesai (mulai kerja {cs[:10]}, sudah {masa_kerja})"
                     else:
-                        sisa_hari = (tgl_masuk.replace(year=tgl_masuk.year + (1 if tgl_masuk.month > 12 - batas_probasi else 0),
-                                     month=((tgl_masuk.month + batas_probasi - 1) % 12) + 1) - hari_ini).days
+                        total_m = tgl_masuk.month + batas_probasi - 1
+                        end_y   = tgl_masuk.year + total_m // 12
+                        end_m   = total_m % 12 + 1
+                        end_probasi = tgl_masuk.replace(year=end_y, month=end_m)
+                        sisa_hari = (end_probasi - hari_ini).days
                         status_probasi = f"Masih probasi — sisa ±{max(sisa_hari,0)} hari"
                 except Exception:
                     pass
