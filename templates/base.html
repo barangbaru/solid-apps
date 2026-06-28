@@ -356,6 +356,28 @@
         <i class="bi bi-gear nav-icon"></i> Pengaturan Sistem
       </a>
     </li>
+    <li class="has-sub {{ 'open' if '/portal/notifications' in request.path or request.path == '/settings' or '/aset/settings' in request.path }}">
+      <a href="#" onclick="return false">
+        <i class="bi bi-bell-fill nav-icon"></i> Notifikasi
+      </a>
+      <ul class="sidebar-sub">
+        <li>
+          <a href="/portal/notifications" class="{{ 'active' if '/portal/notifications' in request.path }}">
+            <i class="bi bi-sliders2 me-2" style="font-size:.75rem"></i>Umum & Penerima
+          </a>
+        </li>
+        <li>
+          <a href="/settings" class="{{ 'active' if request.path == '/settings' }}">
+            <i class="bi bi-people me-2" style="font-size:.75rem"></i>TalentCore
+          </a>
+        </li>
+        <li>
+          <a href="/aset/settings" class="{{ 'active' if '/aset/settings' in request.path }}">
+            <i class="bi bi-hdd-stack me-2" style="font-size:.75rem"></i>AssetCore
+          </a>
+        </li>
+      </ul>
+    </li>
     <li>
       <a href="/portal/audit" class="{{ 'active' if '/portal/audit' in request.path }}">
         <i class="bi bi-shield-check nav-icon"></i> Audit Trail
