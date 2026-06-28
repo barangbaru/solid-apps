@@ -4464,7 +4464,7 @@ PORTAL_SYSTEM_KEYS = [
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
     'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
     'chatbot_enabled',
-    'ai_api_key', 'ai_model',
+    'ai_api_key', 'ai_model', 'ai_base_url',
 ]
 
 @app.route('/portal/system-settings', methods=['GET', 'POST'])
@@ -4545,7 +4545,7 @@ def portal_save_ai_settings():
         return jsonify({'ok': False, 'msg': 'Akses ditolak'})
     try:
         db = get_db()
-        AI_KEYS = ['chatbot_enabled', 'ai_api_key', 'ai_model']
+        AI_KEYS = ['chatbot_enabled', 'ai_api_key', 'ai_model', 'ai_base_url']
         saved = {}
         for k in AI_KEYS:
             if k == 'chatbot_enabled':
@@ -8516,11 +8516,21 @@ def chatbot_send():
     if settings.get('chatbot_enabled','0') != '1':
         return jsonify({'error': 'Chatbot tidak aktif'}), 403
 
-    api_key = settings.get('ai_api_key','').strip()
-    if not api_key:
-        return jsonify({'error': 'API key Google AI Studio belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
+    ai_base_url = settings.get('ai_base_url','').strip()
+    if ai_base_url:
+        # Self-hosted: Open WebUI / Ollama / provider lain
+        default_model = 'llama3'
+        # Ollama tidak butuh API key — pakai "ollama" sebagai placeholder
+        api_key = settings.get('ai_api_key','').strip() or 'ollama'
+    else:
+        # Default: Google AI Studio (Gemini)
+        ai_base_url = 'https://generativelanguage.googleapis.com/v1beta/openai/'
+        default_model = 'gemini-2.0-flash'
+        api_key = settings.get('ai_api_key','').strip()
+        if not api_key:
+            return jsonify({'error': 'API key Google AI Studio belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
 
-    model = settings.get('ai_model','').strip() or 'gemini-2.0-flash'
+    model = settings.get('ai_model','').strip() or default_model
 
     # Rate limit per user
     if not _chatbot_check_rate(session.get('user_id', 0)):
@@ -8530,11 +8540,11 @@ def chatbot_send():
     messages = data.get('messages', [])
     if not messages:
         return jsonify({'error': 'Pesan kosong'}), 400
-    messages = messages[-8:]  # max 8 pesan terakhir untuk hemat token
+    messages = messages[-8:]
 
     try:
         reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai(),
-                                     base_url='https://generativelanguage.googleapis.com/v1beta/openai/')
+                                     base_url=ai_base_url)
         return jsonify({'reply': reply})
     except Exception as ex:
         return jsonify({'error': _friendly_ai_error(ex)}), 500

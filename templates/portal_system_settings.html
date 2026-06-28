@@ -406,19 +406,40 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Google AI Studio API Key</label>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Base URL <span class="text-muted fw-normal small">(kosong = Gemini Google AI Studio)</span></label>
+          <input type="text" name="ai_base_url" id="aiBaseUrl"
+                 class="form-control form-control-sm font-monospace"
+                 value="{{ cfg.get('ai_base_url','') }}"
+                 placeholder="Kosongkan untuk Gemini, atau isi URL Open WebUI/Ollama"
+                 oninput="onBaseUrlChange(this.value)">
+          <div class="d-flex flex-wrap gap-1 mt-1">
+            <span class="badge bg-light border text-muted" style="cursor:pointer;font-size:.7rem"
+                  onclick="setAiPreset('','gemini-2.0-flash','')">
+              <i class="bi bi-google me-1"></i>Gemini (default)</span>
+            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
+                  onclick="setAiPreset('http://localhost:11434/v1','llama3','ollama')">
+              <i class="bi bi-server me-1"></i>Ollama lokal</span>
+            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
+                  onclick="setAiPreset('http://localhost:3000/api','llama3','')">
+              <i class="bi bi-window me-1"></i>Open WebUI lokal</span>
+          </div>
+          <div class="form-text" id="aiBaseUrlHint">
+            Kosong → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> (gratis, butuh API key)
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">API Key <span class="text-muted fw-normal small" id="apiKeyNote">(wajib untuk Gemini)</span></label>
           <div class="input-group input-group-sm">
             <input type="password" name="ai_api_key" id="aiApiKey"
                    class="form-control form-control-sm font-monospace"
                    value="{{ cfg.get('ai_api_key','') }}"
-                   placeholder="AIza..."
+                   placeholder="AIza... / sk-... / kosongkan untuk Ollama"
                    autocomplete="off">
             <button class="btn btn-outline-secondary" type="button" onclick="toggleVis('aiApiKey',this)">
               <i class="bi bi-eye"></i>
             </button>
-          </div>
-          <div class="form-text">
-            Dapatkan API key gratis di <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>
           </div>
         </div>
 
@@ -427,8 +448,8 @@
           <input type="text" name="ai_model" id="aiModelInput"
                  class="form-control form-control-sm font-monospace"
                  value="{{ cfg.get('ai_model','') }}"
-                 placeholder="Kosongkan untuk default (gemini-2.0-flash)">
-          <div class="d-flex flex-wrap gap-1 mt-1">
+                 placeholder="Kosongkan untuk default">
+          <div class="d-flex flex-wrap gap-1 mt-1" id="aiModelBadges">
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
                   onclick="document.getElementById('aiModelInput').value='gemini-2.0-flash'">gemini-2.0-flash</span>
             <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
@@ -586,6 +607,43 @@ function testWaApp(appSlug, btn) {
   }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="bi bi-send"></i>'; });
 }
 
+function setAiPreset(baseUrl, model, apiKeyPlaceholder) {
+  document.getElementById('aiBaseUrl').value = baseUrl;
+  document.getElementById('aiModelInput').value = model;
+  if (apiKeyPlaceholder !== undefined)
+    document.getElementById('aiApiKey').placeholder = apiKeyPlaceholder || 'AIza... / sk-...';
+  onBaseUrlChange(baseUrl);
+}
+
+function onBaseUrlChange(val) {
+  const isCustom = val.trim() !== '';
+  const hint = document.getElementById('aiBaseUrlHint');
+  const keyNote = document.getElementById('apiKeyNote');
+  const badges = document.getElementById('aiModelBadges');
+  if (isCustom) {
+    hint.innerHTML = 'Open WebUI: <code>http://&lt;ip&gt;:3000/api</code> &nbsp;|&nbsp; Ollama: <code>http://&lt;ip&gt;:11434/v1</code>';
+    keyNote.textContent = '(kosongkan untuk Ollama, isi jika Open WebUI pakai auth)';
+    badges.innerHTML = [
+      ['llama3','llama3'],['llama3.2','llama3.2'],['mistral','mistral'],
+      ['gemma3','gemma3'],['qwen2.5','qwen2.5'],['deepseek-r1','deepseek-r1'],
+    ].map(([v,l]) => `<span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
+      onclick="document.getElementById('aiModelInput').value='${v}'">${l}</span>`).join('');
+  } else {
+    hint.innerHTML = 'Kosong → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> (gratis, butuh API key)';
+    keyNote.textContent = '(wajib untuk Gemini)';
+    badges.innerHTML = [
+      ['gemini-2.0-flash','gemini-2.0-flash'],['gemini-2.5-flash','gemini-2.5-flash'],['gemini-1.5-pro','gemini-1.5-pro'],
+    ].map(([v,l]) => `<span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
+      onclick="document.getElementById('aiModelInput').value='${v}'">${l}</span>`).join('');
+  }
+}
+
+// Init on load
+document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('aiBaseUrl');
+  if (el) onBaseUrlChange(el.value);
+});
+
 async function diagAi(btn) {
   btn.disabled = true;
   const box = document.getElementById('aiDiagResult');
@@ -619,6 +677,7 @@ async function saveAiConfig(btn) {
   fd.append('chatbot_enabled', document.getElementById('chatbotEnabled').checked ? '1' : '');
   fd.append('ai_api_key',      document.getElementById('aiApiKey').value);
   fd.append('ai_model',        document.getElementById('aiModelInput').value);
+  fd.append('ai_base_url',     document.getElementById('aiBaseUrl').value.trim());
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menyimpan...';
