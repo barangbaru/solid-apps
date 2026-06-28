@@ -6,203 +6,515 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h5 class="fw-bold mb-0"><i class="bi bi-bell-fill text-primary me-2"></i>Pengaturan Notifikasi</h5>
-    <div class="text-muted small mt-1">Kelola tipe notifikasi aktif dan daftar penerima per channel</div>
+    <div class="text-muted small mt-1">Kelola notifikasi sistem dan semua modul dalam satu tempat</div>
   </div>
 </div>
 
-<div class="row g-4">
+<!-- Tab Nav Utama -->
+<ul class="nav nav-tabs mb-0" role="tablist" id="mainTabs">
+  <li class="nav-item">
+    <button class="nav-link {{ 'active' if active_tab == 'sistem' }}" data-bs-toggle="tab" data-bs-target="#tab-sistem" type="button">
+      <i class="bi bi-sliders2 me-1"></i>Notifikasi Sistem
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link {{ 'active' if active_tab == 'talentcore' }}" data-bs-toggle="tab" data-bs-target="#tab-talentcore" type="button">
+      <i class="bi bi-people me-1"></i>TalentCore
+    </button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link {{ 'active' if active_tab == 'assetcore' }}" data-bs-toggle="tab" data-bs-target="#tab-assetcore" type="button">
+      <i class="bi bi-hdd-stack me-1"></i>AssetCore
+    </button>
+  </li>
+</ul>
 
-  <!-- ── Kolom Kiri: Tipe Notifikasi ── -->
-  <div class="col-lg-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-white border-bottom py-3 d-flex align-items-center gap-2">
-        <i class="bi bi-list-check text-primary fs-5"></i>
-        <span class="fw-bold">Tipe Notifikasi</span>
+<div class="tab-content border border-top-0 rounded-bottom bg-white shadow-sm p-4">
+
+  <!-- ══════════════════════════════════════════════════════════
+       TAB 1 — Notifikasi Sistem
+  ══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade {{ 'show active' if active_tab == 'sistem' }}" id="tab-sistem" role="tabpanel">
+    <div class="row g-4">
+
+      <!-- Kiri: Tipe Notifikasi -->
+      <div class="col-lg-4">
+        <div class="card border-0 bg-light h-100">
+          <div class="card-header bg-transparent border-bottom py-3 d-flex align-items-center gap-2">
+            <i class="bi bi-list-check text-primary fs-5"></i>
+            <span class="fw-bold">Tipe Notifikasi</span>
+          </div>
+          <div class="card-body">
+            <p class="text-muted small mb-3">Aktifkan atau nonaktifkan tipe notifikasi yang dikirimkan sistem.</p>
+            <form method="post">
+              <input type="hidden" name="action" value="save_types">
+              {% for nt in notif_types %}
+              <div class="p-3 rounded-3 mb-2 border d-flex align-items-start gap-3"
+                   style="background:{{ '#f0fdf4' if nt.is_active else '#fff' }}">
+                <div class="form-check form-switch mb-0 flex-shrink-0 mt-1">
+                  <input class="form-check-input" type="checkbox" role="switch"
+                         name="active_notif_types" value="{{ nt.slug }}"
+                         id="nt_{{ nt.slug }}" {{ 'checked' if nt.is_active }}>
+                </div>
+                <label for="nt_{{ nt.slug }}" class="flex-grow-1" style="cursor:pointer">
+                  <div class="fw-semibold small">{{ nt.label }}</div>
+                  <div class="text-muted" style="font-size:.75rem">{{ nt.description }}</div>
+                </label>
+              </div>
+              {% endfor %}
+              <button type="submit" class="btn btn-primary btn-sm w-100 mt-3">
+                <i class="bi bi-check2 me-1"></i>Simpan Pengaturan
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
-      <div class="card-body">
-        <p class="text-muted small mb-3">Aktifkan atau nonaktifkan tipe notifikasi yang dikirimkan sistem.</p>
-        <form method="post" id="form-types">
-          <input type="hidden" name="action" value="save_types">
-          {% for nt in notif_types %}
-          <div class="p-3 rounded-3 mb-2 border d-flex align-items-start gap-3"
-               style="background:{{ '#f0fdf4' if nt.is_active else '#f8f9fa' }}">
-            <div class="form-check form-switch mb-0 flex-shrink-0 mt-1">
-              <input class="form-check-input" type="checkbox" role="switch"
-                     name="active_notif_types" value="{{ nt.slug }}"
-                     id="nt_{{ nt.slug }}"
-                     {{ 'checked' if nt.is_active }}>
+
+      <!-- Kanan: Penerima per Channel -->
+      <div class="col-lg-8">
+        <ul class="nav nav-tabs mb-0" role="tablist">
+          {% set ch_meta = [
+            ('email',    'bi-envelope-fill',  'Email',    '#0d6efd'),
+            ('telegram', 'bi-telegram',       'Telegram', '#0088cc'),
+            ('wa',       'bi-whatsapp',       'WhatsApp', '#25d366'),
+          ] %}
+          {% for ch, icon, label, color in ch_meta %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="tab"
+                    data-bs-target="#ch-{{ ch }}" type="button">
+              <i class="bi {{ icon }} me-1" style="color:{{ color }}"></i>{{ label }}
+              <span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ by_channel[ch]|length }}</span>
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <div class="tab-content border border-top-0 rounded-bottom">
+          {% for ch, icon, ch_label, color in ch_meta %}
+          <div class="tab-pane fade {{ 'show active' if loop.first }}" id="ch-{{ ch }}" role="tabpanel">
+            <div class="p-3">
+
+              {% if by_channel[ch] %}
+              <div class="table-responsive mb-3">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="ps-2">Nama</th>
+                      <th>{{ 'Email' if ch == 'email' else ('Chat ID / @username' if ch == 'telegram' else 'Nomor HP') }}</th>
+                      <th>Tipe</th>
+                      <th class="text-center">Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for rec in by_channel[ch] %}
+                    {% set types = rec.notif_types | from_json %}
+                    <tr>
+                      <td class="ps-2 fw-semibold small">{{ rec.name }}</td>
+                      <td class="small font-monospace text-muted">{{ rec.address }}</td>
+                      <td class="small">
+                        {% if '*' in types %}
+                        <span class="badge" style="background:#e8f4fd;color:#1e6fa5;font-size:.65rem">
+                          <i class="bi bi-infinity me-1"></i>Semua
+                        </span>
+                        {% else %}
+                          {% for t in types %}
+                            {% set tinfo = all_notif_types | selectattr('0', 'equalto', t) | list %}
+                            <span class="badge bg-light border text-dark me-1" style="font-size:.62rem">
+                              {{ tinfo[0][1] if tinfo else t }}
+                            </span>
+                          {% endfor %}
+                        {% endif %}
+                      </td>
+                      <td class="text-center">
+                        <span class="badge {{ 'bg-success' if rec.is_active else 'bg-secondary' }}" style="font-size:.65rem">
+                          {{ 'Aktif' if rec.is_active else 'Nonaktif' }}
+                        </span>
+                      </td>
+                      <td class="text-end pe-1">
+                        <div class="d-flex gap-1 justify-content-end">
+                          <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                  onclick="openEdit({{ rec.id }}, {{ rec.name|tojson }}, {{ rec.address|tojson }}, {{ rec.notif_types|tojson }}, '{{ ch }}')"
+                                  title="Edit"><i class="bi bi-pencil" style="font-size:.7rem"></i></button>
+                          <form method="post" class="d-inline">
+                            <input type="hidden" name="action" value="toggle_recipient">
+                            <input type="hidden" name="recipient_id" value="{{ rec.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Toggle">
+                              <i class="bi bi-power" style="font-size:.7rem"></i>
+                            </button>
+                          </form>
+                          <form method="post" class="d-inline"
+                                onsubmit="return confirm('Hapus penerima {{ rec.name }}?')">
+                            <input type="hidden" name="action" value="delete_recipient">
+                            <input type="hidden" name="recipient_id" value="{{ rec.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Hapus">
+                              <i class="bi bi-trash3" style="font-size:.7rem"></i>
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <div class="text-center py-4 text-muted small mb-3">
+                <i class="bi {{ icon }} d-block mb-2" style="font-size:2rem;opacity:.2;color:{{ color }}"></i>
+                Belum ada penerima {{ ch_label }}
+              </div>
+              {% endif %}
+
+              <!-- Form tambah -->
+              <div class="border rounded-3 p-3 bg-light">
+                <div class="fw-semibold small mb-3">
+                  <i class="bi bi-person-plus me-1 text-primary"></i>Tambah Penerima {{ ch_label }}
+                </div>
+                <form method="post">
+                  <input type="hidden" name="action" value="add_recipient">
+                  <input type="hidden" name="recipient_channel" value="{{ ch }}">
+                  <div class="row g-2 mb-2">
+                    <div class="col-sm-4">
+                      <input type="text" class="form-control form-control-sm" name="recipient_name"
+                             placeholder="Nama (misal: Tim IT)" required>
+                    </div>
+                    <div class="col-sm-4">
+                      <input type="{{ 'email' if ch == 'email' else 'text' }}" class="form-control form-control-sm"
+                             name="recipient_address"
+                             placeholder="{{ 'nama@domain.com' if ch == 'email' else ('@username / -100xxx' if ch == 'telegram' else '6281234xxxxx') }}"
+                             required>
+                    </div>
+                    <div class="col-sm-4">
+                      <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="bi bi-plus me-1"></i>Tambah
+                      </button>
+                    </div>
+                  </div>
+                  <div class="mb-1 small text-muted">Tipe notifikasi (kosong = semua):</div>
+                  <div class="d-flex flex-wrap gap-2">
+                    {% for nt in notif_types %}
+                    <div class="form-check form-check-inline mb-0">
+                      <input class="form-check-input" type="checkbox"
+                             name="recipient_notif_types" value="{{ nt.slug }}"
+                             id="add_{{ ch }}_{{ nt.slug }}">
+                      <label class="form-check-label small" for="add_{{ ch }}_{{ nt.slug }}">{{ nt.label }}</label>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </form>
+              </div>
+
             </div>
-            <label for="nt_{{ nt.slug }}" class="flex-grow-1" style="cursor:pointer">
-              <div class="fw-semibold small">{{ nt.label }}</div>
-              <div class="text-muted" style="font-size:.75rem">{{ nt.description }}</div>
-            </label>
           </div>
           {% endfor %}
-          <button type="submit" class="btn btn-primary btn-sm w-100 mt-3">
-            <i class="bi bi-check2 me-1"></i>Simpan Pengaturan
-          </button>
-        </form>
+        </div>
       </div>
+
     </div>
   </div>
 
-  <!-- ── Kolom Kanan: Penerima ── -->
-  <div class="col-lg-8">
+  <!-- ══════════════════════════════════════════════════════════
+       TAB 2 — TalentCore
+  ══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade {{ 'show active' if active_tab == 'talentcore' }}" id="tab-talentcore" role="tabpanel">
 
-    <!-- Tab channel -->
-    <ul class="nav nav-tabs border-bottom mb-0" role="tablist">
-      {% set ch_meta = [
-        ('email',    'bi-envelope-fill',  'Email',     '#0d6efd'),
-        ('telegram', 'bi-telegram',       'Telegram',  '#0088cc'),
-        ('wa',       'bi-whatsapp',       'WhatsApp',  '#25d366'),
-      ] %}
-      {% for ch, icon, label, color in ch_meta %}
-      <li class="nav-item" role="presentation">
-        <button class="nav-link {{ 'active' if loop.first }}" id="tab-{{ ch }}"
-                data-bs-toggle="tab" data-bs-target="#panel-{{ ch }}"
-                type="button" role="tab">
-          <i class="bi {{ icon }} me-1" style="color:{{ color }}"></i>{{ label }}
-          <span class="badge bg-secondary ms-1" style="font-size:.65rem">{{ by_channel[ch]|length }}</span>
-        </button>
-      </li>
-      {% endfor %}
-    </ul>
+    <div class="alert alert-info py-2 small mb-4 d-flex align-items-center gap-2">
+      <i class="bi bi-info-circle-fill fs-5"></i>
+      <div>Konfigurasi SMTP, Bot Token Telegram, dan OpenWA dikelola di
+        <a href="/portal/system-settings" class="fw-semibold alert-link">Pengaturan Sistem Portal</a>.
+      </div>
+    </div>
 
-    <div class="tab-content border border-top-0 rounded-bottom shadow-sm bg-white">
+    <form method="post" id="formTalentcore">
+      <input type="hidden" name="action" value="save_talentcore">
+      <div class="row g-3">
 
-      {% for ch, icon, ch_label, color in ch_meta %}
-      <div class="tab-pane fade {{ 'show active' if loop.first }}" id="panel-{{ ch }}" role="tabpanel">
-        <div class="p-3">
+        <div class="col-lg-8">
 
-          <!-- Daftar penerima -->
-          {% if by_channel[ch] %}
-          <div class="table-responsive mb-3">
-            <table class="table table-sm table-hover align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th class="ps-2">Nama</th>
-                  <th>{{ 'Email' if ch == 'email' else ('Chat ID / @username' if ch == 'telegram' else 'Nomor HP') }}</th>
-                  <th>Tipe Notifikasi</th>
-                  <th class="text-center">Status</th>
-                  <th class="text-end pe-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for rec in by_channel[ch] %}
-                {% set types = rec.notif_types | from_json %}
-                <tr>
-                  <td class="ps-2 fw-semibold small">{{ rec.name }}</td>
-                  <td class="small font-monospace text-muted">{{ rec.address }}</td>
-                  <td class="small">
-                    {% if '*' in types %}
-                    <span class="badge" style="background:#e8f4fd;color:#1e6fa5;font-size:.65rem">
-                      <i class="bi bi-infinity me-1"></i>Semua
-                    </span>
-                    {% else %}
-                      {% for t in types %}
-                        {% set tinfo = all_notif_types | selectattr('0', 'equalto', t) | list %}
-                        <span class="badge bg-light border text-dark me-1" style="font-size:.62rem"
-                              title="{{ tinfo[0][2] if tinfo else t }}">
-                          {{ tinfo[0][1] if tinfo else t }}
-                        </span>
-                      {% endfor %}
-                    {% endif %}
-                  </td>
-                  <td class="text-center">
-                    <span class="badge {{ 'bg-success' if rec.is_active else 'bg-secondary' }}"
-                          style="font-size:.65rem">
-                      {{ 'Aktif' if rec.is_active else 'Nonaktif' }}
-                    </span>
-                  </td>
-                  <td class="text-end pe-2">
-                    <div class="d-flex gap-1 justify-content-end">
-                      <!-- Edit -->
-                      <button class="btn btn-sm btn-outline-secondary py-0 px-2"
-                              onclick="openEdit({{ rec.id }}, {{ rec.name|tojson }}, {{ rec.address|tojson }}, {{ rec.notif_types|tojson }}, '{{ ch }}')"
-                              title="Edit">
-                        <i class="bi bi-pencil" style="font-size:.7rem"></i>
-                      </button>
-                      <!-- Toggle -->
-                      <form method="post" class="d-inline">
-                        <input type="hidden" name="action" value="toggle_recipient">
-                        <input type="hidden" name="recipient_id" value="{{ rec.id }}">
-                        <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Toggle Aktif">
-                          <i class="bi bi-power" style="font-size:.7rem"></i>
-                        </button>
-                      </form>
-                      <!-- Delete -->
-                      <form method="post" class="d-inline"
-                            onsubmit="return confirm('Hapus penerima {{ rec.name }}?')">
-                        <input type="hidden" name="action" value="delete_recipient">
-                        <input type="hidden" name="recipient_id" value="{{ rec.id }}">
-                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Hapus">
-                          <i class="bi bi-trash3" style="font-size:.7rem"></i>
-                        </button>
-                      </form>
-                    </div>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% else %}
-          <div class="text-center py-4 text-muted small mb-3">
-            <i class="bi {{ icon }} d-block mb-2" style="font-size:2rem;opacity:.2;color:{{ color }}"></i>
-            Belum ada penerima {{ ch_label }}
-          </div>
-          {% endif %}
-
-          <!-- Form tambah penerima -->
-          <div class="border rounded-3 p-3 bg-light">
-            <div class="fw-semibold small mb-3">
-              <i class="bi bi-person-plus me-1 text-primary"></i>Tambah Penerima {{ ch_label }}
+          <!-- Penerima Statis -->
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 fw-bold small">
+              <i class="bi bi-broadcast text-danger me-1"></i>Penerima Notifikasi Statis
             </div>
-            <form method="post">
-              <input type="hidden" name="action" value="add_recipient">
-              <input type="hidden" name="recipient_channel" value="{{ ch }}">
-              <div class="row g-2 mb-2">
-                <div class="col-sm-4">
-                  <input type="text" class="form-control form-control-sm" name="recipient_name"
-                         placeholder="Nama (misal: Tim IT)" required>
-                </div>
-                <div class="col-sm-4">
-                  <input type="{{ 'email' if ch == 'email' else 'text' }}" class="form-control form-control-sm"
-                         name="recipient_address"
-                         placeholder="{{ 'nama@domain.com' if ch == 'email' else ('@username / -100xxx' if ch == 'telegram' else '6281234xxxxx') }}"
-                         required>
-                </div>
-                <div class="col-sm-4">
-                  <button type="submit" class="btn btn-primary btn-sm w-100">
-                    <i class="bi bi-plus me-1"></i>Tambah
-                  </button>
+            <div class="card-body">
+              <p class="text-muted small mb-3">
+                Selain email/Telegram milik karyawan, notifikasi juga dikirim ke alamat-alamat di bawah ini
+                (misal: HRD, Manager). Pisahkan dengan koma.
+              </p>
+              <div class="mb-3">
+                <label class="form-label fw-semibold small">
+                  <i class="bi bi-envelope me-1"></i>Email Statis
+                </label>
+                <input type="text" name="notification_emails" class="form-control form-control-sm"
+                       value="{{ cfg.notification_emails }}"
+                       placeholder="hrd@perusahaan.com, manager@perusahaan.com">
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold small">
+                  <i class="bi bi-telegram me-1" style="color:#0088cc"></i>Telegram Chat ID Statis
+                </label>
+                <input type="text" name="notification_telegram_ids" class="form-control form-control-sm"
+                       value="{{ cfg.notification_telegram_ids }}"
+                       placeholder="-100123456789, @gruphr, namakanal">
+                <div class="form-text">
+                  Format (pisah koma): <code>123456789</code> personal •
+                  <code>-100123456789</code> grup • <code>@namakanal</code> channel publik.
                 </div>
               </div>
-              <div class="mb-1 small text-muted">Tipe notifikasi (kosong = semua):</div>
-              <div class="d-flex flex-wrap gap-2">
-                {% for nt in notif_types %}
-                <div class="form-check form-check-inline mb-0">
-                  <input class="form-check-input" type="checkbox"
-                         name="recipient_notif_types" value="{{ nt.slug }}"
-                         id="add_{{ ch }}_{{ nt.slug }}">
-                  <label class="form-check-label small" for="add_{{ ch }}_{{ nt.slug }}">
-                    {{ nt.label }}
-                  </label>
+              <div class="mb-0">
+                <label class="form-label fw-semibold small">
+                  <span style="background:#25D366;color:#fff;border-radius:4px;padding:1px 5px;font-size:.8rem">
+                    <i class="bi bi-whatsapp"></i>
+                  </span>
+                  Nomor WA Extra
+                </label>
+                <input type="text" name="openwa_extra_phones" class="form-control form-control-sm"
+                       value="{{ cfg.openwa_extra_phones }}"
+                       placeholder="08111000001, 08222000002">
+                <div class="form-text">
+                  Nomor-nomor ini menerima <b>semua</b> notifikasi kontrak via WhatsApp.
+                  Format <code>08xxxxxxxxxx</code>.
                 </div>
-                {% endfor %}
               </div>
-            </form>
+            </div>
+          </div>
+
+          <!-- Jadwal Reminder -->
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 fw-bold small">
+              <i class="bi bi-clock-history text-warning me-1"></i>Jadwal Reminder Otomatis
+            </div>
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-md-8">
+                  <label class="form-label fw-semibold small">Kirim Reminder pada H-</label>
+                  <input type="text" name="reminder_days" class="form-control form-control-sm"
+                         value="{{ cfg.reminder_days or '30,14,7,1' }}"
+                         placeholder="30,14,7,1">
+                  <div class="form-text">
+                    Pisahkan dengan koma. Contoh: <code>30,14,7,1</code> artinya reminder dikirim
+                    30, 14, 7, dan 1 hari sebelum kontrak berakhir.
+                  </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end pb-2">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" name="reminder_enabled" id="remEnabled"
+                           {{ 'checked' if cfg.reminder_enabled != '0' else '' }}>
+                    <label class="form-check-label small fw-semibold" for="remEnabled">
+                      Reminder Aktif
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div class="alert alert-secondary py-2 small mt-3 mb-0">
+                <i class="bi bi-info-circle me-1"></i>
+                Reminder otomatis berjalan setiap hari pukul <strong>08:00</strong>.
+              </div>
+            </div>
           </div>
 
         </div>
+
+        <div class="col-lg-4">
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 fw-bold small">
+              <i class="bi bi-app text-primary me-1"></i>Pengaturan Aplikasi
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label fw-semibold small">Nama Aplikasi</label>
+                <input type="text" name="app_name" class="form-control form-control-sm"
+                       value="{{ cfg.app_name or 'TalentCore' }}">
+              </div>
+              <button type="submit" class="btn btn-primary w-100 btn-sm">
+                <i class="bi bi-save me-1"></i>Simpan Pengaturan
+              </button>
+            </div>
+          </div>
+
+          <div class="card border-0 shadow-sm">
+            <div class="card-header py-2 fw-bold small">
+              <i class="bi bi-lightning text-warning me-1"></i>Aksi Manual
+            </div>
+            <div class="card-body d-grid gap-2">
+              <button type="button" class="btn btn-outline-warning btn-sm" onclick="runReminders()">
+                <i class="bi bi-bell me-1"></i>Jalankan Reminder Sekarang
+              </button>
+              <a href="/reminders" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-clock-history me-1"></i>Lihat Log Reminder
+              </a>
+              <div id="runResult" class="small text-muted"></div>
+            </div>
+          </div>
+        </div>
+
       </div>
-      {% endfor %}
+    </form>
+  </div>
 
-    </div><!-- /tab-content -->
-  </div><!-- /col-lg-8 -->
-</div><!-- /row -->
+  <!-- ══════════════════════════════════════════════════════════
+       TAB 3 — AssetCore
+  ══════════════════════════════════════════════════════════ -->
+  <div class="tab-pane fade {{ 'show active' if active_tab == 'assetcore' }}" id="tab-assetcore" role="tabpanel">
 
-<!-- Modal Edit -->
+    <div class="alert alert-light border small py-2 mb-4 d-flex align-items-center gap-2">
+      <i class="bi bi-info-circle text-primary"></i>
+      <div>
+        Konfigurasi SMTP, Bot Token Telegram, dan OpenWA dikelola di
+        <a href="/portal/system-settings" class="fw-semibold">Pengaturan Sistem Portal</a>.
+        Halaman ini khusus mengatur <strong>daftar penerima</strong> notifikasi subscription/ISP AssetCore.
+      </div>
+    </div>
+
+    <form method="post" id="acSettingsForm">
+      <input type="hidden" name="action" value="save_assetcore">
+      <div class="row g-3">
+
+        <div class="col-lg-7">
+
+          <!-- Email -->
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 d-flex align-items-center justify-content-between">
+              <span class="fw-bold small"><i class="bi bi-envelope-fill me-1 text-primary"></i>Penerima Email</span>
+              <button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="showEl('testEmailGroup');document.getElementById('testEmailAddr').focus()">
+                <i class="bi bi-send me-1"></i>Test
+              </button>
+            </div>
+            <div class="card-body">
+              <label class="form-label small text-muted">Satu email per baris (atau pisahkan dengan koma)</label>
+              <textarea name="ac_notification_emails" rows="4" class="form-control form-control-sm font-monospace"
+                        placeholder="it-admin@perusahaan.com&#10;manager-it@perusahaan.com">{{ cfg.ac_notification_emails }}</textarea>
+              <div class="input-group input-group-sm mt-2 d-none" id="testEmailGroup">
+                <input type="email" id="testEmailAddr" class="form-control form-control-sm"
+                       placeholder="Alamat email untuk test…">
+                <button type="button" class="btn btn-outline-secondary" onclick="doTestEmail()">Kirim Test</button>
+              </div>
+              <div id="testEmailResult" class="mt-1 small"></div>
+            </div>
+          </div>
+
+          <!-- Telegram -->
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 d-flex align-items-center justify-content-between">
+              <span class="fw-bold small"><i class="bi bi-telegram me-1" style="color:#0088cc"></i>Penerima Telegram</span>
+              <button type="button" class="btn btn-sm btn-outline-info py-0" onclick="showEl('testTgGroup')">
+                <i class="bi bi-send me-1"></i>Test
+              </button>
+            </div>
+            <div class="card-body">
+              <label class="form-label small text-muted">Satu chat ID / username per baris</label>
+              <textarea name="ac_notification_telegram_ids" rows="4" class="form-control form-control-sm font-monospace"
+                        placeholder="-100123456789&#10;@nama_grup&#10;123456789">{{ cfg.ac_notification_telegram_ids }}</textarea>
+              <div class="form-text">
+                Format: angka positif (personal), angka negatif (grup), <code>@username</code> (channel publik).
+              </div>
+              <div class="input-group input-group-sm mt-2 d-none" id="testTgGroup">
+                <input type="text" id="testTgId" class="form-control form-control-sm"
+                       placeholder="Chat ID untuk test">
+                <button type="button" class="btn btn-outline-secondary" onclick="doTestTg()">Kirim Test</button>
+              </div>
+              <div id="testTgResult" class="mt-1 small"></div>
+            </div>
+          </div>
+
+          <!-- WhatsApp -->
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 d-flex align-items-center justify-content-between">
+              <span class="fw-bold small">
+                <span style="background:#25D366;color:#fff;border-radius:3px;padding:1px 5px;font-size:.8rem">
+                  <i class="bi bi-whatsapp"></i>
+                </span>
+                Penerima WhatsApp
+              </span>
+              <button type="button" class="btn btn-sm btn-outline-success py-0" onclick="showEl('testWaGroup')">
+                <i class="bi bi-send me-1"></i>Test
+              </button>
+            </div>
+            <div class="card-body">
+              <label class="form-label small text-muted">Satu nomor per baris, format <code>08xxxxxxxxxx</code></label>
+              <textarea name="ac_notification_wa_phones" rows="4" class="form-control form-control-sm font-monospace"
+                        placeholder="08111000001&#10;08222000002">{{ cfg.ac_notification_wa_phones }}</textarea>
+              <div class="input-group input-group-sm mt-2 d-none" id="testWaGroup">
+                <input type="text" id="testWaPhone" class="form-control form-control-sm"
+                       placeholder="Nomor HP untuk test, misal 08111000001">
+                <button type="button" class="btn btn-outline-secondary" onclick="doTestWa()">Kirim Test</button>
+              </div>
+              <div id="testWaResult" class="mt-1 small"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="col-lg-5">
+          <!-- Jadwal -->
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 fw-bold small">
+              <i class="bi bi-clock-history me-1 text-warning"></i>Jadwal Reminder Otomatis
+            </div>
+            <div class="card-body">
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="acReminderEnabled"
+                       name="ac_sub_reminder_enabled" value="1"
+                       {{ 'checked' if cfg.ac_sub_reminder_enabled == '1' }}>
+                <label class="form-check-label fw-semibold small" for="acReminderEnabled">
+                  Aktifkan reminder otomatis
+                </label>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-semibold small">Ingatkan pada hari ke-</label>
+                <input type="text" name="ac_sub_reminder_days" class="form-control form-control-sm"
+                       value="{{ cfg.ac_sub_reminder_days }}" placeholder="30,14,7,1">
+                <div class="form-text">
+                  Pisahkan dengan koma. Contoh: <code>30,14,7,1</code>
+                </div>
+              </div>
+              <div class="p-2 rounded small" style="background:#f8f5ff;border:1px solid #e0d5ff">
+                <div class="fw-semibold mb-1" style="color:#6f42c1"><i class="bi bi-info-circle me-1"></i>Info Jadwal</div>
+                <div class="text-muted">Scheduler berjalan otomatis setiap hari jam <strong>08:05 WIB</strong>.</div>
+                <div class="text-muted mt-1">Anti-duplikat: satu subscription hanya mendapat satu reminder per hari.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Preview Penerima -->
+          <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-2 fw-bold small">
+              <i class="bi bi-eye me-1 text-secondary"></i>Preview Penerima Aktif
+            </div>
+            <div class="card-body py-2">
+              {% set ac_emails = cfg.ac_notification_emails.replace('\n', ',').split(',') if cfg.ac_notification_emails else [] %}
+              {% set ac_tg    = cfg.ac_notification_telegram_ids.replace('\n', ',').split(',') if cfg.ac_notification_telegram_ids else [] %}
+              {% set ac_wa    = cfg.ac_notification_wa_phones.replace('\n', ',').split(',') if cfg.ac_notification_wa_phones else [] %}
+              <div class="small mb-2">
+                <div class="text-muted fw-semibold"><i class="bi bi-envelope me-1"></i>Email ({{ ac_emails|selectattr('strip')|list|length }}):</div>
+                {% for e in ac_emails if e.strip() %}<div class="ms-3 text-truncate" style="max-width:220px">{{ e.strip() }}</div>
+                {% else %}<div class="ms-3 text-muted fst-italic">Belum ada</div>{% endfor %}
+              </div>
+              <div class="small mb-2">
+                <div class="text-muted fw-semibold"><i class="bi bi-telegram me-1"></i>Telegram ({{ ac_tg|selectattr('strip')|list|length }}):</div>
+                {% for t in ac_tg if t.strip() %}<div class="ms-3 font-monospace">{{ t.strip() }}</div>
+                {% else %}<div class="ms-3 text-muted fst-italic">Belum ada</div>{% endfor %}
+              </div>
+              <div class="small">
+                <div class="text-muted fw-semibold"><i class="bi bi-whatsapp me-1" style="color:#25D366"></i>WhatsApp ({{ ac_wa|selectattr('strip')|list|length }}):</div>
+                {% for p in ac_wa if p.strip() %}<div class="ms-3 font-monospace">{{ p.strip() }}</div>
+                {% else %}<div class="ms-3 text-muted fst-italic">Belum ada</div>{% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100 btn-sm">
+            <i class="bi bi-check-lg me-1"></i>Simpan Pengaturan AssetCore
+          </button>
+        </div>
+
+      </div>
+    </form>
+  </div>
+
+</div><!-- /tab-content -->
+
+<!-- Modal Edit Penerima (untuk tab Sistem) -->
 <div class="modal fade" id="editModal" tabindex="-1">
   <div class="modal-dialog">
     <form method="post" class="modal-content">
@@ -224,7 +536,7 @@
         </div>
         <div class="mb-2">
           <label class="form-label small fw-semibold">Tipe Notifikasi <span class="text-muted fw-normal">(kosong = semua)</span></label>
-          <div class="d-flex flex-wrap gap-2" id="edit_types_container">
+          <div class="d-flex flex-wrap gap-2">
             {% for nt in notif_types %}
             <div class="form-check form-check-inline mb-0">
               <input class="form-check-input edit-type-cb" type="checkbox"
@@ -238,29 +550,78 @@
       </div>
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
-        <button type="submit" class="btn btn-primary btn-sm">
-          <i class="bi bi-check2 me-1"></i>Simpan
-        </button>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check2 me-1"></i>Simpan</button>
       </div>
     </form>
   </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
 <script>
 function openEdit(id, name, address, notifTypesJson, channel) {
   document.getElementById('edit_id').value      = id;
   document.getElementById('edit_name').value    = name;
   document.getElementById('edit_address').value = address;
   document.getElementById('edit_channel').value = channel;
-
   let types = [];
   try { types = JSON.parse(notifTypesJson); } catch(e) { types = ['*']; }
-
   document.querySelectorAll('.edit-type-cb').forEach(cb => {
     cb.checked = types.includes('*') || types.includes(cb.value);
   });
-
   new bootstrap.Modal(document.getElementById('editModal')).show();
 }
+
+function runReminders() {
+  document.getElementById('runResult').innerHTML = '<i class="bi bi-hourglass-split"></i> Memproses...';
+  fetch('/settings/run-reminders', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('runResult').innerHTML =
+        `<div class="alert alert-${d.failed?'warning':'success'} py-1 px-2 mb-0 mt-2">${d.msg}</div>`;
+    });
+}
+
+function showEl(id) { document.getElementById(id).classList.remove('d-none'); }
+
+function setResult(id, ok, msg) {
+  var el = document.getElementById(id);
+  el.className = 'mt-1 small ' + (ok ? 'text-success' : 'text-danger');
+  el.textContent = (ok ? '✓ ' : '✗ ') + msg;
+}
+
+function doTestEmail() {
+  var addr = document.getElementById('testEmailAddr').value.trim();
+  fetch('/aset/settings/test-email', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'test_email=' + encodeURIComponent(addr)
+  }).then(r=>r.json()).then(d=>setResult('testEmailResult', d.ok, d.msg));
+}
+
+function doTestTg() {
+  var id = document.getElementById('testTgId').value.trim();
+  fetch('/aset/settings/test-telegram', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'test_chat_id=' + encodeURIComponent(id)
+  }).then(r=>r.json()).then(d=>setResult('testTgResult', d.ok, d.msg));
+}
+
+function doTestWa() {
+  var phone = document.getElementById('testWaPhone').value.trim();
+  fetch('/aset/settings/test-whatsapp', {
+    method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'test_wa_phone=' + encodeURIComponent(phone)
+  }).then(r=>r.json()).then(d=>setResult('testWaResult', d.ok, d.msg));
+}
+
+// Aktifkan tab sesuai server-side active_tab
+document.addEventListener('DOMContentLoaded', function() {
+  var activeTab = '{{ active_tab }}';
+  if (activeTab && activeTab !== 'sistem') {
+    var btn = document.querySelector('#mainTabs [data-bs-target="#tab-' + activeTab + '"]');
+    if (btn) new bootstrap.Tab(btn).show();
+  }
+});
 </script>
 {% endblock %}

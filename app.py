@@ -23,6 +23,14 @@ if not _default_secret:
     _default_secret = 'evalkey-2024-superadmin-secure!'
 app.secret_key = _default_secret
 
+@app.template_filter('from_json')
+def _tpl_from_json(s):
+    import json as _j
+    try:
+        return _j.loads(s) if s else []
+    except Exception:
+        return []
+
 # Google OAuth config (set via env vars or portal settings)
 GOOGLE_CLIENT_ID     = os.environ.get('GOOGLE_CLIENT_ID', '')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
@@ -1122,6 +1130,23 @@ CREATE TABLE IF NOT EXISTS task_perf_config (
     late_mult REAL DEFAULT 0.9,
     sort_order INTEGER DEFAULT 0
 );
+
+-- ─── Notification Settings ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS notif_type_settings (
+    slug TEXT PRIMARY KEY,
+    is_active INTEGER DEFAULT 1,
+    label TEXT NOT NULL DEFAULT '',
+    description TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS notif_recipients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT '',
+    channel TEXT NOT NULL DEFAULT 'email',
+    address TEXT NOT NULL DEFAULT '',
+    notif_types TEXT NOT NULL DEFAULT '["*"]',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 MIGRATIONS = [
@@ -1205,6 +1230,15 @@ MIGRATIONS = [
     ('evaluations',          'task_date_from',          "TEXT DEFAULT ''"),
     ('evaluations',          'task_date_to',            "TEXT DEFAULT ''"),
     ('evaluations',          'task_benchmark',          'REAL DEFAULT 100'),
+    ('notif_type_settings',  'label',                   "TEXT NOT NULL DEFAULT ''"),
+    ('notif_type_settings',  'description',             "TEXT DEFAULT ''"),
+    ('notif_type_settings',  'is_active',               'INTEGER DEFAULT 1'),
+    ('notif_recipients',     'name',                    "TEXT NOT NULL DEFAULT ''"),
+    ('notif_recipients',     'channel',                 "TEXT NOT NULL DEFAULT 'email'"),
+    ('notif_recipients',     'address',                 "TEXT NOT NULL DEFAULT ''"),
+    ('notif_recipients',     'notif_types',             'TEXT NOT NULL DEFAULT \'["*"]\''),
+    ('notif_recipients',     'is_active',               'INTEGER DEFAULT 1'),
+    ('notif_recipients',     'created_at',              "TEXT DEFAULT (datetime('now','localtime'))"),
 ]
 
 SC_TICKET_PRIORITIES = [
@@ -1765,6 +1799,77 @@ def get_notification_wa_phones(settings, emp_phone=''):
         if p and p not in phones:
             phones.append(p)
     return phones
+
+_NOTIF_TYPES = [
+    ('contract_reminder', 'Reminder Kontrak Karyawan',    'Notifikasi kontrak karyawan akan berakhir'),
+    ('daily_report',      'Laporan Harian',               'Laporan otomatis harian jam 22:00 WIB'),
+    ('eval_request',      'Permintaan Self-Assessment',   'Notifikasi pengisian self-assessment karyawan'),
+    ('asset_change',      'Perubahan Aset IT',            'Notifikasi assign/release/perubahan aset'),
+    ('ticket_new',        'Tiket Support Baru',           'Notifikasi tiket baru dibuat'),
+    ('ticket_update',     'Update Status Tiket',          'Notifikasi perubahan status tiket support'),
+    ('new_user',          'User Baru Terdaftar',          'Notifikasi saat user baru login via Google'),
+]
+
+def _init_notif_types(db):
+    """Seed notif_type_settings jika belum ada."""
+    for slug, label, desc in _NOTIF_TYPES:
+        db.execute(
+            'INSERT OR IGNORE INTO notif_type_settings(slug, label, description, is_active) VALUES(?,?,?,1)',
+            (slug, label, desc)
+        )
+    db.commit()
+
+def _migrate_notif_from_settings(db):
+    """Impor penerima lama dari app_settings ke notif_recipients (sekali saja)."""
+    import json as _j
+    if db.execute('SELECT COUNT(*) as c FROM notif_recipients').fetchone()['c'] > 0:
+        return
+    cfg = get_settings(db)
+    def _ins(name, channel, addr, types):
+        addr = addr.strip()
+        if addr:
+            db.execute(
+                'INSERT INTO notif_recipients(name,channel,address,notif_types,is_active) VALUES(?,?,?,?,1)',
+                (name, channel, addr, _j.dumps(types))
+            )
+    for e in _parse_list(cfg.get('notification_emails', '')):
+        _ins(f'Email: {e}', 'email', e, ['contract_reminder', 'eval_request'])
+    for t in _parse_list(cfg.get('notification_telegram_ids', '')):
+        _ins(f'Telegram: {t}', 'telegram', normalize_telegram_id(t), ['contract_reminder', 'eval_request'])
+    for p in _parse_list(cfg.get('openwa_extra_phones', '')):
+        _ins(f'WA: {p}', 'wa', p, ['contract_reminder'])
+    for e in _parse_list(cfg.get('ac_notification_emails', '')):
+        _ins(f'Email Aset: {e}', 'email', e, ['asset_change'])
+    for t in _parse_list(cfg.get('ac_notification_telegram_ids', '')):
+        _ins(f'Telegram Aset: {t}', 'telegram', normalize_telegram_id(t), ['asset_change'])
+    for p in _parse_list(cfg.get('ac_notification_wa_phones', '')):
+        _ins(f'WA Aset: {p}', 'wa', p, ['asset_change'])
+    db.commit()
+
+def get_notif_recipients(db, notif_slug, channel=None):
+    """Return list address aktif untuk notif_slug & channel tertentu."""
+    import json as _j
+    q = 'SELECT address, notif_types FROM notif_recipients WHERE is_active=1'
+    p = []
+    if channel:
+        q += ' AND channel=?'
+        p.append(channel)
+    result = []
+    for r in db.execute(q, p).fetchall():
+        try:
+            types = _j.loads(r['notif_types'] or '["*"]')
+        except Exception:
+            types = ['*']
+        if '*' in types or notif_slug in types:
+            addr = r['address'].strip()
+            if addr and addr not in result:
+                result.append(addr)
+    return result
+
+def is_notif_enabled(db, notif_slug):
+    """True jika tipe notifikasi ini aktif."""
+    row = db.execute('SELECT is_active FROM notif_type_settings WHERE slug=?', (notif_slug,)).fetchone()
+    return bool(row and row['is_active'])
 
 def get_openwa_session(settings, app_slug=''):
     """Dapatkan OpenWA session ID untuk app tertentu.
@@ -8745,6 +8850,123 @@ def chatbot_send():
         return jsonify({'reply': reply})
     except Exception as ex:
         return jsonify({'error': _friendly_ai_error(ex, provider, ai_base_url)}), 500
+
+# ─── Portal: Notification Settings ───────────────────────────────────────────
+
+@app.route('/portal/notifications', methods=['GET', 'POST'])
+@login_required
+def portal_notifications():
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    import json as _j
+    db = get_db()
+    _init_notif_types(db)
+    _migrate_notif_from_settings(db)
+
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+
+        if action == 'save_types':
+            active_slugs = set(request.form.getlist('active_notif_types'))
+            for slug, _, _ in _NOTIF_TYPES:
+                db.execute('UPDATE notif_type_settings SET is_active=? WHERE slug=?',
+                           (1 if slug in active_slugs else 0, slug))
+            db.commit()
+            flash('Pengaturan tipe notifikasi disimpan.', 'success')
+
+        elif action == 'add_recipient':
+            name    = request.form.get('recipient_name', '').strip()
+            channel = request.form.get('recipient_channel', '').strip()
+            address = request.form.get('recipient_address', '').strip()
+            types   = request.form.getlist('recipient_notif_types')
+            if not name or not channel or not address:
+                flash('Nama, channel, dan address wajib diisi.', 'warning')
+            elif channel not in ('email', 'telegram', 'wa'):
+                flash('Channel tidak valid.', 'danger')
+            else:
+                if channel == 'telegram':
+                    address = normalize_telegram_id(address)
+                db.execute(
+                    'INSERT INTO notif_recipients(name,channel,address,notif_types,is_active) VALUES(?,?,?,?,1)',
+                    (name, channel, address, _j.dumps(types if types else ['*']))
+                )
+                db.commit()
+                flash(f'Penerima "{name}" ditambahkan.', 'success')
+
+        elif action == 'toggle_recipient':
+            rid = int(request.form.get('recipient_id', 0))
+            row = db.execute('SELECT is_active FROM notif_recipients WHERE id=?', (rid,)).fetchone()
+            if row:
+                db.execute('UPDATE notif_recipients SET is_active=? WHERE id=?',
+                           (0 if row['is_active'] else 1, rid))
+                db.commit()
+                flash('Status penerima diperbarui.', 'success')
+
+        elif action == 'edit_recipient':
+            rid     = int(request.form.get('recipient_id', 0))
+            name    = request.form.get('recipient_name', '').strip()
+            address = request.form.get('recipient_address', '').strip()
+            types   = request.form.getlist('recipient_notif_types')
+            channel = request.form.get('recipient_channel', '').strip()
+            if channel == 'telegram':
+                address = normalize_telegram_id(address)
+            if name and address:
+                db.execute(
+                    'UPDATE notif_recipients SET name=?,address=?,notif_types=? WHERE id=?',
+                    (name, address, _j.dumps(types if types else ['*']), rid)
+                )
+                db.commit()
+                flash('Penerima diperbarui.', 'success')
+
+        elif action == 'delete_recipient':
+            rid = int(request.form.get('recipient_id', 0))
+            db.execute('DELETE FROM notif_recipients WHERE id=?', (rid,))
+            db.commit()
+            flash('Penerima dihapus.', 'success')
+
+        elif action == 'save_talentcore':
+            for k in TALENTCORE_SETTINGS_KEYS:
+                v = request.form.get(k, '').strip()
+                if k == 'reminder_enabled':
+                    v = '1' if request.form.get('reminder_enabled') else '0'
+                save_setting(db, k, v)
+            db.commit()
+            flash('Pengaturan TalentCore disimpan.', 'success')
+
+        elif action == 'save_assetcore':
+            for k in AC_SETTINGS_KEYS:
+                if k == 'ac_sub_reminder_enabled':
+                    v = '1' if request.form.get(k) else '0'
+                else:
+                    v = request.form.get(k, '').strip()
+                save_setting(db, k, v)
+            db.commit()
+            flash('Pengaturan AssetCore disimpan.', 'success')
+
+        tab = {'save_talentcore': 'talentcore', 'save_assetcore': 'assetcore'}.get(action, 'sistem')
+        return redirect(url_for('portal_notifications', tab=tab))
+
+    # GET
+    tab = request.args.get('tab', 'sistem')
+    notif_types = db.execute(
+        'SELECT slug, is_active, label, description FROM notif_type_settings ORDER BY rowid'
+    ).fetchall()
+    recipients = db.execute(
+        'SELECT * FROM notif_recipients ORDER BY channel, name'
+    ).fetchall()
+    by_channel = {'email': [], 'telegram': [], 'wa': []}
+    for r in recipients:
+        ch = r['channel']
+        if ch in by_channel:
+            by_channel[ch].append(r)
+    cfg = get_settings(db)
+    return render_template('portal_notifications.html',
+                           notif_types=notif_types,
+                           by_channel=by_channel,
+                           all_notif_types=_NOTIF_TYPES,
+                           cfg=cfg,
+                           active_tab=tab)
 
 # ─── Portal: Audit Trail ───────────────────────────────────────────────────────
 
