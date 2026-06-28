@@ -1486,7 +1486,7 @@ def init_db():
     # Seed superapp apps registry
     _apps = [
         ('evaluasi', 'TalentCore', 'Penilaian & review kinerja karyawan',
-         'clipboard2-check', '#4da8da', '#e8f4fd', '/', 1, 0, 0, ''),
+         'clipboard2-check', '#4da8da', '#e8f4fd', '/karyawan', 1, 0, 0, ''),
         ('aset', 'AssetCore', 'Pencatatan & tracking aset perusahaan',
          'box-seam', '#6f42c1', '#f0ecff', '/aset/', 1, 0, 1, 'ac_view'),
         ('support', 'SupportCore', 'Monitoring technical support, SLA & presales',
@@ -2090,7 +2090,7 @@ def set_security_headers(response):
 
 _EVALUASI_PREFIXES = (
     '/emp', '/eval', '/salary', '/contracts', '/karyawan',
-    '/reminders', '/reviews', '/assess', '/settings',
+    '/reminders', '/reviews', '/assess', '/settings', '/admin',
 )
 
 @app.before_request
@@ -2113,8 +2113,12 @@ def auto_set_active_app():
         session['active_app'] = 'project'
     elif any(path.startswith(p) for p in _EVALUASI_PREFIXES):
         session['active_app'] = 'evaluasi'
+    elif path == '/':
+        # Dashboard TalentCore — jaga active_app yang sudah di-set oleh portal_open
+        if session.get('active_app') not in ('evaluasi',):
+            session['active_app'] = 'evaluasi'
     else:
-        # Default: portal — untuk /, /profile, /users, /chatbot, dll
+        # Default: portal — untuk /profile, /users, /chatbot, dll
         session['active_app'] = 'portal'
 
 # ─── Enforce app-level access dari user_app_access ──────────────────────────────
