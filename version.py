@@ -1,3 +1,3 @@
-VERSION = "1.9.9"
+VERSION = "2.0.0"
 RELEASE_DATE = "2026-06-28"
-RELEASE_NOTES = "Feat: diagnostik AI + save verify + error handling"
+RELEASE_NOTES = "Fix: save_setting bypass _fix() untuk PostgreSQL app_settings"

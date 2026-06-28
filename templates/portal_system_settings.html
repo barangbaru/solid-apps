@@ -628,9 +628,14 @@ async function saveAiConfig(btn) {
   try {
     const r = await fetch('/portal/system-settings/save-ai', {method:'POST', body:fd});
     const d = await r.json();
-    res.innerHTML = d.ok
-      ? `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${d.msg}</span>`
-      : `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>${d.msg}</span>`;
+    if (d.ok) {
+      res.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>${d.msg}</span>`
+        + (d.verified_key_len !== undefined
+            ? `<br><span class="text-muted" style="font-size:.75rem">Verify: key length=${d.verified_key_len}, enabled=${d.verified_enabled}, model=${d.verified_model||'default'}</span>`
+            : '');
+    } else {
+      res.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>${d.msg}</span>`;
+    }
   } catch(e) {
     res.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Gagal menghubungi server.</span>';
   }

@@ -1701,7 +1701,15 @@ def get_settings(db):
     return {r['key']: r['value'] for r in rows}
 
 def save_setting(db, key, value):
-    db.execute('INSERT OR REPLACE INTO app_settings(key, value) VALUES(?,?)', (key, value))
+    if getattr(db, '_is_pg', False):
+        # Bypass _fix() — langsung pakai PG syntax agar tidak terkena RETURNING id
+        cur = db._conn.cursor()
+        cur.execute(
+            'INSERT INTO app_settings(key,value) VALUES(%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value',
+            (key, value)
+        )
+    else:
+        db.execute('INSERT OR REPLACE INTO app_settings(key, value) VALUES(?,?)', (key, value))
 
 def get_notification_emails(settings, emp_email=''):
     """Gabungkan email karyawan + daftar email statis dari pengaturan."""
