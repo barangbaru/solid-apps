@@ -8451,6 +8451,26 @@ def _chatbot_call_openai(api_key, model, messages, system, tools_oa, base_url=No
         break
     return 'Tidak ada respons dari AI.'
 
+def _friendly_ai_error(ex):
+    """Ubah error API menjadi pesan yang mudah dipahami."""
+    msg = str(ex)
+    if '429' in msg or 'RESOURCE_EXHAUSTED' in msg or 'quota' in msg.lower():
+        if 'limit: 0' in msg or 'free_tier' in msg:
+            return ('Quota Gemini free tier habis atau API key tidak punya akses free tier. '
+                    'Pastikan API key dibuat dari aistudio.google.com/apikey menggunakan "Create API key in new project".')
+        return 'Quota Gemini tercapai. Coba lagi dalam beberapa menit.'
+    if '401' in msg or 'UNAUTHENTICATED' in msg or 'API key' in msg.lower():
+        return 'API key tidak valid atau sudah kadaluarsa. Periksa konfigurasi di Pengaturan Sistem → AI Assistant.'
+    if '403' in msg or 'PERMISSION_DENIED' in msg:
+        return 'API key tidak punya izin menggunakan model ini. Pastikan Gemini API sudah diaktifkan.'
+    if 'model' in msg.lower() and ('not found' in msg.lower() or 'does not exist' in msg.lower()):
+        return f'Model tidak ditemukan. Coba ganti model ke "gemini-2.0-flash" di Pengaturan Sistem.'
+    if 'connect' in msg.lower() or 'timeout' in msg.lower():
+        return 'Tidak bisa terhubung ke Gemini API. Periksa koneksi internet server.'
+    # Potong pesan panjang, ambil baris pertama saja
+    first_line = msg.split('\n')[0][:200]
+    return f'Error dari Gemini: {first_line}'
+
 @app.route('/api/chatbot/send', methods=['POST'])
 @login_required
 def chatbot_send():
@@ -8476,7 +8496,7 @@ def chatbot_send():
                                      base_url='https://generativelanguage.googleapis.com/v1beta/openai/')
         return jsonify({'reply': reply})
     except Exception as ex:
-        return jsonify({'error': str(ex)}), 500
+        return jsonify({'error': _friendly_ai_error(ex)}), 500
 
 # ─── Portal: Audit Trail ───────────────────────────────────────────────────────
 

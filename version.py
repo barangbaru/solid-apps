@@ -1,3 +1,3 @@
-VERSION = "2.0.1"
+VERSION = "2.0.2"
 RELEASE_DATE = "2026-06-28"
-RELEASE_NOTES = "Feat: ganti ChatGPT ke Gemini Google AI Studio"
+RELEASE_NOTES = "Fix: error message Gemini API lebih informatif"
