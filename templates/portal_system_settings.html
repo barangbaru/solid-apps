@@ -389,7 +389,7 @@
     {# ── AI Assistant ── #}
     <div class="card mb-3 border-primary border-opacity-25">
       <div class="card-header py-2 fw-bold small text-uppercase text-muted d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-robot text-primary me-1"></i>AI Assistant — Gemini (Google)</span>
+        <span><i class="bi bi-robot text-primary me-1"></i>AI Assistant</span>
         <span class="badge bg-success-subtle text-success border border-success-subtle" style="font-size:.7rem">
           <i class="bi bi-shield-check me-1"></i>Gaji & evaluasi pribadi dilindungi
         </span>
@@ -405,28 +405,36 @@
           <div class="form-text">Semua pengguna yang login dapat mengakses chatbot.</div>
         </div>
 
+        <input type="hidden" name="ai_provider" id="aiProvider" value="{{ cfg.get('ai_provider','gemini') }}">
+
         <div class="mb-3">
+          <label class="form-label fw-semibold small">Provider</label>
+          <div class="d-flex flex-wrap gap-1" id="aiProviderBadges">
+            <span class="badge border" style="cursor:pointer;font-size:.75rem" id="preset-gemini"
+                  onclick="setAiPreset('gemini','','gemini-2.0-flash','AIza...')">
+              <i class="bi bi-google me-1"></i>Gemini</span>
+            <span class="badge border" style="cursor:pointer;font-size:.75rem" id="preset-openai"
+                  onclick="setAiPreset('openai','https://api.openai.com/v1','gpt-4o','sk-...')">
+              <i class="bi bi-stars me-1"></i>OpenAI</span>
+            <span class="badge border" style="cursor:pointer;font-size:.75rem" id="preset-claude"
+                  onclick="setAiPreset('claude','','claude-sonnet-4-6','sk-ant-...')">
+              <i class="bi bi-cpu me-1"></i>Claude</span>
+            <span class="badge border" style="cursor:pointer;font-size:.75rem" id="preset-ollama"
+                  onclick="setAiPreset('ollama','http://localhost:11434/v1','qwen2.5:7b','ollama')">
+              <i class="bi bi-server me-1"></i>Ollama</span>
+            <span class="badge border" style="cursor:pointer;font-size:.75rem" id="preset-openwebui"
+                  onclick="setAiPreset('openwebui','http://localhost:3000/api','qwen2.5:7b','')">
+              <i class="bi bi-window me-1"></i>Open WebUI</span>
+          </div>
+        </div>
+
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Base URL <span class="text-muted fw-normal small">(kosong = Gemini Google AI Studio)</span></label>
+          <label class="form-label fw-semibold small">Base URL <span class="text-muted fw-normal small" id="aiBaseUrlLabel"></span></label>
           <input type="text" name="ai_base_url" id="aiBaseUrl"
                  class="form-control form-control-sm font-monospace"
                  value="{{ cfg.get('ai_base_url','') }}"
-                 placeholder="Kosongkan untuk Gemini, atau isi URL Open WebUI/Ollama"
-                 oninput="onBaseUrlChange(this.value)">
-          <div class="d-flex flex-wrap gap-1 mt-1">
-            <span class="badge bg-light border text-muted" style="cursor:pointer;font-size:.7rem"
-                  onclick="setAiPreset('','gemini-2.0-flash','')">
-              <i class="bi bi-google me-1"></i>Gemini (default)</span>
-            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
-                  onclick="setAiPreset('http://localhost:11434/v1','llama3','ollama')">
-              <i class="bi bi-server me-1"></i>Ollama lokal</span>
-            <span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.7rem"
-                  onclick="setAiPreset('http://localhost:3000/api','llama3','')">
-              <i class="bi bi-window me-1"></i>Open WebUI lokal</span>
-          </div>
-          <div class="form-text" id="aiBaseUrlHint">
-            Kosong → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> (gratis, butuh API key)
-          </div>
+                 oninput="document.getElementById('aiProvider').value=detectProvider(this.value)">
+          <div class="form-text" id="aiBaseUrlHint"></div>
         </div>
 
         <div class="mb-3">
@@ -607,41 +615,56 @@ function testWaApp(appSlug, btn) {
   }).catch(()=>{ btn.disabled=false; btn.innerHTML='<i class="bi bi-send"></i>'; });
 }
 
-function setAiPreset(baseUrl, model, apiKeyPlaceholder) {
-  document.getElementById('aiBaseUrl').value = baseUrl;
-  document.getElementById('aiModelInput').value = model;
-  if (apiKeyPlaceholder !== undefined)
-    document.getElementById('aiApiKey').placeholder = apiKeyPlaceholder || 'AIza... / sk-...';
-  onBaseUrlChange(baseUrl);
+const AI_PRESETS = {
+  gemini:    { url: '', hint: 'Kosong → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> (gratis, butuh API key)', keyNote: '(wajib — dari aistudio.google.com/apikey)', urlLabel: '(kosongkan untuk Gemini)', models: ['gemini-2.0-flash','gemini-2.5-flash','gemini-1.5-pro'] },
+  openai:    { url: 'https://api.openai.com/v1', hint: 'API resmi OpenAI — butuh API key dari <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>', keyNote: '(wajib — dari platform.openai.com/api-keys)', urlLabel: '', models: ['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-3.5-turbo'] },
+  claude:    { url: '', hint: 'Anthropic Claude — butuh API key dari <a href="https://console.anthropic.com/api-keys" target="_blank" rel="noopener">console.anthropic.com</a>. Pastikan <code>pip install anthropic</code>', keyNote: '(wajib — dari console.anthropic.com/api-keys)', urlLabel: '(kosongkan untuk Claude default)', models: ['claude-sonnet-4-6','claude-haiku-4-5-20251001','claude-opus-4-8'] },
+  ollama:    { url: 'http://localhost:11434/v1', hint: 'Ollama lokal — gratis, tidak perlu API key. Jalankan <code>ollama serve</code> di server.', keyNote: '(kosongkan atau isi "ollama")', urlLabel: '', models: ['qwen2.5:7b','qwen2.5:3b','llama3.1:8b','mistral:7b','phi4'] },
+  openwebui: { url: 'http://localhost:3000/api', hint: 'Open WebUI — antarmuka web untuk Ollama. Isi API key jika Open WebUI pakai autentikasi.', keyNote: '(kosongkan jika tanpa auth)', urlLabel: '', models: ['qwen2.5:7b','llama3.1:8b','mistral:7b','phi4'] },
+};
+
+function detectProvider(url) {
+  if (!url) return document.getElementById('aiProvider').value || 'gemini';
+  if (url.includes('openai.com')) return 'openai';
+  if (url.includes('11434') || url.includes('ollama')) return 'ollama';
+  if (url.includes('3000') || url.includes('openwebui')) return 'openwebui';
+  return 'openai'; // custom URL → openai-compat
 }
 
-function onBaseUrlChange(val) {
-  const isCustom = val.trim() !== '';
-  const hint = document.getElementById('aiBaseUrlHint');
-  const keyNote = document.getElementById('apiKeyNote');
-  const badges = document.getElementById('aiModelBadges');
-  if (isCustom) {
-    hint.innerHTML = 'Open WebUI: <code>http://&lt;ip&gt;:3000/api</code> &nbsp;|&nbsp; Ollama: <code>http://&lt;ip&gt;:11434/v1</code>';
-    keyNote.textContent = '(kosongkan untuk Ollama, isi jika Open WebUI pakai auth)';
-    badges.innerHTML = [
-      ['llama3','llama3'],['llama3.2','llama3.2'],['mistral','mistral'],
-      ['gemma3','gemma3'],['qwen2.5','qwen2.5'],['deepseek-r1','deepseek-r1'],
-    ].map(([v,l]) => `<span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-      onclick="document.getElementById('aiModelInput').value='${v}'">${l}</span>`).join('');
-  } else {
-    hint.innerHTML = 'Kosong → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> (gratis, butuh API key)';
-    keyNote.textContent = '(wajib untuk Gemini)';
-    badges.innerHTML = [
-      ['gemini-2.0-flash','gemini-2.0-flash'],['gemini-2.5-flash','gemini-2.5-flash'],['gemini-1.5-pro','gemini-1.5-pro'],
-    ].map(([v,l]) => `<span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
-      onclick="document.getElementById('aiModelInput').value='${v}'">${l}</span>`).join('');
-  }
+function setAiPreset(provider, baseUrl, model, apiKeyPlaceholder) {
+  document.getElementById('aiProvider').value   = provider;
+  document.getElementById('aiBaseUrl').value    = baseUrl;
+  document.getElementById('aiModelInput').value = model;
+  if (apiKeyPlaceholder !== undefined)
+    document.getElementById('aiApiKey').placeholder = apiKeyPlaceholder || '';
+  applyProviderUI(provider);
+}
+
+function applyProviderUI(provider) {
+  const p = AI_PRESETS[provider] || AI_PRESETS.gemini;
+  document.getElementById('aiBaseUrlHint').innerHTML  = p.hint;
+  document.getElementById('apiKeyNote').textContent   = p.keyNote;
+  document.getElementById('aiBaseUrlLabel').textContent = p.urlLabel;
+  document.getElementById('aiModelBadges').innerHTML  = p.models.map(m =>
+    `<span class="badge bg-light border text-dark" style="cursor:pointer;font-size:.72rem"
+      onclick="document.getElementById('aiModelInput').value='${m}'">${m}</span>`
+  ).join('');
+  // highlight active preset badge
+  ['gemini','openai','claude','ollama','openwebui'].forEach(id => {
+    const el = document.getElementById('preset-' + id);
+    if (!el) return;
+    if (id === provider) {
+      el.className = 'badge border bg-primary text-white';
+    } else {
+      el.className = 'badge border bg-light text-dark';
+    }
+  });
 }
 
 // Init on load
 document.addEventListener('DOMContentLoaded', () => {
-  const el = document.getElementById('aiBaseUrl');
-  if (el) onBaseUrlChange(el.value);
+  const provider = document.getElementById('aiProvider')?.value || 'gemini';
+  applyProviderUI(provider);
 });
 
 async function diagAi(btn) {
@@ -656,14 +679,19 @@ async function diagAi(btn) {
     if (d.error) {
       box.innerHTML = `<span class="text-danger">ERROR: ${d.error}</span>`;
     } else {
-      const ok = v => `<span class="text-success fw-bold">${v}</span>`;
+      const ok  = v => `<span class="text-success fw-bold">${v}</span>`;
       const bad = v => `<span class="text-danger fw-bold">${v}</span>`;
+      const providerLabels = {gemini:'Gemini',openai:'OpenAI',claude:'Claude (Anthropic)',ollama:'Ollama',openwebui:'Open WebUI'};
+      const prov = d.ai_provider || 'gemini';
+      const needsAnthropic = prov === 'claude';
       box.innerHTML = [
-        `chatbot_enabled : ${d.chatbot_enabled === '1' ? ok('AKTIF') : bad('nonaktif')}`,
-        `api_key         : ${d.ai_api_key_length > 0 ? ok(d.ai_api_key_prefix + ' (' + d.ai_api_key_length + ' chars)') : bad('KOSONG — belum diisi')}`,
-        `model           : ${d.ai_model || '<span class="text-muted">default gpt-4o</span>'}`,
-        `openai SDK      : ${d.openai_sdk === 'NOT INSTALLED' ? bad('TIDAK TERINSTALL — pip install openai') : ok('v' + d.openai_sdk)} <span class="text-muted">(SDK untuk Gemini API)</span>`,
-        `app version     : ${d.app_version}`,
+        `chatbot_enabled  : ${d.chatbot_enabled === '1' ? ok('AKTIF') : bad('nonaktif')}`,
+        `provider         : ${ok(providerLabels[prov] || prov)}`,
+        `api_key          : ${d.ai_api_key_length > 0 ? ok(d.ai_api_key_prefix + ' (' + d.ai_api_key_length + ' chars)') : (prov==='ollama' ? '<span class="text-muted">—  (tidak diperlukan)</span>' : bad('KOSONG — belum diisi'))}`,
+        `model            : ${d.ai_model}`,
+        `openai SDK       : ${d.openai_sdk === 'NOT INSTALLED' ? bad('TIDAK TERINSTALL — pip install openai') : ok('v' + d.openai_sdk)}`,
+        `anthropic SDK    : ${d.anthropic_sdk === 'NOT INSTALLED' ? (needsAnthropic ? bad('TIDAK TERINSTALL — pip install anthropic') : '<span class="text-muted">— (tidak diperlukan)</span>') : ok('v' + d.anthropic_sdk)}`,
+        `app version      : ${d.app_version}`,
       ].join('<br>');
     }
   } catch(e) {
@@ -675,6 +703,7 @@ async function diagAi(btn) {
 async function saveAiConfig(btn) {
   const fd = new FormData();
   fd.append('chatbot_enabled', document.getElementById('chatbotEnabled').checked ? '1' : '');
+  fd.append('ai_provider',     document.getElementById('aiProvider').value || 'gemini');
   fd.append('ai_api_key',      document.getElementById('aiApiKey').value);
   fd.append('ai_model',        document.getElementById('aiModelInput').value);
   fd.append('ai_base_url',     document.getElementById('aiBaseUrl').value.trim());

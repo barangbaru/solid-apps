@@ -4464,7 +4464,7 @@ PORTAL_SYSTEM_KEYS = [
     'google_client_id', 'google_client_secret', 'google_workspace_domain', 'google_oauth_enabled',
     'recaptcha_site_key', 'recaptcha_secret_key', 'recaptcha_enabled',
     'chatbot_enabled',
-    'ai_api_key', 'ai_model', 'ai_base_url',
+    'ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url',
 ]
 
 @app.route('/portal/system-settings', methods=['GET', 'POST'])
@@ -4545,7 +4545,7 @@ def portal_save_ai_settings():
         return jsonify({'ok': False, 'msg': 'Akses ditolak'})
     try:
         db = get_db()
-        AI_KEYS = ['chatbot_enabled', 'ai_api_key', 'ai_model', 'ai_base_url']
+        AI_KEYS = ['chatbot_enabled', 'ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url']
         saved = {}
         for k in AI_KEYS:
             if k == 'chatbot_enabled':
@@ -4578,18 +4578,33 @@ def portal_diag_ai():
         db = get_db()
         cfg = get_settings(db)
         api_key = cfg.get('ai_api_key', '')
+        provider = cfg.get('ai_provider', 'gemini')
         # Cek openai package
         try:
             import openai as _oai
             oai_version = getattr(_oai, '__version__', 'ok')
         except ImportError:
             oai_version = 'NOT INSTALLED'
+        # Cek anthropic package
+        try:
+            import anthropic as _ant
+            ant_version = getattr(_ant, '__version__', 'ok')
+        except ImportError:
+            ant_version = 'NOT INSTALLED'
+        # Default model per provider
+        _default_models = {
+            'gemini': 'gemini-2.0-flash', 'openai': 'gpt-4o',
+            'claude': 'claude-sonnet-4-6', 'ollama': 'llama3', 'openwebui': 'llama3',
+        }
+        default_model = _default_models.get(provider, 'gemini-2.0-flash')
         return jsonify({
             'chatbot_enabled':    cfg.get('chatbot_enabled', '0'),
-            'ai_model':           cfg.get('ai_model', '(kosong → default gemini-2.0-flash)'),
+            'ai_provider':        provider,
+            'ai_model':           cfg.get('ai_model', f'(kosong → default {default_model})'),
             'ai_api_key_length':  len(api_key),
             'ai_api_key_prefix':  api_key[:7] + '...' if len(api_key) > 7 else '(kosong)',
             'openai_sdk':         oai_version,
+            'anthropic_sdk':      ant_version,
             'app_version':        VERSION,
         })
     except Exception as ex:
@@ -8569,43 +8584,71 @@ def _chatbot_check_rate(user_id):
     _chatbot_rate[user_id] = hits
     return True
 
-def _friendly_ai_error(ex, base_url=''):
+def _friendly_ai_error(ex, provider='gemini', base_url=''):
     """Ubah error API menjadi pesan yang mudah dipahami."""
     msg = str(ex)
-    is_gemini  = not base_url or 'googleapis' in base_url
-    is_ollama  = 'ollama' in base_url or '11434' in base_url
-    is_openwebui = '3000' in base_url or 'openwebui' in base_url.lower()
-    provider = 'Gemini' if is_gemini else ('Ollama' if is_ollama else ('Open WebUI' if is_openwebui else 'AI'))
+    # Normalise provider label
+    _labels = {
+        'gemini': 'Gemini', 'openai': 'OpenAI', 'claude': 'Claude (Anthropic)',
+        'ollama': 'Ollama', 'openwebui': 'Open WebUI',
+    }
+    # Fallback deteksi dari base_url jika provider tidak diset
+    if provider not in _labels:
+        if 'googleapis' in base_url or not base_url:
+            provider = 'gemini'
+        elif '11434' in base_url or 'ollama' in base_url:
+            provider = 'ollama'
+        elif '3000' in base_url or 'openwebui' in base_url.lower():
+            provider = 'openwebui'
+        else:
+            provider = 'openai'
+    provider_label = _labels.get(provider, 'AI')
+    is_gemini    = provider == 'gemini'
+    is_ollama    = provider == 'ollama'
+    is_claude    = provider == 'claude'
+    is_openai    = provider == 'openai'
 
     if '429' in msg or 'RESOURCE_EXHAUSTED' in msg or 'quota' in msg.lower():
         if is_gemini and ('limit: 0' in msg or 'free_tier' in msg):
             return ('Quota Gemini free tier habis atau API key tidak punya akses free tier. '
                     'Buat API key baru dari aistudio.google.com/apikey → "Create API key in new project".')
-        return f'Quota {provider} tercapai. Coba lagi dalam beberapa menit.'
-    if '401' in msg or 'UNAUTHENTICATED' in msg or 'unauthorized' in msg.lower():
+        return f'Quota {provider_label} tercapai. Coba lagi dalam beberapa menit.'
+    if '401' in msg or 'UNAUTHENTICATED' in msg or 'unauthorized' in msg.lower() or 'authentication_error' in msg.lower():
         if is_ollama:
             return 'Ollama: tidak perlu API key. Kosongkan field API key di Pengaturan Sistem.'
-        return f'API key {provider} tidak valid. Periksa konfigurasi di Pengaturan Sistem → AI Assistant.'
+        if is_claude:
+            return 'API key Anthropic tidak valid. Buat API key di console.anthropic.com → API Keys.'
+        if is_openai:
+            return 'API key OpenAI tidak valid. Periksa di platform.openai.com/api-keys.'
+        return f'API key {provider_label} tidak valid. Periksa konfigurasi di Pengaturan Sistem → AI Assistant.'
     if '403' in msg or 'PERMISSION_DENIED' in msg:
-        return f'API key tidak punya izin menggunakan model ini ({provider}).'
+        return f'API key tidak punya izin menggunakan model ini ({provider_label}).'
+    if 'credit' in msg.lower() or 'billing' in msg.lower() or 'insufficient_quota' in msg.lower():
+        if is_openai:
+            return 'Saldo OpenAI habis. Top up di platform.openai.com/settings/billing.'
+        if is_claude:
+            return 'Saldo Anthropic habis. Top up di console.anthropic.com/settings/billing.'
+        return f'Saldo {provider_label} habis atau quota terlampaui.'
     if 'model' in msg.lower() and ('not found' in msg.lower() or 'does not exist' in msg.lower() or 'pull' in msg.lower()):
         if is_ollama:
-            return ('Model Ollama tidak ditemukan. Jalankan: '
-                    f'ollama pull {{}}'.format('<nama_model>') +
-                    ' di server, lalu coba lagi.')
-        if is_openwebui:
+            return 'Model Ollama tidak ditemukan. Jalankan: ollama pull <nama_model> di server, lalu coba lagi.'
+        if provider == 'openwebui':
             return 'Model tidak ditemukan di Open WebUI. Pastikan model sudah di-pull via Ollama atau tersedia di Open WebUI.'
-        return 'Model tidak ditemukan. Ganti model di Pengaturan Sistem → AI Assistant (contoh: gemini-2.0-flash).'
+        if is_claude:
+            return 'Model Claude tidak ditemukan. Contoh model valid: claude-sonnet-4-6, claude-haiku-4-5-20251001, claude-opus-4-8.'
+        if is_openai:
+            return 'Model OpenAI tidak ditemukan. Contoh: gpt-4o, gpt-4o-mini, gpt-4-turbo.'
+        return 'Model tidak ditemukan. Ganti model di Pengaturan Sistem → AI Assistant.'
     if 'tool' in msg.lower() and ('not support' in msg.lower() or 'unsupported' in msg.lower()):
-        return f'Model ini tidak mendukung tool calling. Coba model lain yang support function calling.'
+        return 'Model ini tidak mendukung tool calling. Coba model lain yang support function calling.'
     if 'connect' in msg.lower() or 'timeout' in msg.lower() or 'connection' in msg.lower():
         if is_ollama:
             return f'Tidak bisa terhubung ke Ollama ({base_url}). Pastikan Ollama berjalan: systemctl status ollama'
-        if is_openwebui:
+        if provider == 'openwebui':
             return f'Tidak bisa terhubung ke Open WebUI ({base_url}). Pastikan container/service berjalan.'
         return 'Tidak bisa terhubung ke server AI. Periksa koneksi internet server.'
     first_line = msg.split('\n')[0][:250]
-    return f'Error {provider}: {first_line}'
+    return f'Error {provider_label}: {first_line}'
 
 @app.route('/api/chatbot/send', methods=['POST'])
 @login_required
@@ -8615,21 +8658,34 @@ def chatbot_send():
     if settings.get('chatbot_enabled','0') != '1':
         return jsonify({'error': 'Chatbot tidak aktif'}), 403
 
-    ai_base_url = settings.get('ai_base_url','').strip()
-    if ai_base_url:
-        # Self-hosted: Open WebUI / Ollama / provider lain
+    provider    = settings.get('ai_provider', 'gemini').strip() or 'gemini'
+    ai_base_url = settings.get('ai_base_url', '').strip()
+    api_key     = settings.get('ai_api_key', '').strip()
+
+    # Tentukan base_url dan default_model berdasarkan provider
+    if provider == 'openai':
+        ai_base_url   = 'https://api.openai.com/v1'
+        default_model = 'gpt-4o'
+        if not api_key:
+            return jsonify({'error': 'API key OpenAI belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
+    elif provider == 'claude':
+        default_model = 'claude-sonnet-4-6'
+        if not api_key:
+            return jsonify({'error': 'API key Anthropic (Claude) belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
+    elif provider in ('ollama', 'openwebui'):
+        if not ai_base_url:
+            ai_base_url = 'http://localhost:11434/v1' if provider == 'ollama' else 'http://localhost:3000/api'
         default_model = 'llama3'
-        # Ollama tidak butuh API key — pakai "ollama" sebagai placeholder
-        api_key = settings.get('ai_api_key','').strip() or 'ollama'
+        api_key = api_key or 'ollama'
     else:
-        # Default: Google AI Studio (Gemini)
-        ai_base_url = 'https://generativelanguage.googleapis.com/v1beta/openai/'
+        # Default: Gemini Google AI Studio
+        provider      = 'gemini'
+        ai_base_url   = 'https://generativelanguage.googleapis.com/v1beta/openai/'
         default_model = 'gemini-2.0-flash'
-        api_key = settings.get('ai_api_key','').strip()
         if not api_key:
             return jsonify({'error': 'API key Google AI Studio belum dikonfigurasi. Isi di Pengaturan Sistem → AI Assistant.'}), 503
 
-    model = settings.get('ai_model','').strip() or default_model
+    model = settings.get('ai_model', '').strip() or default_model
 
     # Rate limit per user
     if not _chatbot_check_rate(session.get('user_id', 0)):
@@ -8642,11 +8698,16 @@ def chatbot_send():
     messages = messages[-8:]
 
     try:
-        reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai(),
-                                     base_url=ai_base_url)
+        if provider == 'claude':
+            # Gunakan Anthropic SDK (native tool calling)
+            reply = _chatbot_call_anthropic(api_key, model, messages, CHATBOT_SYSTEM, CHATBOT_TOOLS)
+        else:
+            # OpenAI-compatible: OpenAI / Gemini / Ollama / Open WebUI
+            reply = _chatbot_call_openai(api_key, model, messages, CHATBOT_SYSTEM, _tools_openai(),
+                                         base_url=ai_base_url)
         return jsonify({'reply': reply})
     except Exception as ex:
-        return jsonify({'error': _friendly_ai_error(ex, ai_base_url)}), 500
+        return jsonify({'error': _friendly_ai_error(ex, provider, ai_base_url)}), 500
 
 # ─── Portal: Audit Trail ───────────────────────────────────────────────────────
 
