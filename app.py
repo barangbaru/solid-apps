@@ -2196,6 +2196,7 @@ def set_security_headers(response):
 _EVALUASI_PREFIXES = (
     '/emp', '/eval', '/salary', '/contracts', '/karyawan',
     '/reminders', '/reviews', '/assess', '/settings', '/admin',
+    '/kinerja',
 )
 
 @app.before_request
