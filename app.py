@@ -1953,8 +1953,9 @@ def mfa_challenge_required(session_key='mfa_verified'):
             user = db.execute('SELECT mfa_enabled FROM users WHERE id=?', (session['user_id'],)).fetchone()
             if user and user['mfa_enabled'] and not mfa_session_valid(session_key):
                 qs = request.query_string.decode()
-                session['mfa_return_to']   = request.path + ('?' + qs if qs else '')
-                session['mfa_session_key'] = session_key
+                session['mfa_return_to']      = request.path + ('?' + qs if qs else '')
+                session['mfa_session_key']    = session_key
+                session['mfa_return_app_slug'] = session.get('active_app', 'portal')
                 return redirect(url_for('mfa_challenge'))
             return f(*args, **kwargs)
         return decorated
@@ -2204,7 +2205,9 @@ def auto_set_active_app():
     path = request.path
     skip = ('/login', '/logout', '/static', '/mfa', '/portal/open')
     if any(path.startswith(p) for p in skip):
-        if path.startswith('/mfa'):
+        # MFA: pertahankan app context asal (misal 'evaluasi' saat redirect dari /salary)
+        # Hanya set portal jika belum ada context
+        if path.startswith('/mfa') and not session.get('active_app'):
             session['active_app'] = 'portal'
         return
     if path.startswith('/support'):
@@ -3708,6 +3711,9 @@ def mfa_challenge():
         if user and verify_totp(user['totp_secret'], code):
             sk = session.pop('mfa_session_key', 'mfa_verified')
             session[sk] = datetime.now().timestamp()
+            return_app = session.pop('mfa_return_app_slug', None)
+            if return_app:
+                session['active_app'] = return_app
             return redirect(session.pop('mfa_return_to', url_for('index')))
         flash('Kode MFA salah', 'danger')
     return render_template('mfa_challenge.html')
