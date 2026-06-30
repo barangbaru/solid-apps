@@ -293,78 +293,71 @@ function ansiToHtml(text) {
     .replace(/\033\[\d+m/g, '');
 }
 
-// ── SSE Log Stream ──────────────────────────────────────────────────────────
+// ── Log Polling (non-blocking, ganti SSE) ───────────────────────────────────
 {% if deploy_running and not deploy_done %}
 const logEl    = document.getElementById('deploy-log');
 const statusEl = document.getElementById('log-status');
-let sseActive  = true;
+let pollPos    = {{ log_size }};
+let pollActive = true;
+let staleCount = 0;
 
-function startSSE() {
-  const evtSource = new EventSource('/portal/update/log-stream');
+function pollLog() {
+  if (!pollActive) return;
+  fetch('/portal/update/log-poll?pos=' + pollPos)
+    .then(r => r.json())
+    .then(data => {
+      if (data.lines && data.lines.length > 0 && logEl) {
+        data.lines.forEach(line => {
+          logEl.innerHTML += ansiToHtml(line) + '\n';
+        });
+        logEl.scrollTop = logEl.scrollHeight;
+        staleCount = 0;
+      } else {
+        staleCount++;
+      }
+      pollPos = data.pos;
 
-  evtSource.onmessage = function(e) {
-    const line = e.data;
-    if (line === '{{ UPDATE_DONE_MARKER }}') {
-      statusEl.className = 'badge bg-success';
+      if (data.done) {
+        pollActive = false;
+        statusEl.className = 'badge bg-success';
+        statusEl.textContent = '✓ Selesai';
+        sessionStorage.setItem('hive_just_updated', JSON.stringify({
+          msg: 'Hive berhasil diperbarui.'
+        }));
+        reloadAfter(5, statusEl, '✓ Selesai — reload');
+        return;
+      }
+      if (data.failed) {
+        pollActive = false;
+        statusEl.textContent = '✗ Deploy gagal';
+        statusEl.className = 'badge bg-danger';
+        return;
+      }
+      // Tidak ada log baru & trigger hilang → server kemungkinan sudah restart
+      if (!data.running && staleCount >= 3) {
+        pollActive = false;
+        statusEl.className = 'badge bg-info';
+        sessionStorage.setItem('hive_just_updated', JSON.stringify({
+          msg: 'Server berhasil di-restart setelah update.'
+        }));
+        reloadAfter(6, statusEl, 'Server restart — reload');
+        return;
+      }
+      setTimeout(pollLog, 2000);
+    })
+    .catch(() => {
+      if (!pollActive) return;
+      // Network error = server restart
+      pollActive = false;
+      statusEl.className = 'badge bg-info';
       sessionStorage.setItem('hive_just_updated', JSON.stringify({
-        msg: 'Hive berhasil diperbarui ke v{{ current_version }}.'
+        msg: 'Server berhasil di-restart setelah update.'
       }));
-      sseActive = false;
-      evtSource.close();
-      reloadAfter(4, statusEl, '✓ Selesai — reload');
-      return;
-    }
-    if (line === '{{ UPDATE_FAIL_MARKER }}') {
-      statusEl.textContent = '✗ Deploy gagal';
-      statusEl.className = 'badge bg-danger';
-      sseActive = false;
-      evtSource.close();
-      return;
-    }
-    if (line === 'TIMEOUT') {
-      statusEl.textContent = '⏱ Timeout';
-      statusEl.className = 'badge bg-secondary';
-      sseActive = false;
-      evtSource.close();
-      return;
-    }
-    if (logEl) {
-      logEl.innerHTML += ansiToHtml(line) + '\n';
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-  };
-
-  evtSource.onerror = function() {
-    evtSource.close();
-    if (!sseActive) return;
-    // Koneksi putus → kemungkinan server restart
-    statusEl.className = 'badge bg-info';
-    sessionStorage.setItem('hive_just_updated', JSON.stringify({
-      msg: 'Server berhasil di-restart setelah update.'
-    }));
-    reloadAfter(6, statusEl, 'Server restart — reload');
-  };
+      reloadAfter(6, statusEl, 'Server restart — reload');
+    });
 }
 
-startSSE();
-
-// Fallback polling: jika log tidak update 30 detik, reload untuk cek status
-let lastLogLen = logEl ? logEl.textContent.length : 0;
-let staleCount = 0;
-setInterval(() => {
-  if (!sseActive) return;
-  const cur = logEl ? logEl.textContent.length : 0;
-  if (cur === lastLogLen) {
-    staleCount++;
-    if (staleCount >= 6) { // 30 detik tanpa aktivitas
-      sessionStorage.setItem('hive_just_updated', JSON.stringify({msg: ''}));
-      location.reload();
-    }
-  } else {
-    staleCount = 0;
-    lastLogLen = cur;
-  }
-}, 5000);
+setTimeout(pollLog, 2000);
 
 {% elif log_tail %}
 const logEl = document.getElementById('deploy-log');

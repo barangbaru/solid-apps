@@ -8015,14 +8015,20 @@ def portal_update():
         latest_version_live   = settings.get('update_latest_version', '')
 
     # Status deploy sedang berjalan
-    deploy_running = os.path.exists(UPDATE_TRIGGER_FILE)
-    deploy_done    = False
+    log_tail  = ''
+    log_size  = 0
+    deploy_done = False
     if os.path.exists(UPDATE_LOG_FILE):
         with open(UPDATE_LOG_FILE, 'r', errors='replace') as f:
             log_tail = f.read()
+        log_size    = os.path.getsize(UPDATE_LOG_FILE)
         deploy_done = UPDATE_DONE_MARKER in log_tail or UPDATE_FAIL_MARKER in log_tail
-    else:
-        log_tail = ''
+
+    deploy_running = os.path.exists(UPDATE_TRIGGER_FILE) and not deploy_done
+    # Cleanup trigger file jika log sudah menandai selesai/gagal
+    if deploy_done and os.path.exists(UPDATE_TRIGGER_FILE):
+        try: os.remove(UPDATE_TRIGGER_FILE)
+        except Exception: pass
 
     return render_template('update_center.html',
         settings       = settings,
@@ -8037,6 +8043,7 @@ def portal_update():
         deploy_running = deploy_running,
         deploy_done    = deploy_done,
         log_tail       = log_tail[-8000:] if log_tail else '',
+        log_size       = log_size,
     )
 
 
@@ -8091,41 +8098,43 @@ def portal_update_trigger():
     return redirect(url_for('portal_update'))
 
 
-@app.route('/portal/update/log-stream')
+@app.route('/portal/update/log-poll')
 @login_required
-def portal_update_log_stream():
-    """SSE stream untuk memantau log deploy secara realtime."""
+def portal_update_log_poll():
+    """Non-blocking poll endpoint — kembalikan JSON chunk log baru dari posisi terakhir."""
+    from flask import jsonify
     role = session.get('user_role', '')
     settings = get_settings(get_db())
     notify_roles = [r.strip() for r in settings.get('update_notify_roles', 'superadmin,admin').split(',')]
     if role not in notify_roles:
         abort(403)
 
-    def generate():
-        import time
-        pos = 0
-        timeout = 600  # max 10 menit
-        start   = time.time()
-        while time.time() - start < timeout:
-            if os.path.exists(UPDATE_LOG_FILE):
-                with open(UPDATE_LOG_FILE, 'r', errors='replace') as f:
-                    f.seek(pos)
-                    chunk = f.read(4096)
-                    if chunk:
-                        pos = f.tell()
-                        for line in chunk.splitlines():
-                            yield f'data: {line}\n\n'
-                        if UPDATE_DONE_MARKER in chunk:
-                            yield f'data: {UPDATE_DONE_MARKER}\n\n'
-                            return
-                        if UPDATE_FAIL_MARKER in chunk:
-                            yield f'data: {UPDATE_FAIL_MARKER}\n\n'
-                            return
-            time.sleep(1)
-        yield f'data: TIMEOUT\n\n'
+    pos     = request.args.get('pos', 0, type=int)
+    lines   = []
+    new_pos = pos
+    done    = False
+    failed  = False
 
-    return Response(generate(), mimetype='text/event-stream',
-                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    if os.path.exists(UPDATE_LOG_FILE):
+        try:
+            with open(UPDATE_LOG_FILE, 'r', errors='replace') as f:
+                f.seek(pos)
+                chunk = f.read(8192)
+                new_pos = f.tell()
+            if chunk:
+                lines = chunk.splitlines()
+                done   = UPDATE_DONE_MARKER in chunk
+                failed = UPDATE_FAIL_MARKER in chunk
+        except Exception:
+            pass
+
+    running = os.path.exists(UPDATE_TRIGGER_FILE) and not done and not failed
+    # Cleanup trigger file jika deploy selesai
+    if (done or failed) and os.path.exists(UPDATE_TRIGGER_FILE):
+        try: os.remove(UPDATE_TRIGGER_FILE)
+        except Exception: pass
+
+    return jsonify({'lines': lines, 'pos': new_pos, 'done': done, 'failed': failed, 'running': running})
 
 
 @app.route('/portal/update/cancel', methods=['POST'])
