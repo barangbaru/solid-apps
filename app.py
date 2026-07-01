@@ -7766,8 +7766,8 @@ def eval_review(eval_id):
     reviewer_role = _reviewer_role()
 
     # ── Data analisa sistem untuk approver ──
-    date_from = ev['period_start'] or ''
-    date_to   = ev['period_end']   or ''
+    date_from = ev['task_date_from'] or ''
+    date_to   = ev['task_date_to']   or ''
     perf = calc_task_perf(db, ev['employee_id'], date_from, date_to,
                           benchmark_per_month=get_benchmark_for_emp(db, emp))
     ana  = calc_task_analytics(db, ev['employee_id'], date_from, date_to)

@@ -971,10 +971,22 @@ with app.app_context():
             # Score naik di 2025 untuk performer, stagnan untuk lazy
             bonus = 1 if (year == 2025 and perf >= 4) else 0
 
+            # review_status: Q4-2024 star/solid → approved, lainnya → self_filled (menunggu review)
+            star_solid_names = ['Dewi Rahayu','Rina Wulandari','Fajar Nugroho','Hendra Kusuma',
+                                'Siti Nurhaliza','Budi Santoso','Andi Wijaya','Irwan Fauzi','Maya Sari']
+            if year == 2024 and name in star_solid_names:
+                rev_status = 'approved'
+            else:
+                rev_status = 'self_filled'
+            self_note = ('Evaluasi mandiri selesai. Kontribusi selama ' + periode + ' sudah optimal.'
+                         if perf >= 4 else 'Evaluasi mandiri ' + periode + ' sudah diisi. Mohon review dari atasan.')
             db.execute(
-                '''INSERT INTO evaluations(employee_id,periode,status,evaluator,created_at)
-                   VALUES(?,?,?,?,?)''',
-                (eid, periode, 'completed', 'Budi Santoso', f'{year}-11-15')
+                '''INSERT INTO evaluations(employee_id,periode,status,evaluator,created_at,
+                                          review_status,self_notes,self_achievements)
+                   VALUES(?,?,?,?,?,?,?,?)''',
+                (eid, periode, 'completed', 'Budi Santoso', f'{year}-11-15',
+                 rev_status, self_note,
+                 f'Progress task dan project {periode} terlampir sesuai data sistem.')
             )
             eval_id = db.execute(
                 "SELECT id FROM evaluations WHERE employee_id=? AND periode=?", (eid, periode)
