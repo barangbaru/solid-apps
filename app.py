@@ -1080,6 +1080,7 @@ CREATE TABLE IF NOT EXISTS pc_tasks (
     description TEXT DEFAULT '',
     status TEXT DEFAULT 'backlog',
     priority TEXT DEFAULT 'Medium',
+    difficulty TEXT DEFAULT 'Normal',
     due_date TEXT DEFAULT NULL,
     sort_order INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now','localtime'))
@@ -1088,7 +1089,29 @@ CREATE TABLE IF NOT EXISTS pc_task_assignees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id INTEGER NOT NULL REFERENCES pc_tasks(id) ON DELETE CASCADE,
     employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    self_assigned INTEGER DEFAULT 0,
     UNIQUE(task_id, employee_id)
+);
+CREATE TABLE IF NOT EXISTS peer_review_dimensions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    eval_id INTEGER NOT NULL REFERENCES evaluations(id) ON DELETE CASCADE,
+    slot INTEGER DEFAULT 1,
+    reviewer_name TEXT DEFAULT '',
+    dim_kerjasama INTEGER DEFAULT NULL,
+    dim_komunikasi INTEGER DEFAULT NULL,
+    dim_keandalan INTEGER DEFAULT NULL,
+    dim_inisiatif INTEGER DEFAULT NULL,
+    dim_kualitas INTEGER DEFAULT NULL,
+    feedback TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS grade_benchmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    divisi TEXT NOT NULL,
+    level TEXT NOT NULL,
+    benchmark_per_month REAL DEFAULT 100,
+    notes TEXT DEFAULT '',
+    UNIQUE(divisi, level)
 );
 CREATE TABLE IF NOT EXISTS pc_proposed_changes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1253,6 +1276,19 @@ MIGRATIONS = [
     ('notif_recipients',     'notif_types',             'TEXT NOT NULL DEFAULT \'["*"]\''),
     ('notif_recipients',     'is_active',               'INTEGER DEFAULT 1'),
     ('notif_recipients',     'created_at',              "TEXT DEFAULT (datetime('now','localtime'))"),
+    # Task difficulty & self_assigned
+    ('pc_tasks',             'difficulty',              "TEXT DEFAULT 'Normal'"),
+    ('pc_task_assignees',    'self_assigned',           'INTEGER DEFAULT 0'),
+    # Peer review structured dimensions
+    ('peer_reviews',         'dim_kerjasama',           'INTEGER DEFAULT NULL'),
+    ('peer_reviews',         'dim_komunikasi',          'INTEGER DEFAULT NULL'),
+    ('peer_reviews',         'dim_keandalan',           'INTEGER DEFAULT NULL'),
+    ('peer_reviews',         'dim_inisiatif',           'INTEGER DEFAULT NULL'),
+    ('peer_reviews',         'dim_kualitas',            'INTEGER DEFAULT NULL'),
+    # Evaluasi AI narrative
+    ('evaluations',          'ai_summary',              "TEXT DEFAULT ''"),
+    ('evaluations',          'ai_recommendation',       "TEXT DEFAULT ''"),
+    ('evaluations',          'ai_generated_at',         "TEXT DEFAULT ''"),
 ]
 
 SC_TICKET_PRIORITIES = [
@@ -1738,6 +1774,32 @@ def init_db():
         for name, cat, desc, icon, sort in _items:
             db.execute('INSERT INTO bk_items(name,category,description,icon,sort_order) VALUES(?,?,?,?,?)',
                        (name, cat, desc, icon, sort))
+    db.commit()
+
+    # Seed grade_benchmarks default (hanya jika belum ada data)
+    if db.execute('SELECT COUNT(*) FROM grade_benchmarks').fetchone()[0] == 0:
+        _grade_bm = [
+            ('Programmer',      'Senior',  130, 'Senior dev — project lead capable'),
+            ('Programmer',      'Staff',   100, 'Mid-level dev'),
+            ('Programmer',      'Junior',   80, 'Junior dev — supervised'),
+            ('Implementor/BPS', 'Senior',  120, 'Senior implementor'),
+            ('Implementor/BPS', 'Staff',    90, 'Implementor'),
+            ('Implementor/BPS', 'Junior',   70, 'Junior implementor'),
+            ('Helpdesk Support','Senior',  110, 'Senior HD — SLA keeper'),
+            ('Helpdesk Support','Staff',    90, 'Helpdesk'),
+            ('Helpdesk Support','Junior',   70, 'Junior HD'),
+            ('Tester',          'Senior',  110, 'QA lead'),
+            ('Tester',          'Staff',    90, 'Tester'),
+            ('Tester',          'Junior',   70, 'Junior tester'),
+            ('Management',      'Manager', 120, 'Manager / Project Manager'),
+            ('Management',      'Senior',  110, 'Senior management'),
+            ('Management',      'Staff',    90, 'Staff management'),
+        ]
+        for divisi, level, bm, notes in _grade_bm:
+            db.execute(
+                "INSERT OR IGNORE INTO grade_benchmarks(divisi,level,benchmark_per_month,notes) VALUES(?,?,?,?)",
+                (divisi, level, bm, notes)
+            )
     db.commit()
     db.close()
 
@@ -2986,6 +3048,42 @@ def _version_gt(a, b):
     return parts(a) > parts(b)
 
 
+_GRADE_BENCHMARK_DEFAULTS = {
+    # (divisi_substr, level) : benchmark_per_month
+    ('Programmer',      'Senior'): 130,
+    ('Programmer',      'Staff'):  100,
+    ('Programmer',      'Junior'):  80,
+    ('Implementor',     'Senior'): 120,
+    ('Implementor',     'Staff'):   90,
+    ('Implementor',     'Junior'):  70,
+    ('Helpdesk',        'Senior'): 110,
+    ('Helpdesk',        'Staff'):   90,
+    ('Helpdesk',        'Junior'):  70,
+    ('Tester',          'Senior'): 110,
+    ('Tester',          'Staff'):   90,
+    ('Tester',          'Junior'):  70,
+    ('Management',      'Manager'): 120,
+    ('Management',      'Senior'): 110,
+    ('Management',      'Staff'):   90,
+}
+
+def get_benchmark_for_emp(db, emp):
+    """Ambil benchmark per-bulan sesuai divisi+level. Cek DB dulu, fallback ke default."""
+    divisi = emp['divisi'] or ''
+    level  = emp['level'] or 'Staff'
+    row = db.execute(
+        "SELECT benchmark_per_month FROM grade_benchmarks WHERE divisi=? AND level=?",
+        (divisi, level)
+    ).fetchone()
+    if row:
+        return float(row['benchmark_per_month'])
+    # Fuzzy match ke defaults
+    for (div_substr, lvl), bm in _GRADE_BENCHMARK_DEFAULTS.items():
+        if div_substr.lower() in divisi.lower() and lvl.lower() == level.lower():
+            return float(bm)
+    return 100.0
+
+
 def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100.0):
     """Hitung skor kinerja task otomatis dari semua sumber data.
 
@@ -3111,21 +3209,32 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
                         (_mult_ontime(c, r['resolved_date'], r['resolved_date']) or 1.0), 2)
             _add('project_issue', c['label'], f"Issue {r['issue_no']}: {r['title'][:40]} ({r['proj_name']})", pts)
 
-    # ── 5. Project Tasks (done, assignee) ───────────────────────────────────────
+    # ── 5. Project Tasks (done, assignee) — dengan difficulty & self_assigned ─────
+    _diff_map = {'hard': 2.0, 'sulit': 2.0, 'normal': 1.0, 'easy': 0.5, 'mudah': 0.5}
+    _self_bonus = 1.15  # inisiatif self-assign +15%
     if 'project_task' in cfg:
         c = cfg['project_task']
         p = [emp_id]
         dw = _date_where('t.due_date', p)
         rows = db.execute(f'''
-            SELECT t.title, t.priority, t.due_date, t.status, p.name AS proj_name
+            SELECT t.title, t.priority, t.due_date, t.status, t.difficulty,
+                   p.name AS proj_name, COALESCE(ta.self_assigned,0) AS self_assigned
             FROM pc_task_assignees ta
             JOIN pc_tasks t ON t.id=ta.task_id
             JOIN pc_projects p ON p.id=t.project_id
             WHERE ta.employee_id=? AND t.status IN ('done','closed'){dw}
         ''', p).fetchall()
         for r in rows:
-            pts = round(float(c.get('base_points') or 0) * (_mult_priority(c, r['priority'] or 'Medium') or 1.0), 2)
-            _add('project_task', c['label'], f"Task: {r['title'][:40]} ({r['proj_name']})", pts)
+            diff_m = _diff_map.get((r['difficulty'] or 'Normal').lower(), 1.0)
+            init_m = _self_bonus if r['self_assigned'] else 1.0
+            pts = round(
+                float(c.get('base_points') or 0)
+                * (_mult_priority(c, r['priority'] or 'Medium') or 1.0)
+                * diff_m * init_m, 2
+            )
+            label_sfx = ' [Self]' if r['self_assigned'] else ''
+            _add('project_task', c['label'],
+                 f"Task: {r['title'][:35]} ({r['proj_name']}) [{r['difficulty'] or 'Normal'}]{label_sfx}", pts)
 
     # ── 6. POC / Presales ───────────────────────────────────────────────────────
     if 'poc_presales' in cfg:
@@ -3315,18 +3424,23 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
              done_date, pts, r['priority'] or 'Medium', r['proj'])
 
     # ── Project Tasks ───────────────────────────────────────────────────────
+    _diff_map_a = {'hard': 2.0, 'sulit': 2.0, 'normal': 1.0, 'easy': 0.5, 'mudah': 0.5}
     p = [emp_id]
     rows = db.execute(f'''
-        SELECT t.title, t.priority, t.due_date, t.status, t.created_at, p.name AS proj
+        SELECT t.title, t.priority, t.due_date, t.status, t.created_at, t.difficulty,
+               p.name AS proj, COALESCE(ta.self_assigned,0) AS self_assigned
         FROM pc_task_assignees ta JOIN pc_tasks t ON t.id=ta.task_id
         JOIN pc_projects p ON p.id=t.project_id
         WHERE ta.employee_id=?{_dw("t.created_at", p)}
     ''', p).fetchall()
     for r in rows:
-        is_done = r['status'] in ('done','closed')
-        done_date = r['due_date'] if is_done else None  # proxy: done on due_date
-        pts = round(_bpts('project_task') * _pmult('project_task', r['priority']), 2)
-        _add('project_task', 'Task Project', f"{r['title'][:40]} ({r['proj']})",
+        is_done  = r['status'] in ('done','closed')
+        done_date = r['due_date'] if is_done else None
+        diff_m   = _diff_map_a.get((r['difficulty'] or 'Normal').lower(), 1.0)
+        init_m   = 1.15 if r['self_assigned'] else 1.0
+        pts      = round(_bpts('project_task') * _pmult('project_task', r['priority']) * diff_m * init_m, 2)
+        label    = f"Task [{r['difficulty'] or 'Normal'}]" + (' [Self]' if r['self_assigned'] else '')
+        _add(label, 'Task Project', f"{r['title'][:40]} ({r['proj']})",
              r['due_date'], r['created_at'][:10] if r['created_at'] else None,
              done_date if is_done else None, pts, r['priority'] or 'Medium', r['proj'])
 
@@ -7101,10 +7215,21 @@ def eval_summary(eval_id):
                       development_plan=?,status=? WHERE id=?''',
                    (evaluator, overall, plan, status, eval_id))
         for slot in range(1, 6):
-            db.execute('UPDATE peer_reviews SET reviewer_name=?,feedback=? WHERE eval_id=? AND slot=?',
-                       (request.form.get(f'peer_name_{slot}','').strip(),
-                        request.form.get(f'peer_feedback_{slot}','').strip(),
-                        eval_id, slot))
+            def _int_or_none(v):
+                try: return max(1, min(5, int(v))) if v and str(v).strip() else None
+                except: return None
+            db.execute('''UPDATE peer_reviews SET
+                reviewer_name=?, feedback=?,
+                dim_kerjasama=?, dim_komunikasi=?, dim_keandalan=?, dim_inisiatif=?, dim_kualitas=?
+                WHERE eval_id=? AND slot=?''',
+                (request.form.get(f'peer_name_{slot}','').strip(),
+                 request.form.get(f'peer_feedback_{slot}','').strip(),
+                 _int_or_none(request.form.get(f'peer_dim_kerjasama_{slot}')),
+                 _int_or_none(request.form.get(f'peer_dim_komunikasi_{slot}')),
+                 _int_or_none(request.form.get(f'peer_dim_keandalan_{slot}')),
+                 _int_or_none(request.form.get(f'peer_dim_inisiatif_{slot}')),
+                 _int_or_none(request.form.get(f'peer_dim_kualitas_{slot}')),
+                 eval_id, slot))
         db.commit()
         if action == 'finalize':
             flash('Evaluasi berhasil difinalkan!', 'success')
@@ -7148,6 +7273,217 @@ def eval_delete(eval_id):
     db.commit()
     flash('Evaluasi dihapus', 'warning')
     return redirect(url_for('index'))
+
+# ─── AI Evaluation Summary (Ollama / OpenAI-compat) ──────────────────────────
+
+def _build_eval_ai_prompt(db, eval_id):
+    """Kumpulkan semua data evaluasi sebagai teks terstruktur untuk prompt AI."""
+    import json as _json
+    ev  = db.execute('SELECT * FROM evaluations WHERE id=?', (eval_id,)).fetchone()
+    if not ev:
+        return None, None
+    emp = db.execute('SELECT * FROM employees WHERE id=?', (ev['employee_id'],)).fetchone()
+    if not emp:
+        return None, None
+
+    # Task analytics
+    perf = calc_task_perf(db, emp['id'], ev['task_date_from'] or '', ev['task_date_to'] or '')
+    ana  = calc_task_analytics(db, emp['id'], ev['task_date_from'] or '', ev['task_date_to'] or '')
+
+    # Skill scores
+    skill_rows = db.execute('''
+        SELECT sc.name AS cat, si.name AS item, ss.score
+        FROM skill_scores ss
+        JOIN skill_items si ON si.id=ss.skill_item_id
+        JOIN skill_categories sc ON sc.id=si.category_id
+        WHERE ss.eval_id=? ORDER BY sc.name, si.name
+    ''', (eval_id,)).fetchall()
+
+    # Ability scores
+    ability_rows = db.execute('''
+        SELECT ai.name, s.level
+        FROM ability_scores s JOIN ability_items ai ON ai.id=s.ability_item_id
+        WHERE s.eval_id=?
+    ''', (eval_id,)).fetchall()
+
+    # Competency scores
+    comp_rows = db.execute('''
+        SELECT ci.point_measurement, cs.rating
+        FROM competency_scores cs JOIN competency_items ci ON ci.id=cs.competency_item_id
+        WHERE cs.eval_id=?
+    ''', (eval_id,)).fetchall()
+
+    # Peer reviews (structured dims jika ada, fallback ke feedback text)
+    peer_rows = db.execute(
+        'SELECT * FROM peer_reviews WHERE eval_id=? ORDER BY slot', (eval_id,)
+    ).fetchall()
+
+    # Benchmark untuk divisi+level
+    bm = get_benchmark_for_emp(db, emp)
+
+    # Format prompt
+    lines = [
+        f"=== DATA EVALUASI KARYAWAN ===",
+        f"Nama      : {emp['name']}",
+        f"Jabatan   : {emp['jabatan']} — {emp['divisi']}",
+        f"Level     : {emp['level']}",
+        f"Periode   : {ev['periode']}",
+        f"Status Karyawan: {'Kontrak' if emp['employment_type']=='kontrak' else 'Tetap'}",
+        "",
+        f"=== SKOR KINERJA TASK (otomatis dari sistem) ===",
+        f"Task Score     : {perf['task_score']:.1f} / 100 (benchmark {bm} poin/bulan)",
+        f"Total Poin Raw : {perf['total_raw']:.1f}",
+        f"Durasi Periode : {perf['months']:.1f} bulan",
+        f"Task Selesai   : {ana['total_done']} task",
+        f"Task Open      : {ana['total_open']} task (overtime: {ana['open_overtime']})",
+        f"Ontime Rate    : {ana['ontime_rate']}%" if ana['ontime_rate'] is not None else "Ontime Rate: N/A",
+        f"Max Concurrent : {ana['concurrent_max']} task bersamaan",
+        "",
+        "Breakdown sumber poin:",
+    ]
+    for b in perf['breakdown']:
+        lines.append(f"  - {b['label']}: {b['count']}x = {b['raw_pts']:.1f} poin")
+
+    if skill_rows:
+        lines += ["", "=== SKILL SCORES (1-5) ==="]
+        cat_cur = None
+        for r in skill_rows:
+            if r['cat'] != cat_cur:
+                lines.append(f"  [{r['cat']}]")
+                cat_cur = r['cat']
+            lines.append(f"    - {r['item']}: {r['score']}/5")
+
+    if ability_rows:
+        lines += ["", "=== ABILITY LEVEL (A=Terbaik, D=Perlu Bimbingan) ==="]
+        for r in ability_rows:
+            lines.append(f"  - {r['name']}: Level {r['level']}")
+
+    if comp_rows:
+        lines += ["", "=== KOMPETENSI (1-5) ==="]
+        for r in comp_rows:
+            lines.append(f"  - {r['point_measurement']}: {r['rating']}/5")
+
+    if peer_rows:
+        lines += ["", "=== PEER REVIEW ==="]
+        for pr in peer_rows:
+            lines.append(f"  Reviewer: {pr['reviewer_name'] or 'Anonim'}")
+            # Structured dimensions
+            dims = {
+                'Kerjasama': pr['dim_kerjasama'],
+                'Komunikasi': pr['dim_komunikasi'],
+                'Keandalan': pr['dim_keandalan'],
+                'Inisiatif': pr['dim_inisiatif'],
+                'Kualitas Kerja': pr['dim_kualitas'],
+            }
+            dim_text = ', '.join(f"{k}:{v}/5" for k, v in dims.items() if v is not None)
+            if dim_text:
+                lines.append(f"    Dimensi: {dim_text}")
+            if pr['feedback']:
+                lines.append(f"    Feedback: {pr['feedback']}")
+
+    if ev['self_notes']:
+        lines += ["", "=== SELF ASSESSMENT ===", f"Catatan Diri : {ev['self_notes']}"]
+    if ev['self_achievements']:
+        lines.append(f"Pencapaian   : {ev['self_achievements']}")
+    if ev['self_improvements']:
+        lines.append(f"Rencana Improve: {ev['self_improvements']}")
+
+    prompt_data = '\n'.join(lines)
+    return prompt_data, emp
+
+
+@app.route('/eval/<int:eval_id>/ai-summary', methods=['POST'])
+@login_required
+def eval_ai_summary(eval_id):
+    """Generate ringkasan evaluasi + rekomendasi menggunakan Ollama/AI."""
+    db       = get_db()
+    ev       = get_eval_or_404(db, eval_id)
+    settings = get_settings(db)
+
+    ai_provider = settings.get('ai_provider', '')
+    ai_key      = settings.get('ai_api_key', '')
+    ai_model    = settings.get('ai_model', '')
+    ai_base_url = settings.get('ai_base_url', '')
+
+    if not ai_provider:
+        return {'ok': False, 'error': 'Konfigurasi AI belum diset. Hubungi administrator.'}, 400
+
+    prompt_data, emp = _build_eval_ai_prompt(db, eval_id)
+    if not prompt_data:
+        return {'ok': False, 'error': 'Data evaluasi tidak ditemukan.'}, 404
+
+    system_prompt = (
+        "Kamu adalah sistem analisa kinerja SDM yang objektif dan profesional. "
+        "Tugasmu adalah menganalisa data kinerja karyawan secara komprehensif dan menghasilkan:\n"
+        "1. RINGKASAN KINERJA: narasi singkat 2-3 paragraf yang menjelaskan kekuatan, area lemah, "
+        "   dan pola kinerja berdasarkan data kuantitatif (bukan opini).\n"
+        "2. REKOMENDASI: poin-poin konkret (format: - Item: Rekomendasi) mencakup:\n"
+        "   - Kenaikan Gaji: berikan estimasi % yang wajar berdasarkan performa\n"
+        "   - Jenjang Karir: pertahankan/naikan level/PIP/tidak diperpanjang kontrak\n"
+        "   - Distribusi Task: apakah beban kerja sudah optimal atau perlu diseimbangkan\n"
+        "   - Skill Development: area yang perlu ditingkatkan\n"
+        "   - Risiko: jika ada indikator burnout (concurrent terlalu tinggi) atau underperform\n"
+        "Gunakan bahasa Indonesia yang formal dan profesional. "
+        "Basis semua analisa pada data numerik yang diberikan, bukan asumsi. "
+        "Hindari penilaian yang subyektif tanpa dasar data."
+    )
+
+    user_message = (
+        f"{prompt_data}\n\n"
+        "Berdasarkan seluruh data di atas, berikan:\n"
+        "1. RINGKASAN KINERJA\n"
+        "2. REKOMENDASI (dalam poin-poin)\n\n"
+        "Pisahkan dua bagian tersebut dengan garis '---'."
+    )
+
+    try:
+        if ai_provider == 'anthropic':
+            import anthropic as _ant
+            client = _ant.Anthropic(api_key=ai_key)
+            resp = client.messages.create(
+                model=ai_model or 'claude-sonnet-4-6',
+                max_tokens=1500,
+                system=system_prompt,
+                messages=[{'role': 'user', 'content': user_message}],
+            )
+            result_text = resp.content[0].text if resp.content else ''
+        else:
+            # Ollama / OpenAI-compat / openai
+            import openai as _oai
+            kwargs = {'api_key': ai_key or 'ollama'}
+            if ai_base_url:
+                kwargs['base_url'] = ai_base_url
+            client = _oai.OpenAI(**kwargs)
+            resp = client.chat.completions.create(
+                model=ai_model or 'llama3',
+                max_tokens=1500,
+                messages=[
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user',   'content': user_message},
+                ],
+            )
+            result_text = resp.choices[0].message.content or ''
+
+        # Split ringkasan vs rekomendasi
+        if '---' in result_text:
+            parts = result_text.split('---', 1)
+            summary_text = parts[0].strip()
+            recom_text   = parts[1].strip()
+        else:
+            summary_text = result_text.strip()
+            recom_text   = ''
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M')
+        db.execute(
+            "UPDATE evaluations SET ai_summary=?, ai_recommendation=?, ai_generated_at=? WHERE id=?",
+            (summary_text, recom_text, now, eval_id)
+        )
+        db.commit()
+        return {'ok': True, 'summary': summary_text, 'recommendation': recom_text, 'generated_at': now}
+
+    except Exception as e:
+        return {'ok': False, 'error': f'Gagal menghubungi AI: {e}'}, 500
+
 
 # ─── Self-Assessment & Review Routes ──────────────────────────────────────────
 
@@ -8261,7 +8597,8 @@ def kinerja_tim():
 
     members = []
     for emp in emps:
-        perf = calc_task_perf(db, emp['id'], date_from, date_to, benchmark)
+        bm   = benchmark if benchmark != 100 else get_benchmark_for_emp(db, emp)
+        perf = calc_task_perf(db, emp['id'], date_from, date_to, bm)
         last_eval = db.execute('''
             SELECT final_total, task_score, status, periode FROM evaluations
             WHERE employee_id=? ORDER BY id DESC LIMIT 1
@@ -8269,6 +8606,7 @@ def kinerja_tim():
         members.append({
             'emp':        emp,
             'perf':       perf,
+            'bm':         bm,
             'last_eval':  last_eval,
         })
 
@@ -8366,6 +8704,194 @@ def api_task_score(emp_id):
     perf = calc_task_perf(db, emp_id, date_from, date_to, benchmark)
     return app.response_class(
         response=_json.dumps(perf, ensure_ascii=False),
+        mimetype='application/json'
+    )
+
+
+@app.route('/kinerja/divisi')
+@login_required
+def kinerja_divisi():
+    """Dashboard kinerja per divisi: siapa yang perlu diratakan, siapa yang peak."""
+    db        = get_db()
+    divisi    = request.args.get('divisi', '')
+    date_from = request.args.get('from', '')
+    date_to   = request.args.get('to', '')
+
+    divisi_list = [r['divisi'] for r in db.execute(
+        "SELECT DISTINCT divisi FROM employees WHERE is_active=1 AND divisi!='' ORDER BY divisi"
+    ).fetchall()]
+
+    if divisi:
+        emps = db.execute(
+            "SELECT * FROM employees WHERE is_active=1 AND divisi=? ORDER BY name", (divisi,)
+        ).fetchall()
+    else:
+        emps = db.execute(
+            "SELECT * FROM employees WHERE is_active=1 ORDER BY divisi, name"
+        ).fetchall()
+
+    members = []
+    for emp in emps:
+        bm   = get_benchmark_for_emp(db, emp)
+        perf = calc_task_perf(db, emp['id'], date_from, date_to, bm)
+        ana  = calc_task_analytics(db, emp['id'], date_from, date_to)
+
+        # Ambil skill rata-rata dari evaluasi terbaru
+        last_eval = db.execute(
+            "SELECT id, final_total, task_score, periode FROM evaluations "
+            "WHERE employee_id=? ORDER BY id DESC LIMIT 1", (emp['id'],)
+        ).fetchone()
+        avg_skill = None
+        if last_eval:
+            row = db.execute(
+                "SELECT AVG(score) AS avg FROM skill_scores WHERE eval_id=?",
+                (last_eval['id'],)
+            ).fetchone()
+            avg_skill = round(row['avg'], 2) if row and row['avg'] else None
+
+        # Distribusi task berdasarkan difficulty
+        diff_dist = {}
+        for row in db.execute('''
+            SELECT COALESCE(t.difficulty,'Normal') AS diff, COUNT(*) AS cnt
+            FROM pc_task_assignees ta
+            JOIN pc_tasks t ON t.id=ta.task_id
+            WHERE ta.employee_id=?
+            GROUP BY diff
+        ''', (emp['id'],)).fetchall():
+            diff_dist[row['diff']] = row['cnt']
+
+        # Hitung peer review rata-rata (structured dimensions)
+        peer_avg = db.execute('''
+            SELECT AVG(dim_kerjasama) AS kj, AVG(dim_komunikasi) AS km,
+                   AVG(dim_keandalan) AS kd, AVG(dim_inisiatif) AS ini,
+                   AVG(dim_kualitas) AS kl
+            FROM peer_reviews
+            WHERE eval_id IN (SELECT id FROM evaluations WHERE employee_id=?)
+              AND dim_kerjasama IS NOT NULL
+        ''', (emp['id'],)).fetchone()
+
+        members.append({
+            'emp':       emp,
+            'perf':      perf,
+            'ana':       ana,
+            'bm':        bm,
+            'last_eval': last_eval,
+            'avg_skill': avg_skill,
+            'diff_dist': diff_dist,
+            'peer_avg':  dict(peer_avg) if peer_avg else {},
+        })
+
+    # Kelompokkan per divisi untuk perbandingan
+    div_groups = {}
+    for m in members:
+        d = m['emp']['divisi'] or '—'
+        div_groups.setdefault(d, []).append(m)
+
+    div_summary = {}
+    for d, mlist in div_groups.items():
+        scores = [m['perf']['task_score'] for m in mlist]
+        workloads = [m['ana']['total_done'] + m['ana']['total_open'] for m in mlist]
+        avg_s  = round(sum(scores) / len(scores), 1) if scores else 0
+        max_s  = max(scores) if scores else 0
+        min_s  = min(scores) if scores else 0
+        std_s  = 0.0
+        if len(scores) > 1:
+            import math
+            mean = sum(scores) / len(scores)
+            std_s = round(math.sqrt(sum((x - mean) ** 2 for x in scores) / len(scores)), 1)
+
+        # Identifikasi siapa yang overloaded vs underloaded (task count)
+        avg_wl = sum(workloads) / len(workloads) if workloads else 0
+        for m in mlist:
+            wl = m['ana']['total_done'] + m['ana']['total_open']
+            if avg_wl > 0:
+                m['wl_ratio'] = round(wl / avg_wl, 2)  # >1.3 = overloaded, <0.7 = underloaded
+            else:
+                m['wl_ratio'] = 1.0
+            m['wl_flag'] = (
+                'overloaded'  if m['wl_ratio'] > 1.3 else
+                'underloaded' if m['wl_ratio'] < 0.7 else
+                'balanced'
+            )
+            m['score_flag'] = (
+                'peak'   if m['perf']['task_score'] >= avg_s * 1.2 else
+                'low'    if m['perf']['task_score'] <= avg_s * 0.8 else
+                'normal'
+            )
+
+        div_summary[d] = {
+            'avg': avg_s, 'max': max_s, 'min': min_s, 'std': std_s,
+            'count': len(mlist),
+        }
+
+    # Urutkan members dalam setiap divisi: skor tertinggi dulu
+    for d in div_groups:
+        div_groups[d].sort(key=lambda x: x['perf']['task_score'], reverse=True)
+
+    # Rekomendasi pemerataan: pasangkan yang overloaded + peak dengan yang underloaded + low
+    rebalance_hints = []
+    for d, mlist in div_groups.items():
+        overloaded = [m for m in mlist if m['wl_flag'] == 'overloaded']
+        underloaded = [m for m in mlist if m['wl_flag'] == 'underloaded']
+        if overloaded and underloaded:
+            for ov in overloaded[:2]:
+                for un in underloaded[:2]:
+                    rebalance_hints.append({
+                        'divisi': d,
+                        'from_emp': ov['emp']['name'],
+                        'from_wl': ov['wl_ratio'],
+                        'from_score': ov['perf']['task_score'],
+                        'to_emp': un['emp']['name'],
+                        'to_wl': un['wl_ratio'],
+                        'to_score': un['perf']['task_score'],
+                    })
+
+    return render_template('kinerja_divisi.html',
+        div_groups=div_groups, div_summary=div_summary,
+        divisi=divisi, divisi_list=divisi_list,
+        date_from=date_from, date_to=date_to,
+        rebalance_hints=rebalance_hints,
+    )
+
+
+@app.route('/api/kinerja/divisi-data')
+@login_required
+def api_kinerja_divisi_data():
+    """JSON endpoint untuk chart performa per divisi."""
+    import json as _json
+    db        = get_db()
+    date_from = request.args.get('from', '')
+    date_to   = request.args.get('to', '')
+
+    divisi_list = [r['divisi'] for r in db.execute(
+        "SELECT DISTINCT divisi FROM employees WHERE is_active=1 AND divisi!='' ORDER BY divisi"
+    ).fetchall()]
+
+    result = []
+    for div in divisi_list:
+        emps = db.execute(
+            "SELECT * FROM employees WHERE is_active=1 AND divisi=? ORDER BY name", (div,)
+        ).fetchall()
+        members_data = []
+        for emp in emps:
+            bm   = get_benchmark_for_emp(db, emp)
+            perf = calc_task_perf(db, emp['id'], date_from, date_to, bm)
+            ana  = calc_task_analytics(db, emp['id'], date_from, date_to)
+            members_data.append({
+                'name':         emp['name'],
+                'level':        emp['level'],
+                'task_score':   perf['task_score'],
+                'total_done':   ana['total_done'],
+                'total_open':   ana['total_open'],
+                'open_overtime':ana['open_overtime'],
+                'ontime_rate':  ana['ontime_rate'],
+                'concurrent_max': ana['concurrent_max'],
+                'benchmark':    bm,
+            })
+        result.append({'divisi': div, 'members': members_data})
+
+    return app.response_class(
+        response=_json.dumps(result, ensure_ascii=False),
         mimetype='application/json'
     )
 

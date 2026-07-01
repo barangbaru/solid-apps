@@ -137,29 +137,106 @@
       </div>
     </div>
 
-    <!-- Peer Reviews -->
+    <!-- Peer Reviews Terstruktur -->
     <div class="card mb-3">
-      <div class="card-header py-2 fw-bold">
-        <i class="bi bi-chat-quote"></i> Penilaian/Saran Rekan Kerja
-        <small class="text-muted fw-normal">(diisi oleh rekan kerja)</small>
+      <div class="card-header py-2 fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-chat-quote"></i> Penilaian Rekan Kerja
+          <small class="text-muted fw-normal">(rating 1–5 per dimensi + narasi)</small></span>
+        <span class="badge bg-secondary-subtle text-secondary border">{{ peers|length }} reviewer</span>
       </div>
       <div class="card-body">
         {% for peer in peers %}
-        <div class="mb-3 p-2 border rounded">
-          <div class="row g-2">
-            <div class="col-md-3">
+        <div class="mb-3 p-3 border rounded bg-light-subtle">
+          <div class="row g-2 mb-2">
+            <div class="col-md-4">
               <label class="form-label small text-muted mb-1">Nama Reviewer {{ peer.slot }}</label>
               <input type="text" name="peer_name_{{ peer.slot }}" class="form-control form-control-sm"
                      value="{{ peer.reviewer_name }}" placeholder="Nama rekan">
             </div>
-            <div class="col-md-9">
-              <label class="form-label small text-muted mb-1">Penilaian / Saran</label>
-              <textarea name="peer_feedback_{{ peer.slot }}" class="form-control form-control-sm" rows="2"
-                        placeholder="Tuliskan penilaian atau saran...">{{ peer.feedback }}</textarea>
+            <div class="col-md-8">
+              <!-- Dimensi rating 1-5 -->
+              <label class="form-label small text-muted mb-1">Rating per Dimensi (1=Kurang, 5=Luar Biasa)</label>
+              <div class="row g-1">
+                {% set dims = [
+                  ('kerjasama','Kerjasama Tim','people'),
+                  ('komunikasi','Komunikasi','chat'),
+                  ('keandalan','Keandalan','shield-check'),
+                  ('inisiatif','Inisiatif','lightbulb'),
+                  ('kualitas','Kualitas Kerja','star'),
+                ] %}
+                {% for dim_key, dim_label, dim_icon in dims %}
+                {% set dim_val = peer['dim_' ~ dim_key] %}
+                <div class="col">
+                  <label class="form-label small text-muted mb-0" title="{{ dim_label }}">
+                    <i class="bi bi-{{ dim_icon }}"></i> {{ dim_label[:4] }}…
+                  </label>
+                  <select name="peer_dim_{{ dim_key }}_{{ peer.slot }}" class="form-select form-select-sm">
+                    <option value="">—</option>
+                    {% for v in [1,2,3,4,5] %}
+                    <option value="{{ v }}" {% if dim_val == v %}selected{% endif %}>{{ v }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                {% endfor %}
+              </div>
             </div>
           </div>
+          <label class="form-label small text-muted mb-1">Narasi / Saran</label>
+          <textarea name="peer_feedback_{{ peer.slot }}" class="form-control form-control-sm" rows="2"
+                    placeholder="Tuliskan penilaian atau saran spesifik...">{{ peer.feedback }}</textarea>
+          {# Tampilkan rata-rata jika ada #}
+          {% set dims_filled = [peer.dim_kerjasama, peer.dim_komunikasi, peer.dim_keandalan, peer.dim_inisiatif, peer.dim_kualitas] | select('ne', None) | list %}
+          {% if dims_filled %}
+          <div class="mt-1">
+            <small class="text-muted">Avg dimensi:
+              <strong>{{ '%.1f'|format(dims_filled|sum / dims_filled|length) }}/5</strong>
+            </small>
+          </div>
+          {% endif %}
         </div>
         {% endfor %}
+      </div>
+    </div>
+
+    <!-- AI Analysis -->
+    <div class="card mb-3 border-primary-subtle">
+      <div class="card-header py-2 fw-bold bg-primary-subtle d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cpu"></i> Analisa AI — Ringkasan & Rekomendasi</span>
+        <button type="button" class="btn btn-sm btn-primary" id="btnGenAI" onclick="generateAISummary()">
+          <i class="bi bi-stars me-1"></i>
+          {{ 'Regenerasi AI' if ev.ai_summary else 'Generate AI' }}
+        </button>
+      </div>
+      <div class="card-body">
+        {% if ev.ai_generated_at %}
+        <div class="small text-muted mb-2">
+          <i class="bi bi-clock me-1"></i>Terakhir digenerate: {{ ev.ai_generated_at }}
+        </div>
+        {% endif %}
+        <div id="aiLoading" class="d-none text-center py-3">
+          <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+          <span class="text-muted">AI sedang menganalisa data kinerja...</span>
+        </div>
+        <div id="aiError" class="alert alert-danger py-2 small d-none"></div>
+        <div id="aiResult">
+          {% if ev.ai_summary %}
+          <div class="mb-3">
+            <div class="fw-semibold text-primary mb-1"><i class="bi bi-file-text me-1"></i>Ringkasan Kinerja</div>
+            <div class="border rounded p-3 bg-light small" style="white-space:pre-wrap">{{ ev.ai_summary }}</div>
+          </div>
+          {% endif %}
+          {% if ev.ai_recommendation %}
+          <div>
+            <div class="fw-semibold text-success mb-1"><i class="bi bi-check2-square me-1"></i>Rekomendasi</div>
+            <div class="border rounded p-3 bg-light small" style="white-space:pre-wrap">{{ ev.ai_recommendation }}</div>
+          </div>
+          {% endif %}
+          {% if not ev.ai_summary and not ev.ai_recommendation %}
+          <div class="text-muted small text-center py-2">
+            <i class="bi bi-info-circle me-1"></i>Klik <strong>Generate AI</strong> untuk mendapatkan ringkasan dan rekomendasi otomatis berbasis data kinerja.
+          </div>
+          {% endif %}
+        </div>
       </div>
     </div>
 
@@ -167,7 +244,7 @@
     <div class="card mb-3">
       <div class="card-header py-2 fw-bold">
         <i class="bi bi-journal-text"></i> Penilaian Kinerja Keseluruhan
-        <small class="text-muted fw-normal">(diisi penilai)</small>
+        <small class="text-muted fw-normal">(diisi penilai — bisa salin dari AI)</small>
       </div>
       <div class="card-body">
         <textarea name="overall_assessment" class="form-control mb-3" rows="3"
@@ -417,4 +494,59 @@
   </div>
 </div>
 </form>
+<script>
+function generateAISummary() {
+  const btn = document.getElementById('btnGenAI');
+  const loading = document.getElementById('aiLoading');
+  const errEl = document.getElementById('aiError');
+  const resultEl = document.getElementById('aiResult');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menganalisa...';
+  loading.classList.remove('d-none');
+  errEl.classList.add('d-none');
+  resultEl.style.opacity = '0.4';
+  fetch('/eval/{{ ev.id }}/ai-summary', {method:'POST',
+    headers:{'X-CSRFToken': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''}
+  })
+  .then(r => r.json())
+  .then(data => {
+    loading.classList.add('d-none');
+    resultEl.style.opacity = '1';
+    if (data.ok) {
+      let html = '';
+      if (data.summary) {
+        html += `<div class="mb-3">
+          <div class="fw-semibold text-primary mb-1"><i class="bi bi-file-text me-1"></i>Ringkasan Kinerja</div>
+          <div class="border rounded p-3 bg-light small" style="white-space:pre-wrap">${data.summary}</div>
+        </div>`;
+      }
+      if (data.recommendation) {
+        html += `<div>
+          <div class="fw-semibold text-success mb-1"><i class="bi bi-check2-square me-1"></i>Rekomendasi</div>
+          <div class="border rounded p-3 bg-light small" style="white-space:pre-wrap">${data.recommendation}</div>
+        </div>`;
+      }
+      if (data.generated_at) {
+        const ts = document.querySelector('.card-body .small.text-muted');
+        if (ts) ts.innerHTML = `<i class="bi bi-clock me-1"></i>Terakhir digenerate: ${data.generated_at}`;
+      }
+      resultEl.innerHTML = html;
+      btn.innerHTML = '<i class="bi bi-stars me-1"></i>Regenerasi AI';
+    } else {
+      errEl.textContent = data.error || 'Terjadi kesalahan.';
+      errEl.classList.remove('d-none');
+      btn.innerHTML = '<i class="bi bi-stars me-1"></i>Generate AI';
+    }
+    btn.disabled = false;
+  })
+  .catch(e => {
+    loading.classList.add('d-none');
+    resultEl.style.opacity = '1';
+    errEl.textContent = 'Gagal: ' + e.message;
+    errEl.classList.remove('d-none');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-stars me-1"></i>Generate AI';
+  });
+}
+</script>
 {% endblock %}
