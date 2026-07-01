@@ -1,4 +1,4 @@
-VERSION = "2.2.2"
+VERSION = "2.2.3"
 RELEASE_DATE = "2026-07-01"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "

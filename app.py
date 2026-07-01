@@ -7132,7 +7132,7 @@ def _get_sys_project_data(db, ev):
                COUNT(t.id) FILTER (WHERE ta2.employee_id IS NOT NULL) AS task_count,
                COUNT(t.id) FILTER (WHERE ta2.employee_id IS NOT NULL AND t.status='done') AS done_count,
                COUNT(t.id) FILTER (WHERE ta2.employee_id IS NOT NULL AND t.status NOT IN ('done','cancelled')
-                   AND t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE) AS overtime_count
+                   AND t.due_date IS NOT NULL AND t.due_date <> '' AND NULLIF(t.due_date,'')::date < CURRENT_DATE) AS overtime_count
         FROM pc_projects p
         LEFT JOIN pc_members pm ON pm.project_id=p.id AND pm.employee_id=?
         LEFT JOIN pc_tasks t ON t.project_id=p.id
@@ -7167,11 +7167,12 @@ def _get_sys_project_data(db, ev):
 
     # 4. POC / Presales
     poc_rows = db.execute('''
-        SELECT r.title, r.status, r.customer_name, r.start_date
+        SELECT r.subject AS title, r.status, c.name AS customer_name, r.created_at AS start_date
         FROM sc_presales_assignees pa
         JOIN sc_presales_requests r ON r.id=pa.request_id
+        LEFT JOIN sc_customers c ON c.id=r.customer_id
         WHERE pa.employee_id=?
-        ORDER BY r.start_date DESC NULLS LAST
+        ORDER BY r.created_at DESC NULLS LAST
     ''', (emp_id,)).fetchall()
 
     # 5. Task summary per difficulty
@@ -7340,7 +7341,7 @@ def _ability_sys_context(db, ev):
 
     # Self-assigned (inisiatif)
     self_assigned = db.execute('''
-        SELECT COUNT(*) AS c FROM pc_task_assignees WHERE employee_id=? AND self_assigned=TRUE
+        SELECT COUNT(*) AS c FROM pc_task_assignees WHERE employee_id=? AND self_assigned=1
     ''', (emp_id,)).fetchone()['c']
 
     return {
@@ -8661,6 +8662,47 @@ def eval_export_pdf(eval_id):
 
 
 # ─── Admin Routes ──────────────────────────────────────────────────────────────
+
+@app.route('/admin/error-log')
+@login_required
+def admin_error_log():
+    if session.get('user_role') != 'superadmin':
+        flash('Akses ditolak', 'danger')
+        return redirect(url_for('index'))
+    db    = get_db()
+    page  = request.args.get('page', 1, type=int)
+    limit = 30
+    offset = (page - 1) * limit
+    errors = db.execute('''SELECT * FROM audit_errors
+                           ORDER BY created_at DESC LIMIT ? OFFSET ?''',
+                        (limit, offset)).fetchall()
+    total  = db.execute('SELECT COUNT(*) FROM audit_errors').fetchone()[0]
+    return render_template('admin_error_log.html', errors=errors,
+                           page=page, total=total, limit=limit)
+
+
+@app.route('/admin/error-log/<int:eid>/delete', methods=['POST'])
+@login_required
+def admin_error_log_delete(eid):
+    if session.get('user_role') != 'superadmin':
+        return jsonify({'ok': False})
+    db = get_db()
+    db.execute('DELETE FROM audit_errors WHERE id=?', (eid,))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/admin/error-log/clear', methods=['POST'])
+@login_required
+def admin_error_log_clear():
+    if session.get('user_role') != 'superadmin':
+        return jsonify({'ok': False})
+    db = get_db()
+    db.execute('DELETE FROM audit_errors')
+    db.commit()
+    flash('Error log dikosongkan', 'success')
+    return redirect(url_for('admin_error_log'))
+
 
 @app.route('/admin')
 @login_required
@@ -11784,28 +11826,19 @@ def pc_index():
 def pc_projects():
     db       = get_db()
     show_del = request.args.get('show') == 'deleted'
+    _proj_cols = '''SELECT p.*, e.name as pic_name, c.name as customer_name,
+                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
+                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer='Done') as done_issues,
+                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues,
+                      (SELECT COUNT(*) FROM pc_tasks WHERE project_id=p.id) as total_tasks,
+                      (SELECT COUNT(*) FROM pc_tasks WHERE project_id=p.id AND status='done') as done_tasks
+               FROM pc_projects p
+               LEFT JOIN employees e ON e.id=p.pic_id
+               LEFT JOIN sc_customers c ON c.id=p.customer_id'''
     if show_del:
-        rows = db.execute(
-            '''SELECT p.*, e.name as pic_name, c.name as customer_name,
-                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
-                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues
-               FROM pc_projects p
-               LEFT JOIN employees e ON e.id=p.pic_id
-               LEFT JOIN sc_customers c ON c.id=p.customer_id
-               WHERE p.deleted_at IS NOT NULL
-               ORDER BY p.deleted_at DESC'''
-        ).fetchall()
+        rows = db.execute(_proj_cols + ' WHERE p.deleted_at IS NOT NULL ORDER BY p.deleted_at DESC').fetchall()
     else:
-        rows = db.execute(
-            '''SELECT p.*, e.name as pic_name, c.name as customer_name,
-                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id) as total_issues,
-                      (SELECT COUNT(*) FROM pc_issues WHERE project_id=p.id AND status_programmer NOT IN ('Done','Hold')) as open_issues
-               FROM pc_projects p
-               LEFT JOIN employees e ON e.id=p.pic_id
-               LEFT JOIN sc_customers c ON c.id=p.customer_id
-               WHERE p.deleted_at IS NULL
-               ORDER BY p.status, p.created_at DESC'''
-        ).fetchall()
+        rows = db.execute(_proj_cols + ' WHERE p.deleted_at IS NULL ORDER BY p.status, p.created_at DESC').fetchall()
     deleted_count = db.execute(
         "SELECT COUNT(*) FROM pc_projects WHERE deleted_at IS NOT NULL"
     ).fetchone()[0]
@@ -12447,6 +12480,42 @@ def pc_proposed_delete(cid):
     db.commit()
     flash('Proposed change dihapus', 'warning')
     return redirect(url_for('pc_project_detail', pid=pid) + '#proposed')
+
+# ─── Global Error Handler ──────────────────────────────────────────────────────
+
+@app.errorhandler(500)
+def handle_500(e):
+    import traceback as _tb
+    tb_str = _tb.format_exc()
+    try:
+        db  = get_db()
+        uid = session.get('user_id')
+        uname = session.get('username', '')
+        db.execute('''INSERT INTO audit_errors
+                      (app_slug, user_id, username, url, method, error_code,
+                       error_type, error_msg, traceback, ip)
+                      VALUES(?,?,?,?,?,500,?,?,?,?)''',
+                   ('portal', uid, uname,
+                    request.url, request.method,
+                    type(e).__name__, str(e), tb_str,
+                    request.remote_addr or ''))
+        db.commit()
+    except Exception:
+        pass  # jangan sampai error handler ikut error
+
+    # Tampilkan halaman error yang informatif (traceback visible untuk superadmin)
+    show_tb = session.get('user_role') == 'superadmin'
+    return render_template('error_500.html',
+                           error_type=type(e).__name__,
+                           error_msg=str(e),
+                           traceback=tb_str if show_tb else '',
+                           url=request.url), 500
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    return render_template('error_404.html' if False else 'base.html'), 404
+
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 

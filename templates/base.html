@@ -671,6 +671,13 @@
       </a>
     </li>
     {% endif %}
+    {% if session.user_role == 'superadmin' %}
+    <li>
+      <a href="/admin/error-log" class="{{ 'active' if '/error-log' in request.path }}">
+        <i class="bi bi-journal-x nav-icon"></i> Error Log
+      </a>
+    </li>
+    {% endif %}
   </ul>
   {% endif %}
 
