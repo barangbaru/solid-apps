@@ -16,11 +16,23 @@
   </div>
 </div>
 
-<div class="alert alert-info py-2 small mb-3">
-  <i class="bi bi-info-circle"></i>
-  Pilih <strong>satu level (A/B/C/D)</strong> yang paling sesuai untuk setiap aspek kemampuan.
-  A = Dasar · B = Berkembang · C = Mahir · D = Expert.
-  Bagian ini bersifat kualitatif dan tidak masuk kalkulasi skor akhir.
+<div class="alert alert-info py-2 small mb-3 d-flex justify-content-between align-items-center">
+  <span>
+    <i class="bi bi-info-circle"></i>
+    Pilih <strong>satu level (A/B/C/D)</strong> per aspek.
+    A = Dasar · B = Berkembang · C = Mahir · D = Expert.
+    Bagian ini bersifat kualitatif.
+  </span>
+  <button type="button" class="btn btn-sm btn-outline-primary ms-3 flex-shrink-0"
+          onclick="aiSuggest()" id="btnAiSuggest">
+    <i class="bi bi-stars me-1"></i>Analisa AI
+  </button>
+</div>
+
+<!-- AI suggest result banner -->
+<div id="aiSuggestBanner" class="alert alert-success py-2 small mb-3 d-none">
+  <i class="bi bi-check-circle me-1"></i>
+  <strong>Saran AI berhasil dimuat.</strong> Periksa dan sesuaikan sebelum menyimpan.
 </div>
 
 <form method="post" id="abilityForm">
@@ -78,7 +90,8 @@
   </div>
 
   <div class="col-lg-3">
-    <div class="card sticky-score">
+    <!-- Skor Ability -->
+    <div class="card sticky-score mb-3">
       <div class="card-header py-2 fw-bold"><i class="bi bi-speedometer2"></i> Skor Ability</div>
       <div class="card-body text-center">
         <div class="score-badge text-info" id="ability-display">{{ '%.1f' | format(ability_score) }}</div>
@@ -92,11 +105,69 @@
           <tr><td><span class="badge bg-info text-dark">C</span></td><td>Mahir</td></tr>
           <tr><td><span class="badge bg-success">D</span></td><td>Expert / Senior</td></tr>
         </table>
-        <div class="text-muted small">
-          Terisi: <strong id="filled-count">0</strong> / {{ items | length }}
-        </div>
+        <div class="text-muted small">Terisi: <strong id="filled-count">0</strong> / {{ items | length }}</div>
       </div>
     </div>
+
+    <!-- Data kontekstual dari sistem -->
+    {% if sys_ctx %}
+    <div class="card border-primary">
+      <div class="card-header py-2 fw-bold bg-primary bg-opacity-10">
+        <i class="bi bi-cpu me-1"></i>Konteks Sistem
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm small mb-0">
+          <tr>
+            <td class="text-muted ps-2">Task Score</td>
+            <td class="fw-bold {% if sys_ctx.task_score >= 80 %}text-success{% elif sys_ctx.task_score >= 50 %}text-primary{% else %}text-danger{% endif %}">
+              {{ sys_ctx.task_score }}
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted ps-2">Ontime Rate</td>
+            <td class="fw-bold {% if sys_ctx.ontime_rate and sys_ctx.ontime_rate >= 75 %}text-success{% elif sys_ctx.ontime_rate %}text-warning{% else %}text-muted{% endif %}">
+              {{ sys_ctx.ontime_rate ~ '%' if sys_ctx.ontime_rate is not none else 'N/A' }}
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted ps-2">Task Selesai</td>
+            <td>{{ sys_ctx.total_done }} <span class="text-danger small">({{ sys_ctx.open_overtime }} OT)</span></td>
+          </tr>
+          <tr>
+            <td class="text-muted ps-2">Concurrent Max</td>
+            <td>{{ sys_ctx.concurrent_max }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted ps-2">Task Hard</td>
+            <td><span class="badge bg-danger">{{ sys_ctx.diff_hard }}</span>
+                <span class="badge bg-secondary ms-1">{{ sys_ctx.diff_normal }} N</span>
+                <span class="badge bg-success ms-1">{{ sys_ctx.diff_easy }} E</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="text-muted ps-2">Inisiatif</td>
+            <td>{{ sys_ctx.self_assigned }} self-assigned</td>
+          </tr>
+          {% if sys_ctx.sc_total > 0 %}
+          <tr>
+            <td class="text-muted ps-2">Tiket SC</td>
+            <td>{{ sys_ctx.sc_resolved }}/{{ sys_ctx.sc_total }} resolved</td>
+          </tr>
+          <tr>
+            <td class="text-muted ps-2">Customer</td>
+            <td>{{ sys_ctx.sc_customers }}</td>
+          </tr>
+          {% endif %}
+          {% if sys_ctx.poc_count > 0 %}
+          <tr>
+            <td class="text-muted ps-2">POC</td>
+            <td>{{ sys_ctx.poc_count }}</td>
+          </tr>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 </form>
@@ -151,6 +222,54 @@ function updateAbility() {
   document.getElementById('ability-display').textContent = avg.toFixed(1);
   document.getElementById('ability-gauge').style.width = Math.min(avg, 100) + '%';
   document.getElementById('filled-count').textContent = vals.length;
+}
+
+function aiSuggest() {
+  const btn = document.getElementById('btnAiSuggest');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Menganalisa...';
+
+  fetch('/eval/{{ ev.id }}/ability/ai-suggest', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'}
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) { alert('Gagal: ' + (d.msg || 'Error')); return; }
+
+    d.suggestions.forEach(s => {
+      // Cari tombol level untuk item ini dan simulasi klik
+      const btn = document.querySelector(
+        `.level-btn[data-item="${s.id}"][data-level="${s.level}"]`
+      );
+      if (btn) {
+        setLevel(btn, s.id, s.level);
+        // Tambah tooltip alasan AI
+        btn.title = s.reason;
+        btn.setAttribute('data-bs-toggle', 'tooltip');
+        const badge = document.querySelector('.level-badge-' + s.id);
+        if (badge) {
+          badge.title = '🤖 ' + s.reason;
+          badge.setAttribute('data-bs-toggle', 'tooltip');
+        }
+      }
+    });
+
+    // Init tooltips Bootstrap
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+      new bootstrap.Tooltip(el, {trigger: 'hover'});
+    });
+
+    document.getElementById('aiSuggestBanner').classList.remove('d-none');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>AI Selesai';
+    btn.classList.replace('btn-outline-primary', 'btn-success');
+  })
+  .catch(e => {
+    alert('Error: ' + e);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-stars me-1"></i>Analisa AI';
+  });
 }
 </script>
 {% endblock %}

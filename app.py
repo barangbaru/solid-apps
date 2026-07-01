@@ -7107,7 +7107,141 @@ def eval_project(eval_id):
     entries = {t: db.execute(
         'SELECT * FROM project_entries WHERE eval_id=? AND entry_type=? ORDER BY sort_order',
         (eval_id, t)).fetchall() for t in ['history','top_task','improvement']}
-    return render_template('eval_project.html', ev=ev, entries=entries)
+    # ── Auto-suggest dari sistem: task PC + ticket SC + POC ──
+    sys_projects = _get_sys_project_data(db, ev)
+    return render_template('eval_project.html', ev=ev, entries=entries,
+                           sys_projects=sys_projects)
+
+
+def _get_sys_project_data(db, ev):
+    """Ambil data project/task/tiket/POC dari sistem untuk karyawan & periode evaluasi."""
+    emp_id    = ev['employee_id']
+    date_from = ev['task_date_from'] or ''
+    date_to   = ev['task_date_to']   or ''
+
+    # Filter tanggal (jika ada)
+    def _date_filter(col_start, col_end=''):
+        if date_from and date_to:
+            return f" AND ({col_start} IS NULL OR {col_start} <= '{date_to}')"
+        return ''
+
+    # 1. ProjectCore — proyek yang diikuti (sebagai member / task assignee)
+    pc_projs = db.execute('''
+        SELECT DISTINCT p.name AS proj_name, p.status, p.start_date, p.end_date,
+               pm.role AS member_role,
+               COUNT(t.id) FILTER (WHERE ta2.employee_id IS NOT NULL) AS task_count,
+               COUNT(t.id) FILTER (WHERE ta2.employee_id IS NOT NULL AND t.status='done') AS done_count,
+               COUNT(t.id) FILTER (WHERE ta2.employee_id IS NOT NULL AND t.status NOT IN ('done','cancelled')
+                   AND t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE) AS overtime_count
+        FROM pc_projects p
+        LEFT JOIN pc_members pm ON pm.project_id=p.id AND pm.employee_id=?
+        LEFT JOIN pc_tasks t ON t.project_id=p.id
+        LEFT JOIN pc_task_assignees ta2 ON ta2.task_id=t.id AND ta2.employee_id=?
+        WHERE (pm.employee_id=? OR ta2.employee_id=?)
+        GROUP BY p.id, p.name, p.status, p.start_date, p.end_date, pm.role
+        ORDER BY p.start_date DESC NULLS LAST
+    ''', (emp_id, emp_id, emp_id, emp_id)).fetchall()
+
+    # 2. SupportCore — tiket yang ditangani
+    sc_tickets = db.execute('''
+        SELECT COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE t.status='resolved') AS resolved,
+               COUNT(*) FILTER (WHERE t.status='open') AS open_count,
+               COUNT(DISTINCT t.customer_id) AS customer_count,
+               STRING_AGG(DISTINCT c.name, ', ') AS customer_names
+        FROM sc_ticket_assignees ta
+        JOIN sc_tickets t ON t.id=ta.ticket_id
+        LEFT JOIN sc_customers c ON c.id=t.customer_id
+        WHERE ta.employee_id=?
+    ''', (emp_id,)).fetchone()
+
+    # 3. SupportCore — contract/customer list
+    sc_customers = db.execute('''
+        SELECT DISTINCT c.name AS cust_name, COUNT(DISTINCT t.id) AS ticket_count
+        FROM sc_ticket_assignees ta
+        JOIN sc_tickets t ON t.id=ta.ticket_id
+        JOIN sc_customers c ON c.id=t.customer_id
+        WHERE ta.employee_id=?
+        GROUP BY c.id, c.name ORDER BY ticket_count DESC LIMIT 10
+    ''', (emp_id,)).fetchall()
+
+    # 4. POC / Presales
+    poc_rows = db.execute('''
+        SELECT r.title, r.status, r.customer_name, r.start_date
+        FROM sc_presales_assignees pa
+        JOIN sc_presales_requests r ON r.id=pa.request_id
+        WHERE pa.employee_id=?
+        ORDER BY r.start_date DESC NULLS LAST
+    ''', (emp_id,)).fetchall()
+
+    # 5. Task summary per difficulty
+    task_diff = db.execute('''
+        SELECT t.difficulty, t.status, COUNT(*) AS cnt
+        FROM pc_task_assignees ta
+        JOIN pc_tasks t ON t.id=ta.task_id
+        WHERE ta.employee_id=?
+        GROUP BY t.difficulty, t.status
+    ''', (emp_id,)).fetchall()
+
+    return {
+        'pc_projs':    [dict(r) for r in pc_projs],
+        'sc_tickets':  dict(sc_tickets) if sc_tickets else {},
+        'sc_customers':[dict(r) for r in sc_customers],
+        'poc_rows':    [dict(r) for r in poc_rows],
+        'task_diff':   [dict(r) for r in task_diff],
+    }
+
+
+@app.route('/eval/<int:eval_id>/project/autofill', methods=['POST'])
+@login_required
+def eval_project_autofill(eval_id):
+    """Auto-isi project_entries dari data sistem (PC + SC + POC)."""
+    db = get_db()
+    ev = get_eval_or_404(db, eval_id)
+    if not ev:
+        return jsonify({'ok': False, 'msg': 'Evaluasi tidak ditemukan'})
+
+    sys_data = _get_sys_project_data(db, ev)
+
+    # Hapus entries lama, isi ulang dari sistem
+    db.execute('DELETE FROM project_entries WHERE eval_id=?', (eval_id,))
+
+    order = 0
+    # history: proyek yang diikuti
+    for p in sys_data['pc_projs']:
+        detail = (f"Terlibat sebagai {p['member_role'] or 'Anggota'}. "
+                  f"Task: {p['task_count']} ({p['done_count']} selesai, {p['overtime_count']} overtime).")
+        status = 'DONE' if p['status'] in ('completed','done') else 'ONGOING'
+        db.execute('''INSERT INTO project_entries(eval_id,entry_type,project_name,detail_task,status,sort_order)
+                      VALUES(?,?,?,?,?,?)''',
+                   (eval_id, 'history', p['proj_name'], detail, status, order))
+        order += 1
+
+    # top_task: tiket SC
+    sc = sys_data['sc_tickets']
+    if sc and sc.get('total', 0) > 0:
+        custs = sys_data['sc_customers']
+        cust_str = ', '.join(c['cust_name'] for c in custs[:5])
+        detail = (f"Handle {sc['total']} tiket support "
+                  f"({sc['resolved']} resolved, {sc['open_count']} open). "
+                  f"Customer: {cust_str or '-'}.")
+        db.execute('''INSERT INTO project_entries(eval_id,entry_type,project_name,detail_task,status,sort_order)
+                      VALUES(?,?,?,?,?,?)''',
+                   (eval_id, 'top_task', 'SupportCore — Tiket Support', detail, 'ONGOING', order))
+        order += 1
+
+    # POC / presales
+    for poc in sys_data['poc_rows']:
+        detail = f"Customer: {poc['customer_name'] or '-'}. Status: {poc['status'] or '-'}."
+        db.execute('''INSERT INTO project_entries(eval_id,entry_type,project_name,detail_task,status,sort_order)
+                      VALUES(?,?,?,?,?,?)''',
+                   (eval_id, 'improvement', poc['title'] or 'POC/Presales', detail,
+                    'DONE' if poc['status'] == 'completed' else 'ONGOING', order))
+        order += 1
+
+    db.commit()
+    return jsonify({'ok': True, 'inserted': order})
+
 
 @app.route('/eval/<int:eval_id>/hardskill', methods=['GET', 'POST'])
 @login_required
@@ -7132,7 +7266,7 @@ def eval_hardskill(eval_id):
                                WHERE sc.divisi=? ORDER BY sc.sort_order''', (ev['divisi'],)).fetchall()
     items_by_cat = {cat['id']: db.execute('''
         SELECT si.*, COALESCE(ss.score,0) AS current_score,
-               ROUND((COALESCE(ss.score,0)/4.0)*si.bobot,2) AS final_value
+               ROUND(((COALESCE(ss.score,0)/4.0)*si.bobot)::numeric, 2) AS final_value
         FROM skill_items si LEFT JOIN skill_scores ss ON ss.skill_item_id=si.id AND ss.eval_id=?
         WHERE si.category_id=? ORDER BY si.sort_order
     ''', (eval_id, cat['id'])).fetchall() for cat in categories}
@@ -7165,8 +7299,174 @@ def eval_ability(eval_id):
                              WHERE ai.divisi=? ORDER BY ai.sort_order''',
                           (eval_id, ev['divisi'])).fetchall()
     ev_row   = db.execute('SELECT ability_score FROM evaluations WHERE id=?', (eval_id,)).fetchone()
+    # Data kontekstual untuk referensi evaluator
+    sys_ctx = _ability_sys_context(db, ev)
     return render_template('eval_ability.html', ev=ev, items=items,
-                           ability_score=ev_row['ability_score'])
+                           ability_score=ev_row['ability_score'], sys_ctx=sys_ctx)
+
+
+def _ability_sys_context(db, ev):
+    """Kumpulkan data kontekstual dari sistem untuk bantu penilaian ability."""
+    emp_id    = ev['employee_id']
+    date_from = ev['task_date_from'] or ''
+    date_to   = ev['task_date_to']   or ''
+
+    perf = calc_task_perf(db, emp_id, date_from, date_to)
+    ana  = calc_task_analytics(db, emp_id, date_from, date_to)
+
+    # Tiket SC
+    sc = db.execute('''
+        SELECT COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE t.status='resolved') AS resolved,
+               COUNT(DISTINCT t.customer_id) AS customer_count
+        FROM sc_ticket_assignees ta
+        JOIN sc_tickets t ON t.id=ta.ticket_id
+        WHERE ta.employee_id=?
+    ''', (emp_id,)).fetchone()
+
+    # POC
+    poc_count = db.execute('''
+        SELECT COUNT(*) AS c FROM sc_presales_assignees WHERE employee_id=?
+    ''', (emp_id,)).fetchone()['c']
+
+    # Difficulty breakdown
+    diff_rows = db.execute('''
+        SELECT COALESCE(t.difficulty,'Normal') AS difficulty, COUNT(*) AS cnt
+        FROM pc_task_assignees ta JOIN pc_tasks t ON t.id=ta.task_id
+        WHERE ta.employee_id=?
+        GROUP BY t.difficulty
+    ''', (emp_id,)).fetchall()
+    diff_map = {r['difficulty']: r['cnt'] for r in diff_rows}
+
+    # Self-assigned (inisiatif)
+    self_assigned = db.execute('''
+        SELECT COUNT(*) AS c FROM pc_task_assignees WHERE employee_id=? AND self_assigned=TRUE
+    ''', (emp_id,)).fetchone()['c']
+
+    return {
+        'task_score':    perf.get('task_score', 0),
+        'ontime_rate':   ana.get('ontime_rate'),
+        'total_done':    ana.get('total_done', 0),
+        'open_overtime': ana.get('open_overtime', 0),
+        'concurrent_max':ana.get('concurrent_max', 0),
+        'sc_total':      dict(sc).get('total', 0) if sc else 0,
+        'sc_resolved':   dict(sc).get('resolved', 0) if sc else 0,
+        'sc_customers':  dict(sc).get('customer_count', 0) if sc else 0,
+        'poc_count':     poc_count,
+        'diff_hard':     diff_map.get('Hard', diff_map.get('hard', diff_map.get('Sulit', 0))),
+        'diff_normal':   diff_map.get('Normal', diff_map.get('normal', 0)),
+        'diff_easy':     diff_map.get('Easy', diff_map.get('easy', diff_map.get('Mudah', 0))),
+        'self_assigned': self_assigned,
+    }
+
+
+@app.route('/eval/<int:eval_id>/ability/ai-suggest', methods=['POST'])
+@login_required
+def eval_ability_ai_suggest(eval_id):
+    """Analisa ability per item menggunakan AI berdasarkan data sistem."""
+    db  = get_db()
+    ev  = get_eval_or_404(db, eval_id)
+    emp = db.execute('SELECT * FROM employees WHERE id=?', (ev['employee_id'],)).fetchone()
+    if not ev:
+        return jsonify({'ok': False, 'msg': 'Evaluasi tidak ditemukan'})
+
+    items = db.execute('''SELECT ai.* FROM ability_items ai
+                          WHERE ai.divisi=? ORDER BY ai.sort_order''',
+                       (ev['divisi'],)).fetchall()
+    ctx   = _ability_sys_context(db, ev)
+
+    prompt = f"""Kamu adalah sistem evaluasi kinerja AI yang objektif.
+Karyawan: {emp['name']} | Jabatan: {emp['jabatan'] or '-'} | Divisi: {ev['divisi']}
+Periode Evaluasi: {ev['periode']}
+
+DATA KINERJA SISTEM:
+- Task Score: {ctx['task_score']} pts
+- Ontime Rate: {ctx['ontime_rate']}%
+- Task Selesai: {ctx['total_done']} | Open Overtime: {ctx['open_overtime']}
+- Max Concurrent Task: {ctx['concurrent_max']}
+- Task Sulit (Hard): {ctx['diff_hard']} | Normal: {ctx['diff_normal']} | Mudah: {ctx['diff_easy']}
+- Inisiatif (self-assigned): {ctx['self_assigned']} task
+- Tiket Support: {ctx['sc_total']} ({ctx['sc_resolved']} resolved) | Customer: {ctx['sc_customers']}
+- POC/Presales: {ctx['poc_count']}
+
+DEFINISI LEVEL:
+A = Sangat Baik / Outstanding (melampaui ekspektasi, konsisten top performer)
+B = Baik / Good (memenuhi dan kadang melampaui ekspektasi)
+C = Cukup / Average (memenuhi ekspektasi dasar)
+D = Perlu Peningkatan / Needs Improvement (di bawah ekspektasi)
+
+Untuk setiap item ability berikut, tentukan level (A/B/C/D) dan penjelasan singkat (1 kalimat) berdasarkan data di atas.
+Format response HANYA JSON array:
+[{{"id": <id>, "level": "<A|B|C|D>", "reason": "<1 kalimat>"}}]
+
+DAFTAR ABILITY ITEMS:
+"""
+    for item in items:
+        prompt += f'\n- ID {item["id"]}: {item["name"]}'
+        prompt += f'\n  A: {item["desc_a"]} | B: {item["desc_b"]} | C: {item["desc_c"]} | D: {item["desc_d"]}'
+
+    # Coba Ollama dulu, fallback ke rule-based
+    result = _call_ollama_or_fallback(prompt, items, ctx)
+    return jsonify({'ok': True, 'suggestions': result})
+
+
+def _call_ollama_or_fallback(prompt, items, ctx):
+    """Panggil Ollama untuk AI suggest, fallback ke rule-based jika gagal."""
+    # Coba Ollama
+    try:
+        import requests as _req
+        resp = _req.post('http://localhost:11434/api/generate',
+                         json={'model': 'llama3', 'prompt': prompt, 'stream': False},
+                         timeout=30)
+        if resp.ok:
+            import json as _json, re as _re
+            text = resp.json().get('response', '')
+            match = _re.search(r'\[.*?\]', text, _re.DOTALL)
+            if match:
+                return _json.loads(match.group(0))
+    except Exception:
+        pass
+
+    # Rule-based fallback berdasarkan data sistem
+    score     = ctx.get('task_score', 0)
+    ontime    = ctx.get('ontime_rate') or 0
+    overtime  = ctx.get('open_overtime', 0)
+    diff_hard = ctx.get('diff_hard', 0)
+    self_init = ctx.get('self_assigned', 0)
+
+    if score >= 80 and ontime >= 80 and overtime == 0:
+        default_level = 'A'
+    elif score >= 60 and ontime >= 65:
+        default_level = 'B'
+    elif score >= 40 and ontime >= 40:
+        default_level = 'C'
+    else:
+        default_level = 'D'
+
+    suggestions = []
+    for item in items:
+        name = (item['name'] or '').lower()
+        # Penyesuaian per tipe ability
+        if 'mandiri' in name or 'inisiatif' in name:
+            lvl = 'A' if self_init >= 3 else ('B' if self_init >= 1 else default_level)
+            reason = f"Self-assigned {self_init} task menunjukkan tingkat inisiatif {'tinggi' if self_init >= 3 else 'cukup'}."
+        elif 'tekno' in name or 'tools' in name or 'teknis' in name:
+            lvl = 'A' if diff_hard >= 3 else ('B' if diff_hard >= 1 else default_level)
+            reason = f"Menangani {diff_hard} task Hard menunjukkan penguasaan teknis {'solid' if diff_hard >= 3 else 'cukup'}."
+        elif 'customer' in name or 'pelanggan' in name:
+            n_cust = ctx.get('sc_customers', 0)
+            lvl = 'A' if n_cust >= 3 else ('B' if n_cust >= 1 else 'C')
+            reason = f"Menangani {n_cust} customer dalam periode ini."
+        elif 'proses' in name or 'improve' in name or 'kontribusi' in name:
+            lvl = 'A' if score >= 85 else ('B' if score >= 65 else default_level)
+            reason = f"Task score {score} mencerminkan kontribusi pada peningkatan kualitas proses."
+        else:
+            lvl    = default_level
+            reason = f"Berdasarkan task score {score} dan ontime rate {ontime}%."
+
+        suggestions.append({'id': item['id'], 'level': lvl, 'reason': reason})
+    return suggestions
+
 
 @app.route('/eval/<int:eval_id>/competency', methods=['GET', 'POST'])
 @login_required

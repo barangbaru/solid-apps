@@ -162,12 +162,14 @@
     </form>
   </div>
 
-  <!-- Score Card -->
+  <!-- Sidebar kanan -->
   <div class="col-lg-4">
-    <div class="card sticky-score">
+
+    <!-- Skor PP -->
+    <div class="card sticky-score mb-3">
       <div class="card-header py-2 fw-bold"><i class="bi bi-trophy"></i> Skor Project Performance</div>
       <div class="card-body">
-        <p class="text-muted small mb-2">Diisi oleh penilai berdasarkan performa proyek secara keseluruhan (1–5)</p>
+        <p class="text-muted small mb-2">Diisi oleh penilai berdasarkan performa proyek (1–5)</p>
         <form method="post" id="ppScoreForm">
           <div class="d-flex gap-2 justify-content-center mb-3" id="pp-btns">
             {% for v in [1,2,3,4,5] %}
@@ -181,12 +183,101 @@
             <span class="text-muted"> / 100</span>
           </div>
           <div class="gauge-bar mb-3"><div class="gauge-fill" id="pp-gauge" style="width:{{ ev.pp_total }}%"></div></div>
-          <small class="text-muted">
-            Keterangan: 1=Kurang · 2=Cukup · 3=Baik · 4=Sangat Baik · 5=Luar Biasa
-          </small>
+          <small class="text-muted">1=Kurang · 2=Cukup · 3=Baik · 4=Sangat Baik · 5=Luar Biasa</small>
         </form>
       </div>
     </div>
+
+    <!-- Data sistem dari PC/SC -->
+    {% if sys_projects %}
+    <div class="card mb-3 border-info">
+      <div class="card-header py-2 fw-bold bg-info bg-opacity-10 d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-database me-1"></i>Data dari Sistem</span>
+        <button type="button" class="btn btn-sm btn-info" onclick="autoFill()" id="btnAutoFill">
+          <i class="bi bi-magic me-1"></i>Load ke Form
+        </button>
+      </div>
+      <div class="card-body p-0">
+
+        {% if sys_projects.pc_projs %}
+        <div class="p-2 border-bottom">
+          <div class="small fw-semibold text-muted mb-1"><i class="bi bi-kanban me-1"></i>ProjectCore ({{ sys_projects.pc_projs|length }} proyek)</div>
+          {% for p in sys_projects.pc_projs %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div class="small">
+              <strong>{{ p.proj_name }}</strong>
+              {% if p.member_role %}<span class="badge bg-secondary ms-1" style="font-size:0.7rem">{{ p.member_role }}</span>{% endif %}
+              <br><span class="text-muted">{{ p.done_count }}/{{ p.task_count }} task selesai
+              {% if p.overtime_count > 0 %}<span class="text-danger"> · {{ p.overtime_count }} overtime</span>{% endif %}
+              </span>
+            </div>
+            <span class="badge {% if p.status in ['completed','done'] %}bg-success{% else %}bg-primary{% endif %}">
+              {{ p.status or '-' }}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if sys_projects.sc_tickets and sys_projects.sc_tickets.get('total', 0) > 0 %}
+        <div class="p-2 border-bottom">
+          <div class="small fw-semibold text-muted mb-1"><i class="bi bi-headset me-1"></i>SupportCore</div>
+          <div class="small">
+            <strong>{{ sys_projects.sc_tickets.get('total', 0) }}</strong> tiket
+            ({{ sys_projects.sc_tickets.get('resolved', 0) }} resolved)
+            · <strong>{{ sys_projects.sc_tickets.get('customer_count', 0) }}</strong> customer
+          </div>
+          {% if sys_projects.sc_customers %}
+          <div class="small text-muted mt-1">
+            {{ sys_projects.sc_customers | map(attribute='cust_name') | join(', ') }}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if sys_projects.poc_rows %}
+        <div class="p-2 border-bottom">
+          <div class="small fw-semibold text-muted mb-1"><i class="bi bi-lightbulb me-1"></i>POC / Presales ({{ sys_projects.poc_rows|length }})</div>
+          {% for poc in sys_projects.poc_rows %}
+          <div class="small py-1 border-bottom">
+            {{ poc.title or '-' }}
+            <span class="badge bg-secondary ms-1" style="font-size:0.7rem">{{ poc.status or '-' }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if sys_projects.task_diff %}
+        <div class="p-2">
+          <div class="small fw-semibold text-muted mb-1"><i class="bi bi-bar-chart me-1"></i>Difficulty Task</div>
+          <div class="d-flex gap-2 flex-wrap">
+            {% set diff_totals = {} %}
+            {% for td in sys_projects.task_diff %}
+              {% if td.difficulty in diff_totals %}
+                {% set _ = diff_totals.update({td.difficulty: diff_totals[td.difficulty] + td.cnt}) %}
+              {% else %}
+                {% set _ = diff_totals.update({td.difficulty: td.cnt}) %}
+              {% endif %}
+            {% endfor %}
+            {% for diff, cnt in diff_totals.items() %}
+            <span class="badge {% if diff|lower in ['hard','sulit'] %}bg-danger{% elif diff|lower in ['easy','mudah'] %}bg-success{% else %}bg-primary{% endif %}">
+              {{ diff }}: {{ cnt }}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if not sys_projects.pc_projs and not sys_projects.poc_rows and (not sys_projects.sc_tickets or sys_projects.sc_tickets.get('total',0) == 0) %}
+        <div class="p-3 text-center text-muted small">
+          <i class="bi bi-inbox me-1"></i>Belum ada data task/tiket tercatat di sistem untuk karyawan ini.
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 {% endblock %}
@@ -206,6 +297,27 @@ function addRow(tbodyId, prefix) {
     <td><input type="text" name="${prefix}_notes" class="form-control form-control-sm"></td>
     <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="delRow(this)"><i class="bi bi-x-lg"></i></button></td>`;
   tbody.appendChild(tr);
+}
+
+function autoFill() {
+  const btn = document.getElementById('btnAutoFill');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Memuat...';
+  fetch('/eval/{{ ev.id }}/project/autofill', {method:'POST',
+    headers:{'X-CSRFToken': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''}})
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Berhasil';
+        btn.classList.replace('btn-info','btn-success');
+        setTimeout(() => location.reload(), 800);
+      } else {
+        alert('Gagal: ' + (d.msg || 'Error'));
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-magic me-1"></i>Load ke Form';
+      }
+    })
+    .catch(() => { btn.disabled=false; btn.innerHTML='<i class="bi bi-magic me-1"></i>Load ke Form'; });
 }
 
 function setPP(val) {
