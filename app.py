@@ -107,18 +107,22 @@ class _DBWrapper:
         if is_or_ignore:
             sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
         # ── Konversi fungsi SQLite → PostgreSQL ───────────────────────────────
-        # julianday(col) - julianday('now') → (col::date - CURRENT_DATE)
+        # julianday(col) - julianday('now') → (NULLIF(col,'')::date - CURRENT_DATE)
+        # pakai NULLIF agar empty string tidak crash saat di-cast ke date
         sql = re.sub(
             r"julianday\(([^)]+)\)\s*-\s*julianday\('now'\)",
-            r"(\1::date - CURRENT_DATE)",
+            lambda m: f"(NULLIF({m.group(1).strip()},'')" r"::date - CURRENT_DATE)",
             sql, flags=re.IGNORECASE)
-        # julianday('now') - julianday(col) → (CURRENT_DATE - col::date)
+        # julianday('now') - julianday(col) → (CURRENT_DATE - NULLIF(col,'')::date)
         sql = re.sub(
             r"julianday\('now'\)\s*-\s*julianday\(([^)]+)\)",
-            r"(CURRENT_DATE - \1::date)",
+            lambda m: r"(CURRENT_DATE - NULLIF(" + m.group(1).strip() + ",'')::date)",
             sql, flags=re.IGNORECASE)
         # julianday(col) sisa (standalone)
-        sql = re.sub(r"julianday\(([^)]+)\)", r"\1::date", sql, flags=re.IGNORECASE)
+        sql = re.sub(
+            r"julianday\(([^)]+)\)",
+            lambda m: f"NULLIF({m.group(1).strip()},'')" r"::date",
+            sql, flags=re.IGNORECASE)
         # GROUP_CONCAT(col, sep) → STRING_AGG(col::text, sep)
         sql = re.sub(
             r'\bGROUP_CONCAT\s*\(([^,)]+),\s*([^)]+)\)',
@@ -5349,7 +5353,7 @@ def karyawan():
         SELECT *, julianday(contract_end) - julianday('now') AS days_left
         FROM employees
         WHERE employment_type IN ('kontrak','staff_worker') AND is_active = 1
-        ORDER BY CASE WHEN contract_end='' OR contract_end IS NULL THEN 1 ELSE 0 END,
+        ORDER BY CASE WHEN contract_end IS NULL OR contract_end='' THEN 1 ELSE 0 END,
                  contract_end ASC
     ''').fetchall()
     tetap = db.execute('''
