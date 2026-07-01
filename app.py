@@ -7981,6 +7981,7 @@ def err_500(e):
     tb = _tb.format_exc()
     # Gunakan koneksi BARU — koneksi lama (g.db) mungkin dalam state aborted transaction
     # (misal setelah psycopg2 error), sehingga tidak bisa digunakan untuk INSERT.
+    _logged = False
     try:
         if DB_TYPE == 'postgresql':
             _econn = _pg_connect()
@@ -7998,8 +7999,20 @@ def err_500(e):
                       _real_ip()))
         _edb.commit()
         _edb.close()
+        _logged = True
     except Exception:
         pass
+    if not _logged:
+        # Fallback: tulis ke file log jika DB tidak bisa dihubungi
+        try:
+            import datetime as _dt
+            _log_path = os.path.join(os.path.dirname(__file__), 'error_fallback.log')
+            with open(_log_path, 'a', encoding='utf-8') as _lf:
+                _lf.write(f"[{_dt.datetime.now().isoformat()}] 500 {request.method} {request.path} "
+                          f"ip={_real_ip()} user={session.get('user_name','')} "
+                          f"err={type(e).__name__}: {e}\n{tb[:2000]}\n---\n")
+        except Exception:
+            pass
     return render_template('error.html', code=500, msg='Terjadi kesalahan server'), 500
 
 # ─── Portal: Update Center ─────────────────────────────────────────────────────

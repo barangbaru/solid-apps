@@ -1,3 +1,3 @@
-VERSION = "2.1.11"
+VERSION = "2.1.12"
 RELEASE_DATE = "2026-07-01"
-RELEASE_NOTES = "Fix: days_left NULL (contract_end kosong) di /karyawan menyebabkan TypeError di Jinja2 selectattr; normalisasi None → 9999 di Python route"
+RELEASE_NOTES = "Fix: err_500 audit fallback ke file log jika DB tidak bisa dihubungi (misal pindah server/IP); no hardcode perubahan"
