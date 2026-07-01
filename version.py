@@ -1,3 +1,3 @@
-VERSION = "2.1.8"
-RELEASE_DATE = "2026-06-30"
-RELEASE_NOTES = "Fix: Update Center — ganti SSE ke polling, hapus worker blocking, fix deploy_running stuck"
+VERSION = "2.1.9"
+RELEASE_DATE = "2026-07-01"
+RELEASE_NOTES = "Fix: employee_salary schema — kolom gaji (base_salary, al_001-al_004) diubah dari REAL ke TEXT untuk support Fernet encryption; tambah COLUMN_TYPE_MIGRATIONS untuk auto-ALTER di PostgreSQL"

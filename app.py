@@ -530,11 +530,11 @@ CREATE TABLE IF NOT EXISTS employee_salary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
     year INTEGER NOT NULL,
-    base_salary REAL DEFAULT 0,
-    al_001 REAL DEFAULT 0,
-    al_002 REAL DEFAULT 0,
-    al_003 REAL DEFAULT 0,
-    al_004 REAL DEFAULT 0,
+    base_salary TEXT DEFAULT '',
+    al_001 TEXT DEFAULT '',
+    al_002 TEXT DEFAULT '',
+    al_003 TEXT DEFAULT '',
+    al_004 TEXT DEFAULT '',
     increase_pct REAL DEFAULT 0,
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime')),
@@ -1149,6 +1149,16 @@ CREATE TABLE IF NOT EXISTS notif_recipients (
 );
 """
 
+# ALTER existing column types (PostgreSQL only) — run before MIGRATIONS ADD COLUMN
+COLUMN_TYPE_MIGRATIONS = [
+    # employee_salary columns were originally REAL but now store Fernet-encrypted TEXT
+    ('employee_salary', 'base_salary', 'TEXT', "''"),
+    ('employee_salary', 'al_001',      'TEXT', "''"),
+    ('employee_salary', 'al_002',      'TEXT', "''"),
+    ('employee_salary', 'al_003',      'TEXT', "''"),
+    ('employee_salary', 'al_004',      'TEXT', "''"),
+]
+
 MIGRATIONS = [
     ('users', 'email',     "TEXT DEFAULT ''"),
     ('users', 'google_id', "TEXT DEFAULT ''"),
@@ -1477,6 +1487,21 @@ def init_db():
     # Migrations
     import re as _re
     _valid_ident = _re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+    # ALTER column types — PostgreSQL only (SQLite DDL already correct)
+    if DB_TYPE == 'postgresql':
+        for table, col, new_type, default_val in COLUMN_TYPE_MIGRATIONS:
+            if not _valid_ident.match(table) or not _valid_ident.match(col):
+                raise ValueError(f"Invalid identifier in type migration: {table!r}.{col!r}")
+            row = db.execute(
+                "SELECT data_type FROM information_schema.columns "
+                "WHERE table_name=%s AND column_name=%s", (table, col)
+            ).fetchone()
+            if row and row[0].lower() not in ('text', 'character varying'):
+                db.execute(
+                    f'ALTER TABLE {table} ALTER COLUMN {col} '
+                    f'TYPE {new_type} USING COALESCE({col}::text, {default_val})'
+                )
+        db.commit()
     for table, col, col_def in MIGRATIONS:
         if not _valid_ident.match(table) or not _valid_ident.match(col):
             raise ValueError(f"Invalid identifier in migration: table={table!r}, col={col!r}")
