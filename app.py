@@ -5349,13 +5349,16 @@ def salary_import():
 def karyawan():
     db = get_db()
     today = date.today()
-    kontrak = db.execute('''
+    _kontrak_raw = db.execute('''
         SELECT *, julianday(contract_end) - julianday('now') AS days_left
         FROM employees
         WHERE employment_type IN ('kontrak','staff_worker') AND is_active = 1
         ORDER BY CASE WHEN contract_end IS NULL OR contract_end='' THEN 1 ELSE 0 END,
                  contract_end ASC
     ''').fetchall()
+    # days_left NULL (contract_end kosong) → 9999 agar selectattr di template tidak error
+    kontrak = [{**dict(r), 'days_left': r['days_left'] if r['days_left'] is not None else 9999}
+               for r in _kontrak_raw]
     tetap = db.execute('''
         SELECT * FROM employees
         WHERE employment_type = 'tetap' AND is_active = 1
