@@ -2,7 +2,7 @@
 {% block title %}Review — {{ ev.emp_name }}{% endblock %}
 {% block content %}
 
-<div class="d-flex align-items-center gap-2 mb-3">
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
   <a href="/reviews" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
   <h5 class="fw-bold mb-0">
     <i class="bi bi-clipboard2-check text-primary me-1"></i>
@@ -18,7 +18,17 @@
     {% elif ev.review_status=='rejected' %}Dikembalikan
     {% else %}{{ ev.review_status }}{% endif %}
   </span>
-  <span class="badge bg-light text-dark border ms-1">{{ reviewer_role }}</span>
+  {% if reviewer_role %}
+  <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ reviewer_role }}</span>
+  {% endif %}
+  <div class="ms-auto d-flex gap-2 flex-wrap">
+    <a href="/eval/{{ ev.id }}/export/excel" class="btn btn-sm btn-success" title="Export ke Excel (.xlsx)">
+      <i class="bi bi-file-earmark-excel me-1"></i>Export Excel
+    </a>
+    <a href="/eval/{{ ev.id }}/export/pdf" target="_blank" class="btn btn-sm btn-outline-danger" title="Cetak / Save PDF">
+      <i class="bi bi-printer me-1"></i>Cetak PDF
+    </a>
+  </div>
 </div>
 
 <div class="row g-3">
@@ -76,6 +86,127 @@
       Karyawan belum mengisi self-assessment.
     </div>
     {% endif %}
+
+    <!-- Panel Analisa Sistem — data objektif untuk bahan approval -->
+    <div class="card mb-3 border-primary">
+      <div class="card-header py-2 fw-bold bg-primary text-white d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cpu me-1"></i> Analisa Kinerja Sistem (Objektif)</span>
+        <span class="badge bg-white text-primary">Auto dari data aktivitas</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="row g-0 text-center border-bottom">
+          <!-- Task Score -->
+          <div class="col-md-3 border-end p-3">
+            <div class="small text-muted mb-1">Task Score</div>
+            <div class="display-6 fw-bold
+              {% if perf.task_score >= 80 %}text-success
+              {% elif perf.task_score >= 60 %}text-primary
+              {% elif perf.task_score >= 40 %}text-warning
+              {% else %}text-danger{% endif %}">
+              {{ perf.task_score }}
+            </div>
+            <div class="small text-muted">/ 100 (bm: {{ bm }})</div>
+          </div>
+          <!-- Ontime Rate -->
+          <div class="col-md-3 border-end p-3">
+            <div class="small text-muted mb-1">Ontime Rate</div>
+            <div class="fs-3 fw-bold
+              {% if ana.ontime_rate and ana.ontime_rate >= 75 %}text-success
+              {% elif ana.ontime_rate and ana.ontime_rate >= 50 %}text-warning
+              {% elif ana.ontime_rate %}text-danger
+              {% else %}text-muted{% endif %}">
+              {{ ana.ontime_rate ~ '%' if ana.ontime_rate is not none else 'N/A' }}
+            </div>
+            <div class="small text-muted">ketepatan deadline</div>
+          </div>
+          <!-- Task done vs open -->
+          <div class="col-md-3 border-end p-3">
+            <div class="small text-muted mb-1">Task Selesai / Open</div>
+            <div class="fs-3 fw-bold">
+              <span class="text-success">{{ ana.total_done }}</span>
+              <span class="text-muted fs-6">/</span>
+              <span class="{% if ana.open_overtime > 3 %}text-danger{% else %}text-secondary{% endif %}">
+                {{ ana.total_open }}
+              </span>
+            </div>
+            <div class="small text-muted">
+              {% if ana.open_overtime > 0 %}
+              <span class="text-danger"><i class="bi bi-exclamation-triangle"></i> {{ ana.open_overtime }} melewati deadline</span>
+              {% else %}tidak ada yg overtime{% endif %}
+            </div>
+          </div>
+          <!-- Concurrent -->
+          <div class="col-md-3 p-3">
+            <div class="small text-muted mb-1">Max Concurrent Task</div>
+            <div class="fs-3 fw-bold {% if ana.concurrent_max >= 8 %}text-danger{% elif ana.concurrent_max >= 5 %}text-warning{% else %}text-success{% endif %}">
+              {{ ana.concurrent_max }}
+            </div>
+            <div class="small text-muted">
+              {% if ana.concurrent_max >= 8 %}risiko overload
+              {% elif ana.concurrent_max >= 5 %}beban tinggi
+              {% else %}beban normal{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Breakdown sumber poin -->
+        {% if perf.breakdown %}
+        <div class="p-3 border-bottom">
+          <div class="small fw-semibold text-muted mb-2">Breakdown Sumber Poin ({{ perf.total_raw }} total raw)</div>
+          <div class="row g-2">
+            {% for b in perf.breakdown %}
+            <div class="col-auto">
+              <span class="badge bg-light text-dark border">
+                {{ b.label }}: <strong>{{ b.count }}×</strong> = {{ b.raw_pts }} pts
+              </span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Peer review rata-rata dimensi -->
+        {% if peer_avgs %}
+        <div class="p-3 border-bottom">
+          <div class="small fw-semibold text-muted mb-2">Rata-rata Peer Review ({{ peer_count }} reviewer)</div>
+          <div class="row g-2">
+            {% for dim, avg in peer_avgs.items() %}
+            <div class="col">
+              <div class="text-center p-2 border rounded">
+                <div class="small text-muted">{{ dim }}</div>
+                <div class="fw-bold fs-5 {% if avg >= 4 %}text-success{% elif avg >= 3 %}text-primary{% else %}text-warning{% endif %}">
+                  {{ '%.1f'|format(avg) }}
+                </div>
+                <div class="small text-muted">/ 5</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- AI Summary jika sudah digenerate -->
+        {% if ev.ai_summary %}
+        <div class="p-3 border-bottom">
+          <div class="small fw-semibold text-primary mb-2"><i class="bi bi-stars me-1"></i>Ringkasan AI</div>
+          <div class="small bg-light rounded p-2" style="white-space:pre-wrap">{{ ev.ai_summary }}</div>
+        </div>
+        {% endif %}
+        {% if ev.ai_recommendation %}
+        <div class="p-3">
+          <div class="small fw-semibold text-success mb-2"><i class="bi bi-check2-square me-1"></i>Rekomendasi AI</div>
+          <div class="small bg-light rounded p-2" style="white-space:pre-wrap">{{ ev.ai_recommendation }}</div>
+        </div>
+        {% endif %}
+        {% if not ev.ai_summary %}
+        <div class="p-3 text-center text-muted small">
+          <i class="bi bi-info-circle me-1"></i>
+          Analisa AI belum digenerate. Buka
+          <a href="/eval/{{ ev.id }}/summary">halaman summary</a> lalu klik <strong>Generate AI</strong>.
+        </div>
+        {% endif %}
+      </div>
+    </div>
 
     <!-- Nilai Evaluasi -->
     <div class="card mb-3">

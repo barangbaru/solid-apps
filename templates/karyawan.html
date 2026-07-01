@@ -335,13 +335,6 @@
                      style="padding:.2rem .5rem;font-size:.75rem" title="Edit">
                     <i class="bi bi-pencil"></i>
                   </a>
-                  {% if 'view_salary' in user_perms %}
-                  <button class="btn btn-xs btn-outline-success"
-                          style="padding:.2rem .5rem;font-size:.75rem" title="Lihat Gaji"
-                          onclick="viewSalary({{ emp.id }}, '{{ emp.name }}')">
-                    <i class="bi bi-cash-coin"></i>
-                  </button>
-                  {% endif %}
                   {% if current_user and current_user.role == 'superadmin' %}
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
                         data-confirm="Nonaktifkan {{ emp.name | e }}?" onsubmit="return confirm(this.dataset.confirm)">

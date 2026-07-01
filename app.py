@@ -7765,10 +7765,35 @@ def eval_review(eval_id):
 
     reviewer_role = _reviewer_role()
 
+    # ── Data analisa sistem untuk approver ──
+    date_from = ev['period_start'] or ''
+    date_to   = ev['period_end']   or ''
+    perf = calc_task_perf(db, ev['employee_id'], date_from, date_to,
+                          benchmark_per_month=get_benchmark_for_emp(db, emp))
+    ana  = calc_task_analytics(db, ev['employee_id'], date_from, date_to)
+    bm   = get_benchmark_for_emp(db, emp)
+
+    # Peer review averages per dimensi
+    peer_rows = db.execute('''SELECT dim_kerjasama, dim_komunikasi, dim_keandalan,
+                                      dim_inisiatif, dim_kualitas
+                               FROM peer_reviews WHERE eval_id=? AND dim_kerjasama IS NOT NULL''',
+                           (eval_id,)).fetchall()
+    peer_count = len(peer_rows)
+    peer_avgs  = {}
+    if peer_rows:
+        dims = ['Kerjasama','Komunikasi','Keandalan','Inisiatif','Kualitas']
+        cols = ['dim_kerjasama','dim_komunikasi','dim_keandalan','dim_inisiatif','dim_kualitas']
+        for label, col in zip(dims, cols):
+            vals = [r[col] for r in peer_rows if r[col] is not None]
+            if vals:
+                peer_avgs[label] = round(sum(vals)/len(vals), 1)
+
     return render_template('eval_review.html', ev=ev, emp=emp,
                            my_review=my_review, all_reviews=all_reviews,
                            competency_items=competency_items,
-                           reviewer_role=reviewer_role)
+                           reviewer_role=reviewer_role,
+                           perf=perf, ana=ana, bm=bm,
+                           peer_avgs=peer_avgs, peer_count=peer_count)
 
 
 @app.route('/api/eval/<int:eval_id>/score')
@@ -7779,6 +7804,561 @@ def api_score(eval_id):
     row = db.execute('SELECT pp_total,hs_total,ability_score,competency_total,final_total FROM evaluations WHERE id=?',
                      (eval_id,)).fetchone()
     return (dict(row) if row else {'error':'not found'})
+
+
+# ─── Export Evaluasi ───────────────────────────────────────────────────────────
+
+def _eval_export_data(db, eval_id):
+    """Kumpulkan semua data evaluasi untuk export (Excel/PDF)."""
+    ev  = db.execute('SELECT * FROM evaluations WHERE id=?', (eval_id,)).fetchone()
+    if not ev:
+        return None
+    emp = db.execute('''SELECT e.*, e1.name AS sup_name, e2.name AS lead_name, e3.name AS mgr_name
+        FROM employees e
+        LEFT JOIN employees e1 ON e1.id=e.supervisor_id
+        LEFT JOIN employees e2 ON e2.id=e.leader_id
+        LEFT JOIN employees e3 ON e3.id=e.manager_id
+        WHERE e.id=?''', (ev['employee_id'],)).fetchone()
+
+    recalc(db, eval_id)
+    ev = db.execute('SELECT * FROM evaluations WHERE id=?', (eval_id,)).fetchone()
+
+    perf = calc_task_perf(db, emp['id'], ev['task_date_from'] or '', ev['task_date_to'] or '')
+    ana  = calc_task_analytics(db, emp['id'], ev['task_date_from'] or '', ev['task_date_to'] or '')
+    bm   = get_benchmark_for_emp(db, emp)
+
+    skill_rows = db.execute('''
+        SELECT sc.name AS cat, si.name AS item, ss.score
+        FROM skill_scores ss
+        JOIN skill_items si ON si.id=ss.skill_item_id
+        JOIN skill_categories sc ON sc.id=si.category_id
+        WHERE ss.eval_id=? ORDER BY sc.name, si.name''', (eval_id,)).fetchall()
+
+    ability_rows = db.execute('''
+        SELECT ai.name, ai.desc_a, ai.desc_b, ai.desc_c, ai.desc_d, s.level
+        FROM ability_scores s JOIN ability_items ai ON ai.id=s.ability_item_id
+        WHERE s.eval_id=?''', (eval_id,)).fetchall()
+
+    comp_rows = db.execute('''
+        SELECT ci.point_measurement, ci.bobot, ci.is_hardskill, cs.rating
+        FROM competency_scores cs JOIN competency_items ci ON ci.id=cs.competency_item_id
+        WHERE cs.eval_id=? ORDER BY ci.sort_order''', (eval_id,)).fetchall()
+
+    peer_rows = db.execute(
+        'SELECT * FROM peer_reviews WHERE eval_id=? ORDER BY slot', (eval_id,)
+    ).fetchall()
+
+    proj_rows = db.execute(
+        'SELECT * FROM project_entries WHERE eval_id=? ORDER BY entry_type, sort_order', (eval_id,)
+    ).fetchall()
+
+    all_reviews = db.execute('''SELECT er.*, u.full_name
+        FROM eval_reviews er JOIN users u ON u.id=er.reviewer_user_id
+        WHERE er.eval_id=? ORDER BY er.submitted_at''', (eval_id,)).fetchall()
+
+    # Gaji tahun berjalan + tahun sebelumnya (jika ada izin tidak perlu disini — hanya untuk context)
+    sal_year = date.today().year
+    sal = db.execute(
+        'SELECT * FROM employee_salary WHERE employee_id=? AND year=?',
+        (emp['id'], sal_year)
+    ).fetchone()
+    sal_prev = db.execute(
+        'SELECT * FROM employee_salary WHERE employee_id=? AND year=?',
+        (emp['id'], sal_year - 1)
+    ).fetchone()
+    sal_dec  = _dec_sal_row(sal)      if sal      else {}
+    sal_prev_dec = _dec_sal_row(sal_prev) if sal_prev else {}
+
+    return {
+        'ev': dict(ev), 'emp': dict(emp),
+        'perf': perf, 'ana': ana, 'bm': bm,
+        'skill_rows': [dict(r) for r in skill_rows],
+        'ability_rows': [dict(r) for r in ability_rows],
+        'comp_rows': [dict(r) for r in comp_rows],
+        'peer_rows': [dict(r) for r in peer_rows],
+        'proj_rows': [dict(r) for r in proj_rows],
+        'all_reviews': [dict(r) for r in all_reviews],
+        'sal': sal_dec, 'sal_prev': sal_prev_dec, 'sal_year': sal_year,
+    }
+
+
+@app.route('/eval/<int:eval_id>/export/excel')
+@login_required
+def eval_export_excel(eval_id):
+    """Export evaluasi ke Excel (.xlsx) — untuk lampiran pengajuan gaji."""
+    try:
+        import openpyxl
+        from openpyxl.styles import (Font, PatternFill, Alignment, Border, Side,
+                                      numbers as _onum)
+        from openpyxl.utils import get_column_letter
+        import io
+    except ImportError:
+        flash('Library openpyxl tidak terinstall. Jalankan: pip install openpyxl', 'danger')
+        return redirect(url_for('eval_review', eval_id=eval_id))
+
+    db   = get_db()
+    data = _eval_export_data(db, eval_id)
+    if not data:
+        abort(404)
+    ev, emp = data['ev'], data['emp']
+
+    wb = openpyxl.Workbook()
+
+    # ── Styles ────────────────────────────────────────────────────────────────
+    BLUE   = 'FF1E3A5F'
+    LBLUE  = 'FFD9E8F7'
+    GREEN  = 'FF198754'
+    LGREEN = 'FFD1E8DB'
+    GRAY   = 'FFF4F6F9'
+    GOLD   = 'FFAD8B2A'
+    WHITE  = 'FFFFFFFF'
+    RED    = 'FFDC3545'
+
+    def _hdr(ws, row, col, text, bold=True, bg=BLUE, fg=WHITE, size=11, wrap=False, merge_to=None):
+        c = ws.cell(row=row, column=col, value=text)
+        c.font = Font(bold=bold, color=fg, size=size)
+        c.fill = PatternFill('solid', fgColor=bg)
+        c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=wrap)
+        if merge_to:
+            ws.merge_cells(start_row=row, start_column=col, end_row=row, end_column=merge_to)
+        return c
+
+    def _cell(ws, row, col, val, bold=False, bg=None, fg='FF000000', align='left',
+              num_fmt=None, wrap=False):
+        c = ws.cell(row=row, column=col, value=val)
+        c.font = Font(bold=bold, color=fg, size=10)
+        if bg:
+            c.fill = PatternFill('solid', fgColor=bg)
+        c.alignment = Alignment(horizontal=align, vertical='center', wrap_text=wrap)
+        if num_fmt:
+            c.number_format = num_fmt
+        return c
+
+    def _border_range(ws, min_row, max_row, min_col, max_col):
+        thin = Side(style='thin', color='FFCCCCCC')
+        for r in range(min_row, max_row + 1):
+            for c in range(min_col, max_col + 1):
+                ws.cell(r, c).border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # SHEET 1: Halaman Utama / Ringkasan Evaluasi
+    # ═════════════════════════════════════════════════════════════════════════
+    ws1 = wb.active
+    ws1.title = 'Evaluasi Kinerja'
+    ws1.column_dimensions['A'].width = 28
+    ws1.column_dimensions['B'].width = 30
+    ws1.column_dimensions['C'].width = 18
+    ws1.column_dimensions['D'].width = 18
+    ws1.column_dimensions['E'].width = 18
+    ws1.column_dimensions['F'].width = 18
+    ws1.row_dimensions[1].height = 36
+    ws1.row_dimensions[2].height = 22
+
+    # Header judul
+    _hdr(ws1, 1, 1, 'FORM EVALUASI KINERJA KARYAWAN', size=14, merge_to=6)
+    _hdr(ws1, 2, 1, 'Hive — TalentCore', size=10, bg=LBLUE, fg=BLUE, merge_to=6)
+
+    # Info Karyawan
+    r = 4
+    _hdr(ws1, r, 1, 'INFORMASI KARYAWAN', bg=BLUE, merge_to=6)
+    r += 1
+    info = [
+        ('Nama Karyawan', emp['name']),
+        ('Jabatan', emp.get('jabatan') or '—'),
+        ('Divisi', emp.get('divisi') or '—'),
+        ('Level / Grade', emp.get('level') or '—'),
+        ('Status', 'Tetap' if emp.get('employment_type') == 'tetap' else 'Kontrak'),
+        ('Periode Evaluasi', ev['periode']),
+        ('Evaluator', ev.get('evaluator') or '—'),
+        ('Atasan Langsung', emp.get('sup_name') or '—'),
+        ('Manager', emp.get('mgr_name') or '—'),
+        ('Status Evaluasi', ev.get('review_status', '').upper()),
+    ]
+    for label, val in info:
+        _cell(ws1, r, 1, label, bold=True, bg=GRAY)
+        _cell(ws1, r, 2, val, merge_to=None)
+        ws1.merge_cells(start_row=r, start_column=2, end_row=r, end_column=6)
+        r += 1
+
+    r += 1
+    # Rekapitulasi Nilai
+    _hdr(ws1, r, 1, 'REKAPITULASI NILAI EVALUASI', bg=BLUE, merge_to=6)
+    r += 1
+    _hdr(ws1, r, 1, 'Komponen', bg=LBLUE, fg=BLUE, bold=True)
+    _hdr(ws1, r, 2, 'Bobot', bg=LBLUE, fg=BLUE, bold=True)
+    _hdr(ws1, r, 3, 'Nilai Mentah', bg=LBLUE, fg=BLUE, bold=True)
+    _hdr(ws1, r, 4, 'Nilai Tertimbang', bg=LBLUE, fg=BLUE, bold=True)
+    _hdr(ws1, r, 5, 'Task Score', bg=LBLUE, fg=BLUE, bold=True)
+    _hdr(ws1, r, 6, 'Benchmark', bg=LBLUE, fg=BLUE, bold=True)
+    r += 1
+    _cell(ws1, r, 1, 'Project Performance (Task)', bold=True)
+    _cell(ws1, r, 2, '30%', align='center')
+    _cell(ws1, r, 3, round(ev.get('pp_total') or 0, 1), align='center')
+    _cell(ws1, r, 4, round((ev.get('pp_total') or 0) * 0.3, 2), align='center')
+    _cell(ws1, r, 5, data['perf']['task_score'], align='center', bold=True,
+          bg=LGREEN if data['perf']['task_score'] >= 70 else None)
+    _cell(ws1, r, 6, data['bm'], align='center')
+    r += 1
+    _cell(ws1, r, 1, 'Competency (+ Hard Skill)', bold=True)
+    _cell(ws1, r, 2, '70%', align='center')
+    _cell(ws1, r, 3, round(ev.get('competency_total') or 0, 2), align='center')
+    _cell(ws1, r, 4, round((ev.get('competency_total') or 0) * 0.7, 2), align='center')
+    r += 1
+    _cell(ws1, r, 1, 'NILAI AKHIR', bold=True, bg=LGREEN)
+    _cell(ws1, r, 2, '100%', align='center', bold=True, bg=LGREEN)
+    ws1.merge_cells(start_row=r, start_column=3, end_row=r, end_column=4)
+    c_final = ws1.cell(r, 3, round(ev.get('final_total') or 0, 2))
+    c_final.font = Font(bold=True, size=14,
+                        color=GREEN if (ev.get('final_total') or 0) >= 70 else RED)
+    c_final.alignment = Alignment(horizontal='center', vertical='center')
+    c_final.fill = PatternFill('solid', fgColor=LGREEN)
+    r += 1
+
+    # Keterangan predikat
+    ft = ev.get('final_total') or 0
+    predikat = ('Luar Biasa' if ft >= 80 else 'Sangat Baik' if ft >= 70 else
+                'Baik' if ft >= 60 else 'Cukup' if ft >= 50 else 'Perlu Perbaikan')
+    _cell(ws1, r, 1, 'Predikat', bold=True, bg=GRAY)
+    _cell(ws1, r, 2, predikat, bold=True,
+          fg=GREEN if ft >= 70 else (GOLD if ft >= 50 else RED))
+    ws1.merge_cells(start_row=r, start_column=2, end_row=r, end_column=6)
+    r += 2
+
+    # Task Analytics
+    _hdr(ws1, r, 1, 'ANALITIK KINERJA TASK (OTOMATIS SISTEM)', bg=BLUE, merge_to=6)
+    r += 1
+    ana_info = [
+        ('Task Score (vs Benchmark)',
+         f"{data['perf']['task_score']} / 100 (benchmark {data['bm']} pts/bln)"),
+        ('Total Task Selesai', data['ana']['total_done']),
+        ('Task Masih Berjalan', data['ana']['total_open']),
+        ('Task Melewati Deadline', data['ana']['open_overtime']),
+        ('Ontime Rate', f"{data['ana']['ontime_rate']}%" if data['ana']['ontime_rate'] is not None else 'N/A'),
+        ('Maks. Concurrent Task', data['ana']['concurrent_max']),
+        ('Durasi Periode', f"{data['perf']['months']:.1f} bulan"),
+    ]
+    for lbl, val in ana_info:
+        _cell(ws1, r, 1, lbl, bold=True, bg=GRAY)
+        _cell(ws1, r, 2, str(val))
+        ws1.merge_cells(start_row=r, start_column=2, end_row=r, end_column=6)
+        r += 1
+
+    r += 1
+    # AI Rekomendasi (jika ada)
+    if ev.get('ai_recommendation'):
+        _hdr(ws1, r, 1, 'REKOMENDASI SISTEM (AI)', bg=GREEN, merge_to=6)
+        r += 1
+        c = ws1.cell(r, 1, ev['ai_recommendation'])
+        c.alignment = Alignment(wrap_text=True, vertical='top')
+        c.font = Font(size=10)
+        ws1.merge_cells(start_row=r, start_column=1, end_row=r+10, end_column=6)
+        ws1.row_dimensions[r].height = 120
+        r += 12
+
+    # Overall assessment
+    if ev.get('overall_assessment'):
+        _hdr(ws1, r, 1, 'PENILAIAN EVALUATOR', bg=BLUE, merge_to=6)
+        r += 1
+        c = ws1.cell(r, 1, ev['overall_assessment'])
+        c.alignment = Alignment(wrap_text=True, vertical='top')
+        c.font = Font(size=10)
+        ws1.merge_cells(start_row=r, start_column=1, end_row=r+4, end_column=6)
+        ws1.row_dimensions[r].height = 60
+        r += 6
+
+    if ev.get('development_plan'):
+        _hdr(ws1, r, 1, 'RENCANA PENGEMBANGAN', bg=BLUE, merge_to=6)
+        r += 1
+        c = ws1.cell(r, 1, ev['development_plan'])
+        c.alignment = Alignment(wrap_text=True, vertical='top')
+        c.font = Font(size=10)
+        ws1.merge_cells(start_row=r, start_column=1, end_row=r+4, end_column=6)
+        ws1.row_dimensions[r].height = 60
+        r += 6
+
+    # Tanda tangan
+    r += 1
+    _hdr(ws1, r, 1, 'PERSETUJUAN', bg=BLUE, merge_to=6)
+    r += 1
+    _cell(ws1, r, 1, 'Karyawan', bold=True, align='center', bg=GRAY)
+    _cell(ws1, r, 3, 'Atasan Langsung', bold=True, align='center', bg=GRAY)
+    _cell(ws1, r, 5, 'Manager / HR', bold=True, align='center', bg=GRAY)
+    ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    ws1.merge_cells(start_row=r, start_column=3, end_row=r, end_column=4)
+    ws1.merge_cells(start_row=r, start_column=5, end_row=r, end_column=6)
+    r += 1
+    for col in [1, 3, 5]:
+        ws1.row_dimensions[r].height = 50
+        ws1.merge_cells(start_row=r, start_column=col, end_row=r, end_column=col+1)
+    r += 1
+    _cell(ws1, r, 1, emp['name'], bold=True, align='center')
+    _cell(ws1, r, 3, emp.get('sup_name') or '____________________', bold=True, align='center')
+    _cell(ws1, r, 5, emp.get('mgr_name') or '____________________', bold=True, align='center')
+    ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+    ws1.merge_cells(start_row=r, start_column=3, end_row=r, end_column=4)
+    ws1.merge_cells(start_row=r, start_column=5, end_row=r, end_column=6)
+    r += 1
+    tgl = date.today().strftime('%d %B %Y')
+    for col in [1, 3, 5]:
+        _cell(ws1, r, col, f'Tanggal: {tgl}', align='center', fg='FF666666')
+        ws1.merge_cells(start_row=r, start_column=col, end_row=r, end_column=col+1)
+
+    _border_range(ws1, 4, r, 1, 6)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # SHEET 2: Detail Skill & Kompetensi
+    # ═════════════════════════════════════════════════════════════════════════
+    ws2 = wb.create_sheet('Skill & Kompetensi')
+    ws2.column_dimensions['A'].width = 24
+    ws2.column_dimensions['B'].width = 30
+    ws2.column_dimensions['C'].width = 14
+    ws2.column_dimensions['D'].width = 14
+
+    _hdr(ws2, 1, 1, 'DETAIL SKILL SCORE', bg=BLUE, merge_to=4, size=12)
+    r2 = 3
+    if data['skill_rows']:
+        _hdr(ws2, r2, 1, 'Kategori', bg=LBLUE, fg=BLUE)
+        _hdr(ws2, r2, 2, 'Item Skill', bg=LBLUE, fg=BLUE)
+        _hdr(ws2, r2, 3, 'Score', bg=LBLUE, fg=BLUE)
+        _hdr(ws2, r2, 4, 'Maks', bg=LBLUE, fg=BLUE)
+        r2 += 1
+        cat_cur = None
+        for row in data['skill_rows']:
+            bg = GRAY if row['cat'] != cat_cur else None
+            cat_cur = row['cat']
+            _cell(ws2, r2, 1, row['cat'] if bg else '', bold=bool(bg), bg=bg)
+            _cell(ws2, r2, 2, row['item'])
+            sc = row['score'] or 0
+            _cell(ws2, r2, 3, sc, align='center', bold=True,
+                  fg=GREEN if sc >= 4 else (GOLD if sc >= 3 else RED))
+            _cell(ws2, r2, 4, 5, align='center', fg='FF888888')
+            r2 += 1
+        _border_range(ws2, 3, r2-1, 1, 4)
+
+    r2 += 2
+    _hdr(ws2, r2, 1, 'ABILITY LEVEL', bg=BLUE, merge_to=4, size=12)
+    r2 += 1
+    if data['ability_rows']:
+        _hdr(ws2, r2, 1, 'Aspek Kemampuan', bg=LBLUE, fg=BLUE, merge_to=2)
+        _hdr(ws2, r2, 3, 'Level', bg=LBLUE, fg=BLUE)
+        _hdr(ws2, r2, 4, 'Deskripsi', bg=LBLUE, fg=BLUE)
+        r2 += 1
+        level_desc = {'A': 'Terbaik — jadi referensi tim', 'B': 'Baik — mandiri',
+                      'C': 'Cukup — perlu supervisi', 'D': 'Perlu bimbingan intensif'}
+        level_color = {'A': GREEN, 'B': '0d6efd', 'C': GOLD, 'D': RED}
+        for row in data['ability_rows']:
+            lvl = (row['level'] or '').upper()
+            ws2.merge_cells(start_row=r2, start_column=1, end_row=r2, end_column=2)
+            _cell(ws2, r2, 1, row['name'])
+            _cell(ws2, r2, 3, lvl, align='center', bold=True,
+                  fg='FF' + level_color.get(lvl, '000000').lstrip('#').lstrip('FF'))
+            _cell(ws2, r2, 4, level_desc.get(lvl, ''), fg='FF555555', wrap=True)
+            r2 += 1
+        _border_range(ws2, r2 - len(data['ability_rows']) - 1, r2-1, 1, 4)
+
+    r2 += 2
+    _hdr(ws2, r2, 1, 'KOMPETENSI', bg=BLUE, merge_to=4, size=12)
+    r2 += 1
+    if data['comp_rows']:
+        _hdr(ws2, r2, 1, 'Poin Pengukuran', bg=LBLUE, fg=BLUE, merge_to=2)
+        _hdr(ws2, r2, 3, 'Bobot', bg=LBLUE, fg=BLUE)
+        _hdr(ws2, r2, 4, 'Rating (1-5)', bg=LBLUE, fg=BLUE)
+        r2 += 1
+        for row in data['comp_rows']:
+            ws2.merge_cells(start_row=r2, start_column=1, end_row=r2, end_column=2)
+            lbl = row['point_measurement']
+            if row['is_hardskill']:
+                lbl += ' [HS Auto]'
+            _cell(ws2, r2, 1, lbl)
+            _cell(ws2, r2, 3, f"{int(row['bobot']*100)}%", align='center')
+            rtg = row['rating'] or 0
+            _cell(ws2, r2, 4, rtg, align='center', bold=True,
+                  fg=GREEN if rtg >= 4 else (GOLD if rtg >= 3 else RED))
+            r2 += 1
+        _border_range(ws2, r2 - len(data['comp_rows']) - 1, r2-1, 1, 4)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # SHEET 3: Peer Review
+    # ═════════════════════════════════════════════════════════════════════════
+    ws3 = wb.create_sheet('Peer Review')
+    ws3.column_dimensions['A'].width = 20
+    ws3.column_dimensions['B'].width = 14
+    ws3.column_dimensions['C'].width = 14
+    ws3.column_dimensions['D'].width = 14
+    ws3.column_dimensions['E'].width = 14
+    ws3.column_dimensions['F'].width = 14
+    ws3.column_dimensions['G'].width = 40
+    _hdr(ws3, 1, 1, 'PEER REVIEW TERSTRUKTUR', bg=BLUE, merge_to=7, size=12)
+    r3 = 3
+    _hdr(ws3, r3, 1, 'Reviewer', bg=LBLUE, fg=BLUE)
+    for ci, lbl in enumerate(['Kerjasama', 'Komunikasi', 'Keandalan', 'Inisiatif', 'Kualitas'], 2):
+        _hdr(ws3, r3, ci, lbl, bg=LBLUE, fg=BLUE)
+    _hdr(ws3, r3, 7, 'Narasi / Saran', bg=LBLUE, fg=BLUE)
+    r3 += 1
+    dim_keys = ['dim_kerjasama','dim_komunikasi','dim_keandalan','dim_inisiatif','dim_kualitas']
+    all_avgs = []
+    for pr in data['peer_rows']:
+        if not pr.get('reviewer_name') and not pr.get('feedback'):
+            continue
+        _cell(ws3, r3, 1, pr.get('reviewer_name') or '—', bold=True)
+        dims = [pr.get(k) for k in dim_keys]
+        for ci, v in enumerate(dims, 2):
+            _cell(ws3, r3, ci, v if v is not None else '—', align='center',
+                  fg=GREEN if (v and v >= 4) else (GOLD if (v and v >= 3) else RED) if v else 'FF888888')
+        _cell(ws3, r3, 7, pr.get('feedback') or '', wrap=True)
+        ws3.row_dimensions[r3].height = 40
+        valid = [v for v in dims if v is not None]
+        if valid:
+            all_avgs.append(sum(valid) / len(valid))
+        r3 += 1
+    if all_avgs:
+        overall_avg = round(sum(all_avgs) / len(all_avgs), 2)
+        _cell(ws3, r3, 1, 'Rata-rata Peer', bold=True, bg=LGREEN)
+        _cell(ws3, r3, 2, overall_avg, align='center', bold=True, bg=LGREEN,
+              fg=GREEN if overall_avg >= 4 else (GOLD if overall_avg >= 3 else RED))
+        ws3.merge_cells(start_row=r3, start_column=2, end_row=r3, end_column=6)
+        r3 += 1
+    _border_range(ws3, 3, r3-1, 1, 7)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # SHEET 4: Task Performance + Pengajuan Gaji
+    # ═════════════════════════════════════════════════════════════════════════
+    ws4 = wb.create_sheet('Task & Gaji')
+    ws4.column_dimensions['A'].width = 30
+    ws4.column_dimensions['B'].width = 22
+    ws4.column_dimensions['C'].width = 18
+    ws4.column_dimensions['D'].width = 18
+    ws4.column_dimensions['E'].width = 18
+    _hdr(ws4, 1, 1, 'DETAIL TASK PERFORMANCE', bg=BLUE, merge_to=5, size=12)
+    r4 = 3
+    _hdr(ws4, r4, 1, 'Sumber', bg=LBLUE, fg=BLUE)
+    _hdr(ws4, r4, 2, 'Jumlah', bg=LBLUE, fg=BLUE)
+    _hdr(ws4, r4, 3, 'Poin Raw', bg=LBLUE, fg=BLUE)
+    ws4.merge_cells(start_row=r4, start_column=4, end_row=r4, end_column=5)
+    _hdr(ws4, r4, 4, 'Keterangan', bg=LBLUE, fg=BLUE)
+    r4 += 1
+    for b in data['perf']['breakdown']:
+        _cell(ws4, r4, 1, b['label'])
+        _cell(ws4, r4, 2, b['count'], align='center')
+        _cell(ws4, r4, 3, b['raw_pts'], align='center')
+        r4 += 1
+    _cell(ws4, r4, 1, 'Total Poin Raw', bold=True, bg=LGREEN)
+    _cell(ws4, r4, 2, '', bg=LGREEN)
+    _cell(ws4, r4, 3, data['perf']['total_raw'], bold=True, align='center', bg=LGREEN)
+    r4 += 1
+    _cell(ws4, r4, 1, 'Task Score (normalized)', bold=True, bg=LGREEN)
+    _cell(ws4, r4, 2, f"Benchmark: {data['bm']} pts/bln", fg='FF555555', bg=LGREEN)
+    _cell(ws4, r4, 3, f"{data['perf']['task_score']} / 100", bold=True, align='center', bg=LGREEN,
+          fg=GREEN if data['perf']['task_score'] >= 70 else RED)
+    _border_range(ws4, 3, r4, 1, 5)
+
+    # Pengajuan Kenaikan Gaji
+    r4 += 3
+    _hdr(ws4, r4, 1, 'DATA GAJI & PENGAJUAN KENAIKAN', bg=BLUE, merge_to=5, size=12)
+    r4 += 1
+    sal = data['sal']
+    sal_prev = data['sal_prev']
+    sal_year = data['sal_year']
+    gaji_labels = [
+        ('Gaji Pokok', 'base_salary'),
+        ('Tunjangan Jabatan', 'al_001'),
+        ('Tunjangan Komunikasi', 'al_002'),
+        ('Tunjangan Performance', 'al_003'),
+        ('Tunjangan Kehadiran', 'al_004'),
+    ]
+    _hdr(ws4, r4, 1, 'Komponen', bg=LBLUE, fg=BLUE)
+    _hdr(ws4, r4, 2, f'Tahun {sal_year-1}', bg=LBLUE, fg=BLUE)
+    _hdr(ws4, r4, 3, f'Tahun {sal_year}', bg=LBLUE, fg=BLUE)
+    _hdr(ws4, r4, 4, 'Selisih', bg=LBLUE, fg=BLUE)
+    _hdr(ws4, r4, 5, '% Naik', bg=LBLUE, fg=BLUE)
+    r4 += 1
+    total_cur = total_prv = 0
+    rp_fmt = '#,##0'
+    for lbl, key in gaji_labels:
+        cur = sal.get(key, 0) or 0
+        prv = sal_prev.get(f'p_{key}', sal_prev.get(key, 0)) or 0
+        diff = cur - prv
+        pct  = round(diff / prv * 100, 1) if prv else 0
+        _cell(ws4, r4, 1, lbl, bold=True)
+        _cell(ws4, r4, 2, prv, align='right', num_fmt=rp_fmt)
+        _cell(ws4, r4, 3, cur, align='right', num_fmt=rp_fmt)
+        _cell(ws4, r4, 4, diff, align='right', num_fmt=rp_fmt,
+              fg=GREEN if diff > 0 else (RED if diff < 0 else 'FF000000'))
+        _cell(ws4, r4, 5, f'{pct}%', align='center',
+              fg=GREEN if pct > 0 else (RED if pct < 0 else 'FF000000'))
+        total_cur += cur; total_prv += prv
+        r4 += 1
+    # Total
+    diff_tot = total_cur - total_prv
+    pct_tot  = round(diff_tot / total_prv * 100, 1) if total_prv else 0
+    _cell(ws4, r4, 1, 'TOTAL TAKE HOME', bold=True, bg=LGREEN)
+    _cell(ws4, r4, 2, total_prv, bold=True, align='right', num_fmt=rp_fmt, bg=LGREEN)
+    _cell(ws4, r4, 3, total_cur, bold=True, align='right', num_fmt=rp_fmt, bg=LGREEN,
+          fg=GREEN)
+    _cell(ws4, r4, 4, diff_tot, bold=True, align='right', num_fmt=rp_fmt, bg=LGREEN,
+          fg=GREEN if diff_tot > 0 else RED)
+    _cell(ws4, r4, 5, f'{pct_tot}%', bold=True, align='center', bg=LGREEN,
+          fg=GREEN if pct_tot > 0 else RED)
+    r4 += 1
+    if sal.get('increase_pct'):
+        _cell(ws4, r4, 1, 'Kenaikan Gaji Tercatat', bold=True)
+        _cell(ws4, r4, 2, f"{sal.get('increase_pct')}%", bold=True, fg=GREEN)
+    if sal.get('notes'):
+        r4 += 1
+        _cell(ws4, r4, 1, 'Catatan', bold=True)
+        _cell(ws4, r4, 2, sal.get('notes', ''), wrap=True)
+        ws4.merge_cells(start_row=r4, start_column=2, end_row=r4, end_column=5)
+    _border_range(ws4, r4 - len(gaji_labels) - 4, r4, 1, 5)
+
+    # Approval reviews
+    if data['all_reviews']:
+        r4 += 3
+        _hdr(ws4, r4, 1, 'PERSETUJUAN REVIEWER', bg=BLUE, merge_to=5, size=12)
+        r4 += 1
+        _hdr(ws4, r4, 1, 'Reviewer', bg=LBLUE, fg=BLUE)
+        _hdr(ws4, r4, 2, 'Role', bg=LBLUE, fg=BLUE)
+        _hdr(ws4, r4, 3, 'Status', bg=LBLUE, fg=BLUE)
+        _hdr(ws4, r4, 4, 'Tanggal', bg=LBLUE, fg=BLUE)
+        _hdr(ws4, r4, 5, 'Catatan', bg=LBLUE, fg=BLUE)
+        r4 += 1
+        for rv in data['all_reviews']:
+            _cell(ws4, r4, 1, rv.get('full_name') or '—', bold=True)
+            _cell(ws4, r4, 2, rv.get('reviewer_role') or '—')
+            st = rv.get('status','')
+            _cell(ws4, r4, 3, st.upper(), align='center',
+                  fg=GREEN if st == 'submitted' else GOLD)
+            _cell(ws4, r4, 4, (rv.get('submitted_at') or '')[:16])
+            _cell(ws4, r4, 5, rv.get('notes') or '—', wrap=True)
+            ws4.row_dimensions[r4].height = 30
+            r4 += 1
+        _border_range(ws4, r4 - len(data['all_reviews']) - 1, r4-1, 1, 5)
+
+    # Output
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    fname = f"Evaluasi_{emp['name'].replace(' ','_')}_{ev['periode']}_{date.today()}.xlsx"
+    return send_file(
+        out,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=fname
+    )
+
+
+@app.route('/eval/<int:eval_id>/export/pdf')
+@login_required
+def eval_export_pdf(eval_id):
+    """Halaman cetak evaluasi (HTML) — user print to PDF dari browser."""
+    db   = get_db()
+    data = _eval_export_data(db, eval_id)
+    if not data:
+        abort(404)
+    from datetime import datetime as _dtnow
+    return render_template('eval_print.html', **data,
+                           salary_cols=SALARY_COLS, salary_total=_salary_total,
+                           now=_dtnow.now().strftime('%d %b %Y %H:%M'))
+
 
 # ─── Admin Routes ──────────────────────────────────────────────────────────────
 

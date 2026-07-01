@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evaluasi Kinerja — {{ emp.name }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #111; background: #fff; }
+  .page { max-width: 850px; margin: 0 auto; padding: 20px 30px; }
+
+  /* Print controls — tidak ikut cetak */
+  .print-bar {
+    background: #1a73e8; color: #fff; padding: 10px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .print-bar button {
+    background: #fff; color: #1a73e8; border: none; padding: 6px 18px;
+    border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11pt;
+  }
+  @media print {
+    .print-bar { display: none !important; }
+    .page { padding: 0; }
+    .page-break { page-break-before: always; }
+  }
+
+  h1 { font-size: 16pt; text-align: center; margin-bottom: 4px; }
+  h2 { font-size: 12pt; color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 3px; margin: 16px 0 8px; }
+  h3 { font-size: 10.5pt; margin: 12px 0 4px; color: #333; }
+
+  .header-logo { text-align: center; margin-bottom: 8px; }
+  .header-logo img { height: 48px; }
+  .divider { border: none; border-top: 1px solid #ccc; margin: 8px 0; }
+  .sub-title { text-align: center; font-size: 10pt; color: #555; margin-bottom: 12px; }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  th, td { border: 1px solid #ccc; padding: 5px 8px; font-size: 10pt; vertical-align: top; }
+  th { background: #e8f0fe; font-weight: bold; }
+  .label { width: 30%; font-weight: bold; background: #f5f5f5; }
+  .score-box { display: inline-block; padding: 2px 10px; border-radius: 4px; font-weight: bold; }
+  .score-good { background: #d4edda; color: #155724; }
+  .score-ok   { background: #fff3cd; color: #856404; }
+  .score-low  { background: #f8d7da; color: #721c24; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 8px 0; }
+  .kpi-card { border: 1px solid #ccc; border-radius: 4px; padding: 8px; text-align: center; }
+  .kpi-val  { font-size: 18pt; font-weight: bold; }
+  .kpi-lbl  { font-size: 8.5pt; color: #555; }
+  .green { color: #1a7a4a; } .orange { color: #e06c00; } .red { color: #c0392b; } .blue { color: #1a73e8; }
+
+  .section-flag {
+    display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 9pt; font-weight: bold;
+  }
+  .flag-good   { background: #d4edda; color: #155724; }
+  .flag-warn   { background: #fff3cd; color: #856404; }
+  .flag-bad    { background: #f8d7da; color: #721c24; }
+  .flag-normal { background: #e2e3e5; color: #383d41; }
+
+  .peer-dim { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 8px 0; }
+  .peer-card { border: 1px solid #ccc; border-radius: 4px; padding: 8px; text-align: center; }
+  .peer-val  { font-size: 16pt; font-weight: bold; }
+
+  .ai-box { background: #f0f4ff; border-left: 4px solid #1a73e8; padding: 10px 12px; margin: 8px 0; font-size: 10pt; white-space: pre-wrap; }
+  .ai-rec  { background: #f0fff4; border-left: 4px solid #28a745; padding: 10px 12px; margin: 8px 0; font-size: 10pt; white-space: pre-wrap; }
+
+  .sign-area { margin-top: 30px; }
+  .sign-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: center; }
+  .sign-box { border: 1px solid #ccc; border-radius: 4px; padding: 12px 8px; }
+  .sign-line { border-top: 1px solid #555; margin-top: 60px; padding-top: 4px; font-size: 9pt; color: #444; }
+
+  .stamp-box { border: 1px dashed #888; width: 100px; height: 80px; margin: 10px auto; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 8pt; }
+  .footer { margin-top: 20px; font-size: 8.5pt; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <span>Preview Cetak — Evaluasi Kinerja <strong>{{ emp.name }}</strong></span>
+  <button onclick="window.print()">🖨 Cetak / Simpan PDF</button>
+</div>
+
+<div class="page">
+  <!-- HEADER -->
+  <h1>DOKUMEN EVALUASI KINERJA KARYAWAN</h1>
+  <div class="sub-title">
+    Periode: {{ ev.period_start or '-' }} s/d {{ ev.period_end or '-' }} &nbsp;|&nbsp;
+    Tanggal Cetak: {{ now if now is defined else '' }}
+  </div>
+  <hr class="divider">
+
+  <!-- IDENTITAS KARYAWAN -->
+  <h2>I. Identitas Karyawan</h2>
+  <table>
+    <tr><td class="label">Nama</td><td>{{ emp.name }}</td><td class="label">NIP / ID</td><td>{{ emp.employee_id or '-' }}</td></tr>
+    <tr><td class="label">Jabatan</td><td>{{ emp.position or '-' }}</td><td class="label">Divisi</td><td>{{ emp.divisi or '-' }}</td></tr>
+    <tr><td class="label">Status Kontrak</td><td>{{ emp.employment_type or '-' }}</td><td class="label">Grade/Level</td><td>{{ emp.grade or '-' }}</td></tr>
+    <tr><td class="label">Atasan Langsung</td><td>{{ emp.sup_name or '-' }}</td><td class="label">Leader</td><td>{{ emp.lead_name or '-' }}</td></tr>
+    <tr><td class="label">Manager</td><td>{{ emp.mgr_name or '-' }}</td><td class="label">Status Evaluasi</td>
+      <td><strong class="section-flag
+        {% if ev.review_status == 'approved' %}flag-good
+        {% elif ev.review_status == 'rejected' %}flag-bad
+        {% else %}flag-warn{% endif %}">
+        {{ (ev.review_status or 'draft')|upper }}
+      </strong></td></tr>
+  </table>
+
+  <!-- KPI SISTEM -->
+  <h2>II. Analisa Kinerja Sistem (Objektif)</h2>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-val {% if perf.task_score >= 80 %}green{% elif perf.task_score >= 60 %}blue{% elif perf.task_score >= 40 %}orange{% else %}red{% endif %}">
+        {{ perf.task_score }}
+      </div>
+      <div class="kpi-lbl">Task Score<br><small>benchmark: {{ bm }}</small></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val {% if ana.ontime_rate and ana.ontime_rate >= 75 %}green{% elif ana.ontime_rate and ana.ontime_rate >= 50 %}orange{% else %}red{% endif %}">
+        {{ ana.ontime_rate ~ '%' if ana.ontime_rate is not none else 'N/A' }}
+      </div>
+      <div class="kpi-lbl">Ontime Rate</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val green">{{ ana.total_done }}</div>
+      <div class="kpi-lbl">Task Selesai</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-val {% if ana.open_overtime > 3 %}red{% elif ana.open_overtime > 0 %}orange{% else %}green{% endif %}">
+        {{ ana.open_overtime }}
+      </div>
+      <div class="kpi-lbl">Task Overtime (open)</div>
+    </div>
+  </div>
+
+  <table>
+    <tr>
+      <th>Metrik</th><th>Nilai</th><th>Keterangan</th>
+    </tr>
+    <tr>
+      <td>Task Score vs Benchmark</td>
+      <td><strong>{{ perf.task_score }} / {{ bm }}</strong></td>
+      <td>
+        {% if perf.task_score >= bm %}
+        <span class="section-flag flag-good">Di atas benchmark — Baik</span>
+        {% elif perf.task_score >= bm * 0.75 %}
+        <span class="section-flag flag-warn">Mendekati benchmark</span>
+        {% else %}
+        <span class="section-flag flag-bad">Di bawah benchmark</span>
+        {% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td>Max Concurrent Task</td>
+      <td>{{ ana.concurrent_max }}</td>
+      <td>
+        {% if ana.concurrent_max >= 8 %}<span class="section-flag flag-bad">Risiko overload</span>
+        {% elif ana.concurrent_max >= 5 %}<span class="section-flag flag-warn">Beban tinggi</span>
+        {% else %}<span class="section-flag flag-normal">Normal</span>{% endif %}
+      </td>
+    </tr>
+    <tr>
+      <td>Task Selesai / Open / Overtime</td>
+      <td>{{ ana.total_done }} / {{ ana.total_open }} / {{ ana.open_overtime }}</td>
+      <td>—</td>
+    </tr>
+    {% if perf.breakdown %}
+    <tr>
+      <td>Sumber Poin (breakdown)</td>
+      <td colspan="2">
+        {% for b in perf.breakdown %}
+        <span class="score-box score-ok">{{ b.label }}: {{ b.count }}× = {{ b.raw_pts }} pts</span>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <!-- PEER REVIEW -->
+  {% if peer_rows %}
+  <h2>III. Peer Review ({{ peer_rows|length }} Reviewer)</h2>
+  {% set dims = [
+    ('Kerjasama','dim_kerjasama'), ('Komunikasi','dim_komunikasi'),
+    ('Keandalan','dim_keandalan'), ('Inisiatif','dim_inisiatif'), ('Kualitas','dim_kualitas')
+  ] %}
+  <div class="peer-dim">
+    {% for label, col in dims %}
+    {% set vals = peer_rows | selectattr(col) | map(attribute=col) | list %}
+    {% set avg = (vals|sum / vals|length) if vals else none %}
+    <div class="peer-card">
+      <div class="peer-val {% if avg and avg >= 4 %}green{% elif avg and avg >= 3 %}blue{% else %}orange{% endif %}">
+        {{ '%.1f'|format(avg) if avg else '-' }}
+      </div>
+      <div class="kpi-lbl">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <table>
+    <tr>
+      <th>#</th><th>Reviewer</th>
+      {% for label, _ in dims %}<th>{{ label }}</th>{% endfor %}
+      <th>Catatan</th>
+    </tr>
+    {% for pr in peer_rows %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ pr.reviewer_name or pr.reviewer_label or 'Reviewer ' ~ loop.index }}</td>
+      {% for _, col in dims %}
+      <td class="text-center">{{ pr[col] or '-' }}</td>
+      {% endfor %}
+      <td>{{ pr.notes or '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <!-- NILAI EVALUASI -->
+  <h2 class="page-break">IV. Rekap Nilai Evaluasi</h2>
+  <table>
+    <tr>
+      <th>Komponen</th><th>Bobot</th><th>Nilai</th>
+    </tr>
+    <tr>
+      <td>Penilaian Kinerja (PP)</td>
+      <td>{{ ev.pp_weight or '-' }}%</td>
+      <td>{{ ev.pp_total or '-' }}</td>
+    </tr>
+    <tr>
+      <td>Hard/Soft Skill (HS)</td>
+      <td>{{ ev.hs_weight or '-' }}%</td>
+      <td>{{ ev.hs_total or '-' }}</td>
+    </tr>
+    <tr>
+      <td>Ability Assessment</td>
+      <td>—</td>
+      <td>{{ ev.ability_score or '-' }}</td>
+    </tr>
+    <tr>
+      <td>Kompetensi</td>
+      <td>—</td>
+      <td>{{ ev.competency_total or '-' }}</td>
+    </tr>
+    <tr style="background:#e8f0fe;">
+      <td><strong>Nilai Akhir</strong></td>
+      <td>—</td>
+      <td><strong>{{ ev.final_total or '-' }}</strong></td>
+    </tr>
+    {% if ev.final_grade %}
+    <tr>
+      <td>Grade Akhir</td>
+      <td colspan="2"><strong>{{ ev.final_grade }}</strong></td>
+    </tr>
+    {% endif %}
+  </table>
+
+  <!-- KOMPETENSI DIVISI -->
+  {% if comp_rows %}
+  <h2>V. Kompetensi Divisi</h2>
+  <table>
+    <tr><th>Item Kompetensi</th><th>Bobot</th><th>Tipe</th><th>Rating</th></tr>
+    {% for c in comp_rows %}
+    <tr>
+      <td>{{ c.point_measurement }}</td>
+      <td>{{ c.bobot }}</td>
+      <td>{{ 'Hard Skill' if c.is_hardskill else 'Soft Skill' }}</td>
+      <td>{{ c.rating }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <!-- SKILL -->
+  {% if skill_rows %}
+  <h2>VI. Skill & Kompetensi</h2>
+  <table>
+    <tr><th>Kategori</th><th>Item</th><th>Skor</th></tr>
+    {% for s in skill_rows %}
+    <tr>
+      <td>{{ s.cat }}</td>
+      <td>{{ s.item }}</td>
+      <td>{{ s.score }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <!-- PROYEK -->
+  {% if proj_rows %}
+  <h2>VII. Daftar Proyek / Support / POC</h2>
+  <table>
+    <tr><th>Jenis</th><th>Nama</th><th>Posisi</th><th>Periode</th><th>Status</th></tr>
+    {% for p in proj_rows %}
+    <tr>
+      <td>{{ p.entry_type|upper }}</td>
+      <td>{{ p.name }}</td>
+      <td>{{ p.position or '-' }}</td>
+      <td>{{ p.start_date or '' }}{% if p.end_date %} – {{ p.end_date }}{% endif %}</td>
+      <td>{{ p.status or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <!-- AI SUMMARY -->
+  {% if ev.ai_summary or ev.ai_recommendation %}
+  <h2>VIII. Ringkasan & Rekomendasi AI</h2>
+  {% if ev.ai_summary %}
+  <h3>Ringkasan</h3>
+  <div class="ai-box">{{ ev.ai_summary }}</div>
+  {% endif %}
+  {% if ev.ai_recommendation %}
+  <h3>Rekomendasi</h3>
+  <div class="ai-rec">{{ ev.ai_recommendation }}</div>
+  {% endif %}
+  {% endif %}
+
+  <!-- GAJI REFERENSI -->
+  {% if sal %}
+  <h2>IX. Referensi Gaji ({{ sal_year }})</h2>
+  <table>
+    <tr><th>Komponen</th><th>Nilai</th></tr>
+    {% if sal.base_salary %}<tr><td>Gaji Pokok</td><td>{{ '{:,.0f}'.format(sal.base_salary|float) }}</td></tr>{% endif %}
+    {% if sal.al_001 %}<tr><td>Tunjangan 1</td><td>{{ '{:,.0f}'.format(sal.al_001|float) }}</td></tr>{% endif %}
+    {% if sal.al_002 %}<tr><td>Tunjangan 2</td><td>{{ '{:,.0f}'.format(sal.al_002|float) }}</td></tr>{% endif %}
+    {% if sal.al_003 %}<tr><td>Tunjangan 3</td><td>{{ '{:,.0f}'.format(sal.al_003|float) }}</td></tr>{% endif %}
+    {% if sal.al_004 %}<tr><td>Tunjangan 4</td><td>{{ '{:,.0f}'.format(sal.al_004|float) }}</td></tr>{% endif %}
+  </table>
+  {% if sal_prev %}
+  <p style="font-size:9pt;color:#555;">Gaji tahun sebelumnya ({{ sal_year - 1 }}) juga tersedia sebagai referensi kenaikan.</p>
+  {% endif %}
+  {% endif %}
+
+  <!-- REVIEW APPROVAL HISTORY -->
+  {% if all_reviews %}
+  <h2>X. Riwayat Approval</h2>
+  <table>
+    <tr><th>Reviewer</th><th>Peran</th><th>Status</th><th>Waktu</th><th>Catatan</th></tr>
+    {% for r in all_reviews %}
+    <tr>
+      <td>{{ r.full_name }}</td>
+      <td>{{ r.reviewer_role or '-' }}</td>
+      <td><span class="section-flag {% if r.status == 'approved' %}flag-good{% elif r.status == 'rejected' %}flag-bad{% else %}flag-warn{% endif %}">{{ (r.status or '-')|upper }}</span></td>
+      <td>{{ r.submitted_at or '-' }}</td>
+      <td>{{ r.notes or '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <!-- TANDA TANGAN -->
+  <div class="sign-area">
+    <h2>XI. Persetujuan</h2>
+    <div class="sign-grid">
+      <div class="sign-box">
+        <div style="font-size:10pt;font-weight:bold;">Karyawan</div>
+        <div class="stamp-box">TTD</div>
+        <div class="sign-line">{{ emp.name }}<br><small>{{ emp.position or '' }}</small></div>
+      </div>
+      <div class="sign-box">
+        <div style="font-size:10pt;font-weight:bold;">Atasan Langsung</div>
+        <div class="stamp-box">TTD</div>
+        <div class="sign-line">{{ emp.sup_name or '___________' }}<br><small>Atasan Langsung</small></div>
+      </div>
+      <div class="sign-box">
+        <div style="font-size:10pt;font-weight:bold;">Manager / HRD</div>
+        <div class="stamp-box">TTD</div>
+        <div class="sign-line">{{ emp.mgr_name or '___________' }}<br><small>Manager / HRD</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Dokumen ini digenerate secara otomatis oleh sistem evaluasi kinerja.
+    Tanggal cetak: {{ now if now is defined else '' }} &nbsp;|&nbsp; Evaluasi ID: {{ ev.id }}
+  </div>
+</div>
+
+</body>
+</html>
