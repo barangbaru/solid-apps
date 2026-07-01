@@ -7197,47 +7197,133 @@ def _get_sys_project_data(db, ev):
 @login_required
 def eval_project_autofill(eval_id):
     """Auto-isi project_entries dari data sistem (PC + SC + POC)."""
-    db = get_db()
-    ev = get_eval_or_404(db, eval_id)
+    db    = get_db()
+    ev    = get_eval_or_404(db, eval_id)
+    emp_id = ev['employee_id']
     if not ev:
         return jsonify({'ok': False, 'msg': 'Evaluasi tidak ditemukan'})
 
-    sys_data = _get_sys_project_data(db, ev)
+    def _proj_status(s):
+        s = (s or '').lower()
+        if s in ('completed', 'done', 'selesai'):   return 'DONE'
+        if s in ('cancelled', 'canceled', 'batal'): return 'CANCELLED'
+        return 'ONPROGRESS'
 
-    # Hapus entries lama, isi ulang dari sistem
     db.execute('DELETE FROM project_entries WHERE eval_id=?', (eval_id,))
-
     order = 0
-    # history: proyek yang diikuti
-    for p in sys_data['pc_projs']:
-        detail = (f"Terlibat sebagai {p['member_role'] or 'Anggota'}. "
-                  f"Task: {p['task_count']} ({p['done_count']} selesai, {p['overtime_count']} overtime).")
-        status = 'DONE' if p['status'] in ('completed','done') else 'ONGOING'
-        db.execute('''INSERT INTO project_entries(eval_id,entry_type,project_name,detail_task,status,sort_order)
+
+    # ── HISTORY: semua proyek PC yang diikuti, bawa status proyek ──────────────
+    pc_projs = db.execute('''
+        SELECT DISTINCT p.id, p.name AS proj_name, p.status AS proj_status,
+               pm.role AS member_role,
+               COUNT(ta2.id) AS task_count,
+               COUNT(ta2.id) FILTER (WHERE t.status=\'done\') AS done_count,
+               COUNT(ta2.id) FILTER (WHERE t.status NOT IN (\'done\',\'cancelled\')
+                   AND t.due_date IS NOT NULL AND t.due_date <> \'\'
+                   AND NULLIF(t.due_date,\'\')::date < CURRENT_DATE) AS overtime_count
+        FROM pc_projects p
+        LEFT JOIN pc_members pm ON pm.project_id=p.id AND pm.employee_id=?
+        LEFT JOIN pc_tasks t ON t.project_id=p.id
+        LEFT JOIN pc_task_assignees ta2 ON ta2.task_id=t.id AND ta2.employee_id=?
+        WHERE (pm.employee_id=? OR ta2.employee_id=?) AND p.deleted_at IS NULL
+        GROUP BY p.id, p.name, p.status, pm.role
+        ORDER BY task_count DESC
+    ''', (emp_id, emp_id, emp_id, emp_id)).fetchall()
+
+    for p in pc_projs:
+        role   = p['member_role'] or 'Anggota Tim'
+        detail = (f"Role: {role}. "
+                  f"Task: {p['task_count']} total, {p['done_count']} selesai"
+                  + (f", {p['overtime_count']} melewati deadline" if p['overtime_count'] else '') + ".")
+        db.execute('''INSERT INTO project_entries
+                      (eval_id,entry_type,project_name,detail_task,status,sort_order)
                       VALUES(?,?,?,?,?,?)''',
-                   (eval_id, 'history', p['proj_name'], detail, status, order))
+                   (eval_id, 'history', p['proj_name'], detail,
+                    _proj_status(p['proj_status']), order))
         order += 1
 
-    # top_task: tiket SC
-    sc = sys_data['sc_tickets']
-    if sc and sc.get('total', 0) > 0:
-        custs = sys_data['sc_customers']
-        cust_str = ', '.join(c['cust_name'] for c in custs[:5])
+    # SC tiket per customer — masuk history juga sebagai support project
+    sc_per_cust = db.execute('''
+        SELECT c.name AS cust_name,
+               COUNT(t.id) AS total,
+               COUNT(t.id) FILTER (WHERE t.status=\'resolved\') AS resolved,
+               COUNT(t.id) FILTER (WHERE t.status=\'open\') AS open_count
+        FROM sc_ticket_assignees ta
+        JOIN sc_tickets t ON t.id=ta.ticket_id
+        JOIN sc_customers c ON c.id=t.customer_id
+        WHERE ta.employee_id=?
+        GROUP BY c.id, c.name ORDER BY total DESC
+    ''', (emp_id,)).fetchall()
+
+    for sc in sc_per_cust:
         detail = (f"Handle {sc['total']} tiket support "
-                  f"({sc['resolved']} resolved, {sc['open_count']} open). "
-                  f"Customer: {cust_str or '-'}.")
-        db.execute('''INSERT INTO project_entries(eval_id,entry_type,project_name,detail_task,status,sort_order)
+                  f"({sc['resolved']} resolved, {sc['open_count']} open).")
+        st = 'DONE' if sc['open_count'] == 0 and sc['resolved'] > 0 else 'ONPROGRESS'
+        db.execute('''INSERT INTO project_entries
+                      (eval_id,entry_type,project_name,detail_task,status,sort_order)
                       VALUES(?,?,?,?,?,?)''',
-                   (eval_id, 'top_task', 'SupportCore — Tiket Support', detail, 'ONGOING', order))
+                   (eval_id, 'history', f"Support — {sc['cust_name']}", detail, st, order))
         order += 1
 
-    # POC / presales
-    for poc in sys_data['poc_rows']:
-        detail = f"Customer: {poc['customer_name'] or '-'}. Status: {poc['status'] or '-'}."
-        db.execute('''INSERT INTO project_entries(eval_id,entry_type,project_name,detail_task,status,sort_order)
+    # ── TOP TASK: project + SC customer dengan task/tiket terbanyak ────────────
+    # Gabung pc_projs dan sc_per_cust, urutkan by total, ambil top entry
+    top_candidates = []
+    for p in pc_projs:
+        top_candidates.append({
+            'name':   p['proj_name'],
+            'total':  p['task_count'],
+            'done':   p['done_count'],
+            'src':    'project',
+            'detail': (f"Proyek dengan {p['task_count']} task ({p['done_count']} selesai). "
+                       f"Kontribusi terbesar sebagai {p['member_role'] or 'Anggota'}."),
+            'status': _proj_status(p['proj_status']),
+        })
+    for sc in sc_per_cust:
+        top_candidates.append({
+            'name':   f"Support — {sc['cust_name']}",
+            'total':  sc['total'],
+            'done':   sc['resolved'],
+            'src':    'sc',
+            'detail': (f"Customer dengan {sc['total']} tiket support ditangani "
+                       f"({sc['resolved']} resolved). Pencapaian handling terbanyak."),
+            'status': 'DONE' if sc['open_count'] == 0 else 'ONPROGRESS',
+        })
+
+    # Sort by total DESC, ambil top 3
+    top_candidates.sort(key=lambda x: x['total'], reverse=True)
+    for tc in top_candidates[:3]:
+        db.execute('''INSERT INTO project_entries
+                      (eval_id,entry_type,project_name,detail_task,status,sort_order)
                       VALUES(?,?,?,?,?,?)''',
-                   (eval_id, 'improvement', poc['title'] or 'POC/Presales', detail,
-                    'DONE' if poc['status'] == 'completed' else 'ONGOING', order))
+                   (eval_id, 'top_task', tc['name'], tc['detail'], tc['status'], order))
+        order += 1
+
+    # ── IMPROVEMENT: POC/Presales (1 baris per POC) + 1 baris kosong manual ──
+    poc_rows = db.execute('''
+        SELECT r.subject, r.status, r.request_type, c.name AS cust_name, r.created_at
+        FROM sc_presales_assignees pa
+        JOIN sc_presales_requests r ON r.id=pa.request_id
+        LEFT JOIN sc_customers c ON c.id=r.customer_id
+        WHERE pa.employee_id=?
+        ORDER BY r.created_at DESC NULLS LAST
+    ''', (emp_id,)).fetchall()
+
+    for poc in poc_rows:
+        rtype  = (poc['request_type'] or 'POC').upper()
+        detail = f"[{rtype}] Customer: {poc['cust_name'] or '-'}. Status: {poc['status'] or '-'}."
+        st     = 'DONE' if (poc['status'] or '').lower() in ('completed','done','selesai') else 'ONPROGRESS'
+        db.execute('''INSERT INTO project_entries
+                      (eval_id,entry_type,project_name,detail_task,status,sort_order)
+                      VALUES(?,?,?,?,?,?)''',
+                   (eval_id, 'improvement', poc['subject'] or 'POC/Presales', detail, st, order))
+        order += 1
+
+    # Baris kosong untuk input manual (training, dll)
+    for _ in range(2):
+        db.execute('''INSERT INTO project_entries
+                      (eval_id,entry_type,project_name,detail_task,status,sort_order)
+                      VALUES(?,?,?,?,?,?)''',
+                   (eval_id, 'improvement', '', '', 'ONPROGRESS', order))
         order += 1
 
     db.commit()

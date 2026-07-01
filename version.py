@@ -1,4 +1,4 @@
-VERSION = "2.2.3"
+VERSION = "2.2.4"
 RELEASE_DATE = "2026-07-01"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -10,5 +10,10 @@ RELEASE_NOTES = (
     "Ability AI Suggest berbasis data sistem (task score, difficulty, customer, POC); "
     "fix Hard Skill error 500 (ROUND::numeric PostgreSQL); "
     "fix evaluasi review_status draft → self_filled/approved; "
-    "fix period_start → task_date_from di eval_review route."
+    "fix period_start → task_date_from di eval_review route. "
+    "v2.2.3: Global error handler 500 → audit_errors; /admin/error-log page; "
+    "fix due_date::date cast, self_assigned=1, pc_projects done_issues subquery. "
+    "v2.2.4: Autofill Project — status proyek mapped ke DONE/ONPROGRESS/CANCELLED; "
+    "Top Task: ranked list per project+customer by task/tiket count; "
+    "Improvement: satu baris per POC/presales + 2 baris manual input kosong."
 )
