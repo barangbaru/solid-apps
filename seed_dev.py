@@ -22,13 +22,11 @@ os.environ['PG_USER'] = 'hive'
 os.environ['PG_PASS'] = '6RSxtzGk0ROSqb5glnzD'
 os.environ.setdefault('SECRET_KEY', 'dev-seed-secret-key-2026')
 
+# Key dev yang fixed — harus sama persis dengan FIELD_ENCRYPT_KEY di .env server
+DEV_FIELD_ENCRYPT_KEY = 'VGcKCP3l81uH7QlueXEZCu79wwlSRbMf7dlZv7LXs2w='
 if not os.environ.get('FIELD_ENCRYPT_KEY'):
-    from cryptography.fernet import Fernet
-    key = Fernet.generate_key().decode()
-    os.environ['FIELD_ENCRYPT_KEY'] = key
-    print(f'\n[INFO] FIELD_ENCRYPT_KEY tidak diset. Key baru digenerate:')
-    print(f'       {key}')
-    print(f'       Simpan key ini — diperlukan untuk buka data gaji!\n')
+    os.environ['FIELD_ENCRYPT_KEY'] = DEV_FIELD_ENCRYPT_KEY
+    print(f'[INFO] Menggunakan DEV key: {DEV_FIELD_ENCRYPT_KEY}')
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from app import app, init_db, get_db, _fenc
