@@ -10137,17 +10137,50 @@ def _chatbot_exec_tool(db, name, inp):
 
         elif name == 'cari_aset':
             kw = f"%{inp.get('keyword','')}%"
-            cat = f"%{inp.get('category','')}%" if inp.get('category') else '%'
-            rows = db.execute('''
-                SELECT label, category, vendor, status, location, notes
-                FROM ac_assets
-                WHERE (label LIKE ? OR vendor LIKE ? OR notes LIKE ?) AND category LIKE ?
-                ORDER BY id DESC LIMIT 15
-            ''', (kw, kw, kw, cat)).fetchall()
-            if not rows: return "Tidak ditemukan aset yang cocok."
+            cat = (inp.get('category','') or '').lower()
             out = []
-            for r in rows:
-                out.append(f"{r['label']} | {r['category'] or '—'} | {r['vendor'] or '—'} | Status: {r['status']} | Lokasi: {r['location'] or '—'}")
+
+            # 1. Search ac_assets (Laptops/PCs)
+            if not cat or 'laptop' in cat or 'pc' in cat or 'komputer' in cat or 'asset' in cat:
+                assets = db.execute('''
+                    SELECT a.device_type, a.brand, a.asset_tag, a.serial_number, a.status, a.condition, a.notes,
+                           e.name as employee_name, a.manual_employee_name
+                    FROM ac_assets a
+                    LEFT JOIN employees e ON e.id = a.employee_id
+                    WHERE (a.asset_tag LIKE ? OR a.brand LIKE ? OR a.device_type LIKE ? OR a.serial_number LIKE ? OR a.notes LIKE ? OR e.name LIKE ? OR a.manual_employee_name LIKE ?)
+                    ORDER BY a.id DESC LIMIT 10
+                ''', (kw, kw, kw, kw, kw, kw, kw)).fetchall()
+                for a in assets:
+                    holder = a['employee_name'] or a['manual_employee_name'] or 'Belum ditugaskan'
+                    out.append(f"[Asset] {a['brand']} {a['device_type']} ({a['asset_tag'] or 'Tanpa Tag'}) | S/N: {a['serial_number'] or '—'} | Status: {a['status']} | Kondisi: {a['condition']} | Pemegang: {holder}")
+
+            # 2. Search ac_infrastructure (Servers, Networks, etc.)
+            if not cat or 'infra' in cat or 'server' in cat or 'router' in cat or 'switch' in cat or 'jaringan' in cat:
+                infra = db.execute('''
+                    SELECT device_type, brand, model, serial_number, location, status, nickname, description
+                    FROM ac_infrastructure
+                    WHERE (device_type LIKE ? OR brand LIKE ? OR model LIKE ? OR serial_number LIKE ? OR nickname LIKE ? OR location LIKE ? OR description LIKE ?)
+                    ORDER BY id DESC LIMIT 10
+                ''', (kw, kw, kw, kw, kw, kw, kw)).fetchall()
+                for i in infra:
+                    name_infra = f"{i['brand']} {i['model']}" if i['brand'] else i['device_type']
+                    nick = f" ({i['nickname']})" if i['nickname'] else ""
+                    out.append(f"[Infra] {i['device_type']}: {name_infra}{nick} | S/N: {i['serial_number'] or '—'} | Status: {i['status']} | Lokasi: {i['location'] or '—'} | Deskripsi: {i['description'] or '—'}")
+
+            # 3. Search ac_licenses (Software Licenses)
+            if not cat or 'license' in cat or 'lisensi' in cat or 'software' in cat or 'aplikasi' in cat:
+                licenses = db.execute('''
+                    SELECT software_name, license_type, version, max_seats, is_active, notes
+                    FROM ac_licenses
+                    WHERE (software_name LIKE ? OR notes LIKE ?)
+                    ORDER BY id DESC LIMIT 10
+                ''', (kw, kw)).fetchall()
+                for l in licenses:
+                    status_lic = "Aktif" if l['is_active'] else "Nonaktif"
+                    out.append(f"[Lisensi] {l['software_name']} v{l['version'] or '—'} | Tipe: {l['license_type']} | Max Seats: {l['max_seats']} | Status: {status_lic}")
+
+            if not out:
+                return "Tidak ditemukan aset, infrastruktur, atau lisensi yang cocok."
             return "\n".join(out)
 
         elif name == 'statistik_aplikasi':
