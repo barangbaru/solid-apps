@@ -23,9 +23,6 @@
         <div class="text-muted small mb-4" id="live-date">---, -- --- ----</div>
 
         <form id="clock-form">
-          <div class="mb-3">
-            <textarea class="form-control" id="clock-notes" placeholder="Catatan/aktivitas hari ini (opsional)..." rows="2" style="font-size: .85rem"></textarea>
-          </div>
           <div class="d-flex gap-2 justify-content-center">
             <button type="button" class="btn btn-success px-4 py-2 fw-semibold" id="btn-clock-in" onclick="performClock('in')" {% if today_att %}disabled{% endif %}>
               <i class="bi bi-box-arrow-in-right me-1"></i> Clock In
@@ -146,7 +143,7 @@
   // Perform AJAX Clock In / Out
   function performClock(action) {
     if (!navigator.geolocation) {
-      submitClock(action, '', '');
+      alert("Browser Anda tidak mendukung Geolocation GPS. Anda wajib melakukan absensi menggunakan browser modern dengan GPS aktif.");
       return;
     }
 
@@ -157,24 +154,26 @@
       (err) => {
         let msg = "Gagal mendapatkan lokasi GPS.";
         if (err.code === err.PERMISSION_DENIED) {
-          msg = "Izin lokasi ditolak. Aktifkan lokasi di browser untuk mencatat koordinat presensi.";
+          msg = "Izin lokasi ditolak. Anda wajib mengizinkan akses lokasi pada browser untuk dapat melakukan absensi.";
         } else if (err.code === err.POSITION_UNAVAILABLE) {
-          msg = "Lokasi tidak tersedia.";
+          msg = "Lokasi tidak tersedia atau GPS mati.";
         } else if (err.code === err.TIMEOUT) {
           msg = "Waktu pencarian lokasi GPS habis (timeout).";
         }
-        alert(msg + "\nAbsen tetap dikirim tanpa koordinat GPS.");
-        submitClock(action, '', '');
+        alert(msg + "\nAbsensi dibatalkan. Koordinat GPS wajib dilampirkan.");
       },
-      { timeout: 5000, enableHighAccuracy: true }
+      { timeout: 8000, enableHighAccuracy: true }
     );
   }
 
   function submitClock(action, lat, lng) {
-    const notes = document.getElementById('clock-notes').value;
+    if (!lat || !lng) {
+      alert("Koordinat GPS tidak valid. Absensi dibatalkan.");
+      return;
+    }
     const formData = new FormData();
     formData.append('action', action);
-    formData.append('notes', notes);
+    formData.append('notes', 'Web Attendance');
     formData.append('lat', lat);
     formData.append('lng', lng);
 
