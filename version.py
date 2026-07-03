@@ -1,4 +1,4 @@
-VERSION = "2.2.15"
+VERSION = "2.2.16"
 RELEASE_DATE = "2026-07-03"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -26,5 +26,6 @@ RELEASE_NOTES = (
     "v2.2.12: Menambahkan integrasi Telegram Bot untuk melakukan absensi (Clock In / Clock Out) dengan mengirimkan lokasi (Send Location). "
     "v2.2.13: Peningkatan ketahanan Webhook Telegram (case-insensitive username, edited_message) dan integrasi perbaikan/error-handling pencatatan lokasi di Web UI. "
     "v2.2.14: Memperbaiki pencocokan identitas user Telegram di Webhook saat mengirim lokasi di dalam grup dengan memetakan user.id (sender) alih-alih chat.id (group ID). "
-    "v2.2.15: Mewajibkan strict Geolocation GPS pada Clock In dan Clock Out Web Attendance Core (tanpa fallback koordinat kosong) dan menghapus input catatan."
+    "v2.2.15: Mewajibkan strict Geolocation GPS pada Clock In dan Clock Out Web Attendance Core (tanpa fallback koordinat kosong) dan menghapus input catatan. "
+    "v2.2.16: Integrasi PLAN dan PROGRESS dari Telegram Bot ke modul Presensi Harian (AttendanceCore) dengan tampilan UI detail modal."
 )

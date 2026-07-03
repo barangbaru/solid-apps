@@ -1186,6 +1186,8 @@ CREATE TABLE IF NOT EXISTS attendance (
     notes_in TEXT,
     notes_out TEXT,
     status TEXT,
+    plan TEXT DEFAULT '',
+    progress TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS attendance_leaves (
@@ -1337,6 +1339,9 @@ MIGRATIONS = [
     ('evaluations',          'ai_summary',              "TEXT DEFAULT ''"),
     ('evaluations',          'ai_recommendation',       "TEXT DEFAULT ''"),
     ('evaluations',          'ai_generated_at',         "TEXT DEFAULT ''"),
+    # Attendance Plan & Progress
+    ('attendance',           'plan',                    "TEXT DEFAULT ''"),
+    ('attendance',           'progress',                "TEXT DEFAULT ''"),
 ]
 
 SC_TICKET_PRIORITIES = [
@@ -13004,10 +13009,68 @@ def telegram_webhook():
                 reply(f"Halo {full_name},\nAnda sudah melakukan Clock In dan Clock Out untuk hari ini.")
         else:
             text = message.get('text', '')
-            if text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
-                reply(f"Halo {full_name}! Selamat datang di Telegram Attendance Bot HIVE.\n\nUntuk melakukan Clock In atau Clock Out, silakan gunakan fitur \"Send Location\" (Kirim Lokasi) di Telegram.")
+            lower_text = text.lower()
+            is_plan = '#plan' in lower_text
+            is_progress = '#progress' in lower_text
+
+            if is_plan or is_progress:
+                today = datetime.now().strftime('%Y-%m-%d')
+                today_att = db.execute(
+                    'SELECT * FROM attendance WHERE user_id=? AND date=?',
+                    (uid, today)
+                ).fetchone()
+
+                plan_content = None
+                progress_content = None
+
+                if is_plan and is_progress:
+                    idx_plan = lower_text.find('#plan')
+                    idx_prog = lower_text.find('#progress')
+                    if idx_plan < idx_prog:
+                        plan_content = text[idx_plan:idx_prog].strip()
+                        progress_content = text[idx_prog:].strip()
+                    else:
+                        progress_content = text[idx_prog:idx_plan].strip()
+                        plan_content = text[idx_plan:].strip()
+                elif is_plan:
+                    plan_content = text.strip()
+                elif is_progress:
+                    progress_content = text.strip()
+
+                if not today_att:
+                    db.execute(
+                        'INSERT INTO attendance (user_id, date, status, plan, progress) VALUES (?, ?, ?, ?, ?)',
+                        (uid, today, 'present', plan_content or '', progress_content or '')
+                    )
+                    db.commit()
+                else:
+                    if plan_content and progress_content:
+                        db.execute(
+                            'UPDATE attendance SET plan=?, progress=? WHERE id=?',
+                            (plan_content, progress_content, today_att['id'])
+                        )
+                    elif plan_content:
+                        db.execute(
+                            'UPDATE attendance SET plan=? WHERE id=?',
+                            (plan_content, today_att['id'])
+                        )
+                    elif progress_content:
+                        db.execute(
+                            'UPDATE attendance SET progress=? WHERE id=?',
+                            (progress_content, today_att['id'])
+                        )
+                    db.commit()
+
+                msg_parts = []
+                if plan_content:
+                    msg_parts.append("Plan berhasil disimpan/diperbarui.")
+                if progress_content:
+                    msg_parts.append("Progress berhasil disimpan/diperbarui.")
+                reply(f"Halo {full_name},\n\n" + "\n".join(msg_parts))
+            elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
+                reply(f"Halo {full_name}! Selamat datang di Telegram Attendance Bot HIVE.\n\nUntuk melakukan Clock In atau Clock Out, silakan gunakan fitur \"Send Location\" (Kirim Lokasi) di Telegram.\n\nAnda juga dapat mengirimkan rencana kerja dengan tag #PLAN dan kemajuan kerja dengan tag #PROGRESS.")
             else:
-                reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out.")
+                reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out, atau kirim pesan berisi #PLAN / #PROGRESS untuk memperbarui rencana/kemajuan kerja Anda.")
     except Exception as e:
         import traceback
         print(f"[Telegram Webhook Error] {str(e)}")
