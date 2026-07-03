@@ -1675,6 +1675,8 @@ def init_db():
                 sort_order=excluded.sort_order,
                 required_permission=excluded.required_permission''',
             (slug, name, desc, icon, color, bg, url, active, soon, sort, perm))
+    # Hapus aplikasi obsolete (HelpdeskCore) yang sudah digantikan oleh AttendanceCore
+    db.execute("DELETE FROM superapp_apps WHERE slug='helpdesk'")
     db.commit()
     # Seed system roles sebagai global (app_slug='')
     for rname, rdesc, rsys in [('superadmin','Super Administrator',1),('admin','Administrator',1),('viewer','Viewer Read-Only',1)]:
