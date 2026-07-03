@@ -1,6 +1,6 @@
 #!/bin/bash
 # deploy-ubuntu.sh — Install & Update Hive di Ubuntu 20.04/22.04/24.04
-# Jalankan sebagai root: sudo bash deploy-ubuntu.sh [--version vX.Y.Z]
+# Jalankan sebagai root: sudo bash deploy-ubuntu.sh [--version vX.Y.Z] [--reset-superadmin]
 #
 # Idempotent — aman dijalankan berulang:
 #   Install baru  : setup lengkap dari nol
@@ -11,10 +11,12 @@ set -e
 # ── Parse argumen ─────────────────────────────────────────────────────────────
 TARGET_VERSION=""
 AUTO_MODE=false   # --auto: skip semua prompt, pakai config .env yang ada
+RESET_SUPERADMIN=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --version) TARGET_VERSION="$2"; shift 2 ;;
         --auto)    AUTO_MODE=true; shift ;;
+        --reset-superadmin) RESET_SUPERADMIN=true; shift ;;
         *) shift ;;
     esac
 done
@@ -34,6 +36,59 @@ SERVICE_NAME="evaluasi"
 REPO_URL="https://github.com/barangbaru/solid-apps.git"
 REPO_SUBDIR="."
 VERSION_FILE="$DATA_DIR/.deployed_version"
+
+# ── Reset Password Superadmin ──────────────────────────────────────────────────
+if $RESET_SUPERADMIN; then
+    header "Reset Password Superadmin"
+    if [ ! -f "$APP_DIR/.env" ] || [ ! -d "$APP_DIR/venv" ]; then
+        warn "Aplikasi belum terinstall atau virtualenv tidak ditemukan di $APP_DIR."
+        warn "Silakan jalankan deploy-ubuntu.sh tanpa argumen terlebih dahulu."
+        exit 1
+    fi
+    
+    echo -e "  Masukkan password baru untuk user ${BOLD}superadmin${NC}."
+    read -s -rp "  Password baru: " NEW_PASS
+    echo ""
+    read -s -rp "  Ulangi password baru: " NEW_PASS_CONFIRM
+    echo ""
+    
+    if [ -z "$NEW_PASS" ]; then
+        warn "Password tidak boleh kosong!"
+        exit 1
+    fi
+    
+    if [ "$NEW_PASS" != "$NEW_PASS_CONFIRM" ]; then
+        warn "Password konfirmasi tidak cocok!"
+        exit 1
+    fi
+    
+    info "Mereset password untuk user 'superadmin'..."
+    cd "$APP_DIR"
+    if venv/bin/python3 -c "
+import sys
+from app import app, get_db, generate_password_hash
+new_pass = sys.argv[1]
+with app.app_context():
+    db = get_db()
+    row = db.execute('SELECT id FROM users WHERE username = \'superadmin\'').fetchone()
+    hashed = generate_password_hash(new_pass)
+    if row:
+        db.execute('UPDATE users SET password_hash = ?, is_active = 1 WHERE username = \'superadmin\'', (hashed,))
+        db.commit()
+        print('Password superadmin berhasil direset.')
+    else:
+        db.execute('INSERT INTO users(username, password_hash, full_name, role, is_active) VALUES (?, ?, ?, ?, 1)',
+                   ('superadmin', hashed, 'Super Administrator', 'superadmin'))
+        db.commit()
+        print('User superadmin tidak ditemukan, telah dibuat baru.')
+" "$NEW_PASS"; then
+        success "Reset password selesai!"
+    else
+        warn "Gagal mereset password superadmin."
+        exit 1
+    fi
+    exit 0
+fi
 
 IS_UPDATE=false
 [ -f "$APP_DIR/wsgi.py" ] && IS_UPDATE=true
