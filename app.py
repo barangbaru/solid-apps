@@ -2147,6 +2147,12 @@ def login_required(f):
         if 'user_id' not in session:
             flash('Silakan login terlebih dahulu', 'warning')
             return redirect(url_for('login', next=request.path))
+        db = get_db()
+        user = db.execute('SELECT is_active FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        if not user or not user['is_active']:
+            session.clear()
+            flash('Sesi Anda tidak valid atau pengguna tidak ditemukan', 'danger')
+            return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
 
@@ -2155,7 +2161,13 @@ def superadmin_required(f):
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return redirect(url_for('login'))
-        if session.get('user_role') != 'superadmin':
+        db = get_db()
+        user = db.execute('SELECT is_active, role FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        if not user or not user['is_active']:
+            session.clear()
+            flash('Sesi Anda tidak valid atau pengguna tidak ditemukan', 'danger')
+            return redirect(url_for('login'))
+        if user['role'] != 'superadmin':
             flash('Akses ditolak — fitur ini hanya untuk Superadmin', 'danger')
             return redirect(url_for('index'))
         return f(*args, **kwargs)
@@ -4196,6 +4208,10 @@ def user_delete(uid):
 def profile():
     db = get_db()
     user = db.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone()
+    if not user:
+        session.clear()
+        flash('Sesi Anda tidak valid atau pengguna tidak ditemukan', 'danger')
+        return redirect(url_for('login'))
     if request.method == 'POST':
         full_name = request.form.get('full_name','').strip()
         old_pass  = request.form.get('old_password','')

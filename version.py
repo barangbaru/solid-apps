@@ -1,5 +1,5 @@
-VERSION = "2.2.5"
-RELEASE_DATE = "2026-07-02"
+VERSION = "2.2.6"
+RELEASE_DATE = "2026-07-03"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
     "peer review 5 dimensi, benchmark per grade, AI summary (Ollama), "
@@ -16,5 +16,6 @@ RELEASE_NOTES = (
     "v2.2.4: Autofill Project — status proyek mapped ke DONE/ONPROGRESS/CANCELLED; "
     "Top Task: ranked list per project+customer by task/tiket count; "
     "Improvement: satu baris per POC/presales + 2 baris manual input kosong. "
-    "v2.2.5: Perbaikan bug pencarian query cari_aset pada AI Chatbot agar mendukung kolom database yang valid."
+    "v2.2.5: Perbaikan bug pencarian query cari_aset pada AI Chatbot agar mendukung kolom database yang valid. "
+    "v2.2.6: Memperbaiki error NoneType not subscriptable pada halaman profil jika user dihapus atau tidak aktif."
 )
