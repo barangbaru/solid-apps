@@ -1,4 +1,4 @@
-VERSION = "2.2.8"
+VERSION = "2.2.9"
 RELEASE_DATE = "2026-07-03"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -19,5 +19,6 @@ RELEASE_NOTES = (
     "v2.2.5: Perbaikan bug pencarian query cari_aset pada AI Chatbot agar mendukung kolom database yang valid. "
     "v2.2.6: Memperbaiki error NoneType not subscriptable pada halaman profil jika user dihapus atau tidak aktif. "
     "v2.2.7: Menambahkan opsi --reset-superadmin pada script deploy-ubuntu.sh untuk melakukan reset password superadmin. "
-    "v2.2.8: Memperbaiki pemuatan variabel lingkungan (.env) saat menjalankan reset password superadmin."
+    "v2.2.8: Memperbaiki pemuatan variabel lingkungan (.env) saat menjalankan reset password superadmin. "
+    "v2.2.9: Memperbaiki SyntaxError di PostgreSQL pada halaman Infrastruktur Aset dan Lisensi Aset akibat tanda kutip ganda."
 )

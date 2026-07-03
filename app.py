@@ -11546,7 +11546,7 @@ def ac_infra():
         sql += ' AND (device_type LIKE ? OR model LIKE ? OR nickname LIKE ? OR serial_number LIKE ?)'; params += [f'%{q}%']*4
     if dtype:
         sql += ' AND device_type=?'; params.append(dtype)
-    order = ('COALESCE(NULLIF(updated_at,""),"1970") DESC, id DESC' if sort == 'updated'
+    order = ("COALESCE(NULLIF(updated_at,''),'1970') DESC, id DESC" if sort == 'updated'
              else 'device_type ASC, nickname ASC')
     items = db.execute(sql + ' ORDER BY ' + order, params).fetchall()
     dtypes = [r[0] for r in db.execute("SELECT DISTINCT device_type FROM ac_infrastructure ORDER BY device_type").fetchall()]
@@ -11603,7 +11603,7 @@ def ac_licenses():
     params = []
     if q:
         sql += ' WHERE l.software_name LIKE ?'; params.append(f'%{q}%')
-    order = ('COALESCE(NULLIF(l.updated_at,""),"1970") DESC, l.id DESC' if sort == 'updated'
+    order = ("COALESCE(NULLIF(l.updated_at,''),'1970') DESC, l.id DESC" if sort == 'updated'
              else 'l.software_name ASC')
     lics = db.execute(sql + ' GROUP BY l.id ORDER BY ' + order, params).fetchall()
     return render_template('ac_licenses.html', licenses=lics, q=q, sort=sort)
