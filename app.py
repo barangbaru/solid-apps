@@ -1174,6 +1174,54 @@ CREATE TABLE IF NOT EXISTS notif_recipients (
     is_active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+
+CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    clock_in TEXT,
+    clock_out TEXT,
+    location_in TEXT,
+    location_out TEXT,
+    notes_in TEXT,
+    notes_out TEXT,
+    status TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS attendance_leaves (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    leave_type TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    reason TEXT,
+    status TEXT DEFAULT 'pending',
+    approved_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS attendance_overtime (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    hours REAL DEFAULT 0,
+    reason TEXT,
+    status TEXT DEFAULT 'pending',
+    approved_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS attendance_corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    requested_clock_in TEXT,
+    requested_clock_out TEXT,
+    reason TEXT,
+    status TEXT DEFAULT 'pending',
+    approved_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 # ALTER existing column types (PostgreSQL only) — run before MIGRATIONS ADD COLUMN
@@ -1469,6 +1517,10 @@ APP_PERMISSIONS = {
         'sc_manage_presales':  'Kelola request Presales & POC',
         'sc_view_reports':     'Lihat laporan & monitoring SLA',
     },
+    'attendance': {
+        'at_view':   'Lihat data AttendanceCore (Kehadiran Saya)',
+        'at_manage': 'Kelola & Approve Kehadiran, Cuti, Lembur, dan Koreksi Karyawan',
+    },
 }
 # Backward-compat: ALL_PERMISSIONS = gabungan semua app + portal perms
 ALL_PERMISSIONS = {
@@ -1518,6 +1570,7 @@ def init_db():
         db = _DBWrapper(conn, is_pg=True)
     else:
         raw = sqlite3.connect(DB_PATH)
+        raw.row_factory = sqlite3.Row
         db = _DBWrapper(raw, is_pg=False)
 
     schema_sql = _pg_adapt_schema(SCHEMA) if DB_TYPE == 'postgresql' else SCHEMA
@@ -1598,8 +1651,8 @@ def init_db():
          'file-earmark-richtext', '#10b981', '#d1fae5', '/docs/', 1, 1, 5, ''),
         ('finance', 'FinanceCore', 'Pencatatan keuangan, anggaran & laporan finansial',
          'cash-coin', '#f59e0b', '#fef3c7', '/finance/', 1, 1, 6, ''),
-        ('helpdesk', 'HelpdeskCore', 'Helpdesk internal karyawan & manajemen tiket IT',
-         'headset', '#8b5cf6', '#ede9fe', '/helpdesk/', 1, 1, 7, ''),
+        ('attendance', 'AttendanceCore', 'Live attendance, leave, overtime, dan correction',
+         'clock', '#8b5cf6', '#ede9fe', '/attendance/', 1, 0, 7, ''),
     ]
     for slug, name, desc, icon, color, bg, url, active, soon, sort, perm in _apps:
         db.execute('''INSERT INTO superapp_apps
@@ -12612,6 +12665,259 @@ def handle_500(e):
 @app.errorhandler(404)
 def handle_404(e):
     return render_template('error_404.html' if False else 'base.html'), 404
+
+
+# ─── AttendanceCore: Helper ───────────────────────────────────────────────────
+def at_require(perm):
+    """Pastikan user memiliki permission atau superadmin."""
+    if session.get('user_role') == 'superadmin':
+        return True
+    user_perms = session.get('user_permissions', [])
+    return perm in user_perms
+
+# ─── AttendanceCore: Views ────────────────────────────────────────────────────
+@app.route('/attendance/')
+@login_required
+def at_index():
+    if not at_require('at_view'):
+        flash('Anda tidak memiliki akses ke AttendanceCore.', 'danger')
+        return redirect(url_for('portal'))
+    
+    session['active_app'] = 'attendance'
+    db = get_db()
+    uid = session['user_id']
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    today_att = db.execute(
+        'SELECT * FROM attendance WHERE user_id=? AND date=?',
+        (uid, today)
+    ).fetchone()
+    
+    history = db.execute(
+        'SELECT * FROM attendance WHERE user_id=? ORDER BY date DESC LIMIT 30',
+        (uid,)
+    ).fetchall()
+    
+    return render_template('at_index.html', today_att=today_att, history=history, today=today)
+
+@app.route('/attendance/clock', methods=['POST'])
+@login_required
+def at_clock():
+    if not at_require('at_view'):
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+    
+    db = get_db()
+    uid = session['user_id']
+    action = request.form.get('action')
+    notes = request.form.get('notes', '').strip()
+    lat = request.form.get('lat', '').strip()
+    lng = request.form.get('lng', '').strip()
+    loc = f"{lat},{lng}" if (lat and lng) else "Web Browser"
+    
+    now_time = datetime.now().strftime('%H:%M:%S')
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    today_att = db.execute(
+        'SELECT * FROM attendance WHERE user_id=? AND date=?',
+        (uid, today)
+    ).fetchone()
+    
+    if action == 'in':
+        if today_att:
+            return jsonify({'ok': False, 'msg': 'Anda sudah clock-in hari ini.'})
+        status = 'present'
+        if now_time > '09:00:00':
+            status = 'late'
+        db.execute(
+            'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
+            (uid, today, now_time, loc, notes, status)
+        )
+    elif action == 'out':
+        if not today_att:
+            return jsonify({'ok': False, 'msg': 'Anda belum clock-in hari ini.'})
+        if today_att['clock_out']:
+            return jsonify({'ok': False, 'msg': 'Anda sudah clock-out hari ini.'})
+        
+        db.execute(
+            'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
+            (now_time, loc, notes, today_att['id'])
+        )
+    db.commit()
+    return jsonify({'ok': True})
+
+@app.route('/attendance/leave', methods=['GET', 'POST'])
+@login_required
+def at_leave():
+    if not at_require('at_view'):
+        flash('Akses ditolak', 'danger')
+        return redirect(url_for('portal'))
+    
+    session['active_app'] = 'attendance'
+    db = get_db()
+    uid = session['user_id']
+    
+    if request.method == 'POST':
+        leave_type = request.form.get('leave_type')
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date')
+        reason = request.form.get('reason', '').strip()
+        
+        if not leave_type or not start_date or not end_date:
+            flash('Harap isi semua kolom.', 'danger')
+        else:
+            db.execute(
+                'INSERT INTO attendance_leaves (user_id, leave_type, start_date, end_date, reason) VALUES (?, ?, ?, ?, ?)',
+                (uid, leave_type, start_date, end_date, reason)
+            )
+            db.commit()
+            flash('Pengajuan cuti berhasil dikirim.', 'success')
+            return redirect(url_for('at_leave'))
+            
+    history = db.execute(
+        'SELECT * FROM attendance_leaves WHERE user_id=? ORDER BY created_at DESC',
+        (uid,)
+    ).fetchall()
+    return render_template('at_leave.html', history=history)
+
+@app.route('/attendance/overtime', methods=['GET', 'POST'])
+@login_required
+def at_overtime():
+    if not at_require('at_view'):
+        flash('Akses ditolak', 'danger')
+        return redirect(url_for('portal'))
+    
+    session['active_app'] = 'attendance'
+    db = get_db()
+    uid = session['user_id']
+    
+    if request.method == 'POST':
+        date = request.form.get('date')
+        start_time = request.form.get('start_time')
+        end_time = request.form.get('end_time')
+        hours = request.form.get('hours', 0, type=float)
+        reason = request.form.get('reason', '').strip()
+        
+        if not date or not start_time or not end_time or hours <= 0:
+            flash('Harap isi semua kolom dengan benar.', 'danger')
+        else:
+            db.execute(
+                'INSERT INTO attendance_overtime (user_id, date, start_time, end_time, hours, reason) VALUES (?, ?, ?, ?, ?, ?)',
+                (uid, date, start_time, end_time, hours, reason)
+            )
+            db.commit()
+            flash('Pengajuan lembur berhasil dikirim.', 'success')
+            return redirect(url_for('at_overtime'))
+            
+    history = db.execute(
+        'SELECT * FROM attendance_overtime WHERE user_id=? ORDER BY created_at DESC',
+        (uid,)
+    ).fetchall()
+    return render_template('at_overtime.html', history=history)
+
+@app.route('/attendance/correction', methods=['GET', 'POST'])
+@login_required
+def at_correction():
+    if not at_require('at_view'):
+        flash('Akses ditolak', 'danger')
+        return redirect(url_for('portal'))
+    
+    session['active_app'] = 'attendance'
+    db = get_db()
+    uid = session['user_id']
+    
+    if request.method == 'POST':
+        date = request.form.get('date')
+        requested_clock_in = request.form.get('requested_clock_in') or None
+        requested_clock_out = request.form.get('requested_clock_out') or None
+        reason = request.form.get('reason', '').strip()
+        
+        if not date or (not requested_clock_in and not requested_clock_out):
+            flash('Harap isi tanggal dan minimal salah satu jam koreksi.', 'danger')
+        else:
+            db.execute(
+                'INSERT INTO attendance_corrections (user_id, date, requested_clock_in, requested_clock_out, reason) VALUES (?, ?, ?, ?, ?)',
+                (uid, date, requested_clock_in, requested_clock_out, reason)
+            )
+            db.commit()
+            flash('Pengajuan koreksi kehadiran berhasil dikirim.', 'success')
+            return redirect(url_for('at_correction'))
+            
+    history = db.execute(
+        'SELECT * FROM attendance_corrections WHERE user_id=? ORDER BY created_at DESC',
+        (uid,)
+    ).fetchall()
+    return render_template('at_correction.html', history=history)
+
+@app.route('/attendance/admin/approvals')
+@login_required
+def at_approvals():
+    if not at_require('at_manage'):
+        flash('Akses ditolak — Menu khusus administrator.', 'danger')
+        return redirect(url_for('at_index'))
+    
+    session['active_app'] = 'attendance'
+    db = get_db()
+    
+    leaves = db.execute('''
+        SELECT l.*, u.full_name as employee_name 
+        FROM attendance_leaves l 
+        JOIN users u ON u.id = l.user_id 
+        WHERE l.status=\'pending\' 
+        ORDER BY l.created_at ASC
+    ''').fetchall()
+    
+    overtimes = db.execute('''
+        SELECT o.*, u.full_name as employee_name 
+        FROM attendance_overtime o 
+        JOIN users u ON u.id = o.user_id 
+        WHERE o.status=\'pending\' 
+        ORDER BY o.created_at ASC
+    ''').fetchall()
+    
+    corrections = db.execute('''
+        SELECT c.*, u.full_name as employee_name 
+        FROM attendance_corrections c 
+        JOIN users u ON u.id = c.user_id 
+        WHERE c.status=\'pending\' 
+        ORDER BY c.created_at ASC
+    ''').fetchall()
+    
+    return render_template('at_approvals.html', leaves=leaves, overtimes=overtimes, corrections=corrections)
+
+@app.route('/attendance/admin/approve/<string:type>/<int:id>', methods=['POST'])
+@login_required
+def at_approve_action(type, id):
+    if not at_require('at_manage'):
+        return jsonify({'ok': False, 'msg': 'Akses ditolak'})
+        
+    db = get_db()
+    action = request.form.get('action')
+    status = 'approved' if action == 'approve' else 'rejected'
+    approver = session['user_id']
+    
+    if type == 'leave':
+        db.execute('UPDATE attendance_leaves SET status=?, approved_by=? WHERE id=?', (status, approver, id))
+    elif type == 'overtime':
+        db.execute('UPDATE attendance_overtime SET status=?, approved_by=? WHERE id=?', (status, approver, id))
+    elif type == 'correction':
+        if status == 'approved':
+            corr = db.execute('SELECT * FROM attendance_corrections WHERE id=?', (id,)).fetchone()
+            if corr:
+                att = db.execute('SELECT id FROM attendance WHERE user_id=? AND date=?', (corr['user_id'], corr['date'])).fetchone()
+                if att:
+                    db.execute(
+                        'UPDATE attendance SET clock_in=COALESCE(?, clock_in), clock_out=COALESCE(?, clock_out), status=? WHERE id=?',
+                        (corr['requested_clock_in'], corr['requested_clock_out'], 'present', att['id'])
+                    )
+                else:
+                    db.execute(
+                        'INSERT INTO attendance (user_id, date, clock_in, clock_out, status) VALUES (?, ?, ?, ?, ?)',
+                        (corr['user_id'], corr['date'], corr['requested_clock_in'], corr['requested_clock_out'], 'present')
+                    )
+        db.execute('UPDATE attendance_corrections SET status=?, approved_by=? WHERE id=?', (status, approver, id))
+    
+    db.commit()
+    return jsonify({'ok': True})
 
 
 # ─── Main ──────────────────────────────────────────────────────────────────────

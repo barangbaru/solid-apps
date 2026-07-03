@@ -1,4 +1,4 @@
-VERSION = "2.2.10"
+VERSION = "2.2.11"
 RELEASE_DATE = "2026-07-03"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -21,5 +21,6 @@ RELEASE_NOTES = (
     "v2.2.7: Menambahkan opsi --reset-superadmin pada script deploy-ubuntu.sh untuk melakukan reset password superadmin. "
     "v2.2.8: Memperbaiki pemuatan variabel lingkungan (.env) saat menjalankan reset password superadmin. "
     "v2.2.9: Memperbaiki SyntaxError di PostgreSQL pada halaman Infrastruktur Aset dan Lisensi Aset akibat tanda kutip ganda. "
-    "v2.2.10: Menghapus menu dan rute error log yang redundan di TalentCore (digantikan oleh Audit Trail Portal)."
+    "v2.2.10: Menghapus menu dan rute error log yang redundan di TalentCore (digantikan oleh Audit Trail Portal). "
+    "v2.2.11: Mengubah HelpdeskCore menjadi AttendanceCore dengan fitur live attendance, leave, overtime, dan correction."
 )

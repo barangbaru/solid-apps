@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}Pengajuan Cuti — AttendanceCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Pengajuan Cuti</span>{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <!-- Leave Request Form -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white py-3 fw-bold border-bottom">
+        <i class="bi bi-calendar-plus text-primary me-1"></i> Form Pengajuan Cuti
+      </div>
+      <div class="card-body">
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Tipe Cuti</label>
+            <select class="form-select" name="leave_type" required>
+              <option value="">-- Pilih Tipe Cuti --</option>
+              <option value="Cuti Tahunan">Cuti Tahunan</option>
+              <option value="Sakit">Sakit</option>
+              <option value="Izin Personal">Izin Personal</option>
+              <option value="Cuti Melahirkan">Cuti Melahirkan</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Tanggal Mulai</label>
+            <input type="date" class="form-control" name="start_date" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Tanggal Selesai</label>
+            <input type="date" class="form-control" name="end_date" required>
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Alasan</label>
+            <textarea class="form-control" name="reason" rows="3" placeholder="Alasan pengajuan cuti..." required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary w-100 fw-semibold">
+            <i class="bi bi-send me-1"></i> Kirim Pengajuan
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leave History -->
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white py-3 fw-bold border-bottom">
+        <i class="bi bi-journal-text text-primary me-1"></i> Riwayat Pengajuan Cuti
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size: .88rem">
+          <thead class="table-light">
+            <tr>
+              <th>Tanggal Pengajuan</th>
+              <th>Tipe</th>
+              <th>Durasi</th>
+              <th>Alasan</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in history %}
+            <tr>
+              <td>{{ r.created_at[:10] }}</td>
+              <td class="fw-semibold">{{ r.leave_type }}</td>
+              <td>{{ r.start_date }} s/d {{ r.end_date }}</td>
+              <td>{{ r.reason }}</td>
+              <td>
+                {% if r.status == 'approved' %}
+                  <span class="badge bg-success">Disetujui</span>
+                {% elif r.status == 'rejected' %}
+                  <span class="badge bg-danger">Ditolak</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark">Pending</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">Belum ada riwayat pengajuan cuti.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

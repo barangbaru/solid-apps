@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% block title %}AttendanceCore — Dashboard{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Presensi Harian</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <div style="width:38px;height:38px;border-radius:10px;background:#8b5cf6;display:flex;align-items:center;justify-content:center">
+    <i class="bi bi-clock text-white fs-5"></i>
+  </div>
+  <div>
+    <h5 class="fw-bold mb-0">AttendanceCore</h5>
+    <div class="text-muted small">Live Attendance & Time Management Karyawan</div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <!-- Live Clock Widget -->
+  <div class="col-md-5">
+    <div class="card border-0 shadow-sm h-100 text-center py-4 px-3" style="background: linear-gradient(135deg, #ede9fe 0%, #fae8ff 100%)">
+      <div class="card-body d-flex flex-column justify-content-center">
+        <h6 class="text-uppercase fw-bold text-muted small mb-2">Waktu Saat Ini</h6>
+        <div class="fs-1 fw-bold text-primary mb-1" id="live-clock">--:--:--</div>
+        <div class="text-muted small mb-4" id="live-date">---, -- --- ----</div>
+
+        <form id="clock-form">
+          <div class="mb-3">
+            <textarea class="form-control" id="clock-notes" placeholder="Catatan/aktivitas hari ini (opsional)..." rows="2" style="font-size: .85rem"></textarea>
+          </div>
+          <div class="d-flex gap-2 justify-content-center">
+            <button type="button" class="btn btn-success px-4 py-2 fw-semibold" id="btn-clock-in" onclick="performClock('in')" {% if today_att %}disabled{% endif %}>
+              <i class="bi bi-box-arrow-in-right me-1"></i> Clock In
+            </button>
+            <button type="button" class="btn btn-danger px-4 py-2 fw-semibold" id="btn-clock-out" onclick="performClock('out')" {% if not today_att or today_att.clock_out %}disabled{% endif %}>
+              <i class="bi bi-box-arrow-left me-1"></i> Clock Out
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Today's Status Card -->
+  <div class="col-md-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white py-3 fw-bold border-bottom">
+        <i class="bi bi-calendar-check text-primary me-1"></i> Kehadiran Hari Ini
+      </div>
+      <div class="card-body d-flex flex-column justify-content-center">
+        <div class="row text-center g-3">
+          <div class="col-6 col-sm-4">
+            <div class="border rounded py-3">
+              <div class="text-muted small mb-1">Clock In</div>
+              <div class="fw-bold fs-5 text-success">{{ today_att.clock_in or '--:--:--' }}</div>
+              <div class="text-muted small mt-1" style="font-size: .75rem">{{ today_att.location_in or '' }}</div>
+            </div>
+          </div>
+          <div class="col-6 col-sm-4">
+            <div class="border rounded py-3">
+              <div class="text-muted small mb-1">Clock Out</div>
+              <div class="fw-bold fs-5 text-danger">{{ today_att.clock_out or '--:--:--' }}</div>
+              <div class="text-muted small mt-1" style="font-size: .75rem">{{ today_att.location_out or '' }}</div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-4">
+            <div class="border rounded py-3 h-100 d-flex flex-column justify-content-center">
+              <div class="text-muted small mb-1">Status</div>
+              <div>
+                {% if not today_att %}
+                  <span class="badge bg-secondary">Belum Absen</span>
+                {% elif today_att.status == 'late' %}
+                  <span class="badge bg-warning text-dark">Terlambat</span>
+                {% else %}
+                  <span class="badge bg-success">Hadir</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% if today_att %}
+        <div class="mt-4 p-3 bg-light rounded border-start border-primary border-3">
+          <div class="small fw-bold text-muted mb-1">Catatan Kehadiran:</div>
+          <p class="mb-0 text-dark small">{{ today_att.notes_in or '-' }}</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- History Log -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-white py-3 fw-bold border-bottom">
+    <i class="bi bi-journal-text text-primary me-1"></i> Log Kehadiran 30 Hari Terakhir
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" style="font-size: .88rem">
+      <thead class="table-light">
+        <tr>
+          <th>Tanggal</th>
+          <th>Clock In</th>
+          <th>Clock Out</th>
+          <th>Catatan</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in history %}
+        <tr>
+          <td class="fw-semibold">{{ r.date }}</td>
+          <td class="text-success"><i class="bi bi-box-arrow-in-right me-1"></i>{{ r.clock_in or '-' }}</td>
+          <td class="text-danger"><i class="bi bi-box-arrow-left me-1"></i>{{ r.clock_out or '-' }}</td>
+          <td class="text-muted small" style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            {{ r.notes_in or '-' }}
+          </td>
+          <td>
+            {% if r.status == 'late' %}
+              <span class="badge bg-warning text-dark">Terlambat</span>
+            {% else %}
+              <span class="badge bg-success">Hadir</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center py-4 text-muted">Belum ada riwayat kehadiran.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // Live Clock Update
+  function updateClock() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', { hour12: false });
+    const dateStr = now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    document.getElementById('live-clock').innerText = timeStr;
+    document.getElementById('live-date').innerText = dateStr;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // Perform AJAX Clock In / Out
+  function performClock(action) {
+    if (!navigator.geolocation) {
+      submitClock(action, '', '');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        submitClock(action, pos.coords.latitude, pos.coords.longitude);
+      },
+      (err) => {
+        submitClock(action, '', '');
+      },
+      { timeout: 5000 }
+    );
+  }
+
+  function submitClock(action, lat, lng) {
+    const notes = document.getElementById('clock-notes').value;
+    const formData = new FormData();
+    formData.append('action', action);
+    formData.append('notes', notes);
+    formData.append('lat', lat);
+    formData.append('lng', lng);
+
+    fetch('/attendance/clock', {
+      method: 'POST',
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.ok) {
+        window.location.reload();
+      } else {
+        alert(data.msg || 'Terjadi kesalahan sistem.');
+      }
+    })
+    .catch(err => {
+      alert('Koneksi gagal atau sesi habis.');
+    });
+  }
+</script>
+{% endblock %}

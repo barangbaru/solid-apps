@@ -100,6 +100,11 @@ TABLE_ORDER = [
     'ac_software_requests',
     'ac_maintenance',
     'ac_maintenance_log',
+    # AttendanceCore
+    'attendance',
+    'attendance_leaves',
+    'attendance_overtime',
+    'attendance_corrections',
 ]
 
 

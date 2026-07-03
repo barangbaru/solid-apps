@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% block title %}Approval Console — AttendanceCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Approval Console</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-4">
+  <div style="width:38px;height:38px;border-radius:10px;background:#8b5cf6;display:flex;align-items:center;justify-content:center">
+    <i class="bi bi-check2-square text-white fs-5"></i>
+  </div>
+  <div>
+    <h5 class="fw-bold mb-0">Approval Console</h5>
+    <div class="text-muted small">Kelola Persetujuan Kehadiran, Cuti, Lembur, dan Koreksi Absen</div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-4" id="approvalTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active fw-semibold" id="leaves-tab" data-bs-toggle="tab" data-bs-target="#leaves" type="button" role="tab">
+      <i class="bi bi-calendar-event me-1"></i> Pengajuan Cuti
+      {% if leaves %}<span class="badge bg-danger ms-1">{{ leaves|length }}</span>{% endif %}
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link fw-semibold" id="overtimes-tab" data-bs-toggle="tab" data-bs-target="#overtimes" type="button" role="tab">
+      <i class="bi bi-clock-history me-1"></i> Pengajuan Lembur
+      {% if overtimes %}<span class="badge bg-danger ms-1">{{ overtimes|length }}</span>{% endif %}
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link fw-semibold" id="corrections-tab" data-bs-toggle="tab" data-bs-target="#corrections" type="button" role="tab">
+      <i class="bi bi-patch-exclamation me-1"></i> Koreksi Absen
+      {% if corrections %}<span class="badge bg-danger ms-1">{{ corrections|length }}</span>{% endif %}
+    </button>
+  </li>
+</ul>
+
+<!-- Tab Contents -->
+<div class="tab-content" id="approvalTabsContent">
+  <!-- Leaves Tab -->
+  <div class="tab-pane fade show active" id="leaves" role="tabpanel">
+    <div class="card border-0 shadow-sm">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0" style="font-size: .88rem">
+          <thead class="table-light">
+            <tr>
+              <th>Karyawan</th>
+              <th>Tipe Cuti</th>
+              <th>Durasi</th>
+              <th>Alasan</th>
+              <th class="text-end">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in leaves %}
+            <tr id="row-leave-{{ r.id }}">
+              <td class="fw-bold">{{ r.employee_name }}</td>
+              <td>{{ r.leave_type }}</td>
+              <td>{{ r.start_date }} s/d {{ r.end_date }}</td>
+              <td class="text-muted">{{ r.reason }}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-success fw-semibold me-1" onclick="submitDecision('leave', {{ r.id }}, 'approve')">
+                  <i class="bi bi-check-lg"></i> Setujui
+                </button>
+                <button class="btn btn-sm btn-outline-danger fw-semibold" onclick="submitDecision('leave', {{ r.id }}, 'reject')">
+                  <i class="bi bi-x-lg"></i> Tolak
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">Tidak ada pengajuan cuti yang pending.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overtimes Tab -->
+  <div class="tab-pane fade" id="overtimes" role="tabpanel">
+    <div class="card border-0 shadow-sm">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0" style="font-size: .88rem">
+          <thead class="table-light">
+            <tr>
+              <th>Karyawan</th>
+              <th>Tanggal Lembur</th>
+              <th>Waktu</th>
+              <th>Total Jam</th>
+              <th>Alasan</th>
+              <th class="text-end">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in overtimes %}
+            <tr id="row-overtime-{{ r.id }}">
+              <td class="fw-bold">{{ r.employee_name }}</td>
+              <td>{{ r.date }}</td>
+              <td>{{ r.start_time }} s/d {{ r.end_time }}</td>
+              <td class="fw-bold text-primary">{{ r.hours }} Jam</td>
+              <td class="text-muted">{{ r.reason }}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-success fw-semibold me-1" onclick="submitDecision('overtime', {{ r.id }}, 'approve')">
+                  <i class="bi bi-check-lg"></i> Setujui
+                </button>
+                <button class="btn btn-sm btn-outline-danger fw-semibold" onclick="submitDecision('overtime', {{ r.id }}, 'reject')">
+                  <i class="bi bi-x-lg"></i> Tolak
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6" class="text-center py-4 text-muted">Tidak ada pengajuan lembur yang pending.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Corrections Tab -->
+  <div class="tab-pane fade" id="corrections" role="tabpanel">
+    <div class="card border-0 shadow-sm">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0" style="font-size: .88rem">
+          <thead class="table-light">
+            <tr>
+              <th>Karyawan</th>
+              <th>Tanggal</th>
+              <th>Pengajuan In</th>
+              <th>Pengajuan Out</th>
+              <th>Alasan</th>
+              <th class="text-end">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in corrections %}
+            <tr id="row-correction-{{ r.id }}">
+              <td class="fw-bold">{{ r.employee_name }}</td>
+              <td>{{ r.date }}</td>
+              <td class="text-success fw-bold">{{ r.requested_clock_in or '-' }}</td>
+              <td class="text-danger fw-bold">{{ r.requested_clock_out or '-' }}</td>
+              <td class="text-muted">{{ r.reason }}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-success fw-semibold me-1" onclick="submitDecision('correction', {{ r.id }}, 'approve')">
+                  <i class="bi bi-check-lg"></i> Setujui
+                </button>
+                <button class="btn btn-sm btn-outline-danger fw-semibold" onclick="submitDecision('correction', {{ r.id }}, 'reject')">
+                  <i class="bi bi-x-lg"></i> Tolak
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6" class="text-center py-4 text-muted">Tidak ada pengajuan koreksi yang pending.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function submitDecision(type, id, action) {
+    if (!confirm('Apakah Anda yakin dengan keputusan ini?')) return;
+
+    const formData = new FormData();
+    formData.append('action', action);
+
+    fetch(`/attendance/admin/approve/${type}/${id}`, {
+      method: 'POST',
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.ok) {
+        // Remove row from UI
+        const row = document.getElementById(`row-${type}-${id}`);
+        if (row) row.remove();
+      } else {
+        alert(data.msg || 'Terjadi kesalahan sistem.');
+      }
+    })
+    .catch(err => {
+      alert('Koneksi gagal atau sesi habis.');
+    });
+  }
+</script>
+{% endblock %}

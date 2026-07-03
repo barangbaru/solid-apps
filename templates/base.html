@@ -591,6 +591,48 @@
     <li><a href="/support/customers"><i class="bi bi-building nav-icon"></i> Customer</a></li>
   </ul>
 
+  {% elif current_app_slug == 'attendance' %}
+  {# ── App sidebar: AttendanceCore ── #}
+  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
+    <div style="width:6px;height:6px;border-radius:50%;background:#8b5cf6;flex-shrink:0"></div>
+    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
+      AttendanceCore
+    </span>
+  </div>
+  <div class="sidebar-section">Kehadiran Saya</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/attendance/" class="{{ 'active' if request.path == '/attendance/' }}">
+        <i class="bi bi-clock nav-icon"></i> Presensi Harian
+      </a>
+    </li>
+    <li>
+      <a href="/attendance/leave" class="{{ 'active' if '/attendance/leave' in request.path }}">
+        <i class="bi bi-calendar-event nav-icon"></i> Pengajuan Cuti
+      </a>
+    </li>
+    <li>
+      <a href="/attendance/overtime" class="{{ 'active' if '/attendance/overtime' in request.path }}">
+        <i class="bi bi-clock-history nav-icon"></i> Pengajuan Lembur
+      </a>
+    </li>
+    <li>
+      <a href="/attendance/correction" class="{{ 'active' if '/attendance/correction' in request.path }}">
+        <i class="bi bi-patch-exclamation nav-icon"></i> Koreksi Absen
+      </a>
+    </li>
+  </ul>
+  {% if 'at_manage' in user_perms or session.user_role == 'superadmin' %}
+  <div class="sidebar-section">Manajemen</div>
+  <ul class="sidebar-nav">
+    <li>
+      <a href="/attendance/admin/approvals" class="{{ 'active' if '/attendance/admin/approvals' in request.path }}">
+        <i class="bi bi-check2-square nav-icon"></i> Approval Console
+      </a>
+    </li>
+  </ul>
+  {% endif %}
+
   {% else %}
   {# ── App sidebar: TalentCore ── #}
   <!-- Current app indicator -->
