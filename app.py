@@ -12929,12 +12929,15 @@ def telegram_webhook():
     except Exception:
         return 'OK', 200
 
-    if not data or 'message' not in data:
+    if not data:
         return 'OK', 200
 
-    message = data['message']
+    message = data.get('message') or data.get('edited_message')
+    if not message or 'chat' not in message:
+        return 'OK', 200
+
     chat_id = message['chat']['id']
-    username = message['from'].get('username', '')
+    username = message.get('from', {}).get('username', '')
 
     def reply(text):
         req_lib.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
@@ -12942,62 +12945,67 @@ def telegram_webhook():
             'text': text
         })
 
-    tg_id_variants = [str(chat_id)]
-    if username:
-        tg_id_variants.append(username)
-        tg_id_variants.append(f"@{username}")
+    try:
+        tg_id_variants = [str(chat_id)]
+        if username:
+            tg_id_variants.append(username)
+            tg_id_variants.append(f"@{username}")
 
-    user = None
-    for variant in tg_id_variants:
-        user = db.execute('SELECT * FROM users WHERE telegram_id = ? AND is_active = 1', (variant,)).fetchone()
-        if user:
-            break
+        user = None
+        for variant in tg_id_variants:
+            user = db.execute('SELECT * FROM users WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
+            if user:
+                break
 
-    if not user:
-        reply("Akun Telegram Anda belum terdaftar di HIVE. Silakan hubungi administrator dan daftarkan Username/Chat ID Anda.")
-        return 'OK', 200
+        if not user:
+            reply(f"Akun Telegram Anda ({username or chat_id}) belum terdaftar di HIVE. Silakan hubungi administrator untuk mendaftarkan Username/Chat ID Anda.")
+            return 'OK', 200
 
-    uid = user['id']
-    full_name = user['full_name']
+        uid = user['id']
+        full_name = user['full_name']
 
-    if 'location' in message:
-        lat = message['location']['latitude']
-        lng = message['location']['longitude']
-        loc = f"{lat},{lng}"
-        
-        today = datetime.now().strftime('%Y-%m-%d')
-        now_time = datetime.now().strftime('%H:%M:%S')
-        
-        today_att = db.execute(
-            'SELECT * FROM attendance WHERE user_id=? AND date=?',
-            (uid, today)
-        ).fetchone()
-        
-        if not today_att:
-            status = 'present'
-            if now_time > '09:00:00':
-                status = 'late'
-            db.execute(
-                'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
-                (uid, today, now_time, loc, 'Telegram Bot Attendance', status)
-            )
-            db.commit()
-            reply(f"Halo {full_name},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
-        elif not today_att['clock_out']:
-            db.execute(
-                'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
-                (now_time, loc, 'Telegram Bot Attendance', today_att['id'])
-            )
-            db.commit()
-            reply(f"Halo {full_name},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}")
+        if 'location' in message:
+            lat = message['location']['latitude']
+            lng = message['location']['longitude']
+            loc = f"{lat},{lng}"
+            
+            today = datetime.now().strftime('%Y-%m-%d')
+            now_time = datetime.now().strftime('%H:%M:%S')
+            
+            today_att = db.execute(
+                'SELECT * FROM attendance WHERE user_id=? AND date=?',
+                (uid, today)
+            ).fetchone()
+            
+            if not today_att:
+                status = 'present'
+                if now_time > '09:00:00':
+                    status = 'late'
+                db.execute(
+                    'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
+                    (uid, today, now_time, loc, 'Telegram Bot Attendance', status)
+                )
+                db.commit()
+                reply(f"Halo {full_name},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
+            elif not today_att['clock_out']:
+                db.execute(
+                    'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
+                    (now_time, loc, 'Telegram Bot Attendance', today_att['id'])
+                )
+                db.commit()
+                reply(f"Halo {full_name},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}")
+            else:
+                reply(f"Halo {full_name},\nAnda sudah melakukan Clock In dan Clock Out untuk hari ini.")
         else:
-            reply(f"Halo {full_name},\nAnda sudah melakukan Clock In dan Clock Out untuk hari ini.")
-    else:
-        text = message.get('text', '')
-        if text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
-            reply(f"Halo {full_name}! Selamat datang di Telegram Attendance Bot HIVE.\n\nUntuk melakukan Clock In atau Clock Out, silakan gunakan fitur \"Send Location\" (Kirim Lokasi) di Telegram.")
-        else:
-            reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out.")
+            text = message.get('text', '')
+            if text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
+                reply(f"Halo {full_name}! Selamat datang di Telegram Attendance Bot HIVE.\n\nUntuk melakukan Clock In atau Clock Out, silakan gunakan fitur \"Send Location\" (Kirim Lokasi) di Telegram.")
+            else:
+                reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out.")
+    except Exception as e:
+        import traceback
+        print(f"[Telegram Webhook Error] {str(e)}")
+        traceback.print_exc()
 
     return 'OK', 200
 

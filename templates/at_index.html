@@ -155,9 +155,18 @@
         submitClock(action, pos.coords.latitude, pos.coords.longitude);
       },
       (err) => {
+        let msg = "Gagal mendapatkan lokasi GPS.";
+        if (err.code === err.PERMISSION_DENIED) {
+          msg = "Izin lokasi ditolak. Aktifkan lokasi di browser untuk mencatat koordinat presensi.";
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          msg = "Lokasi tidak tersedia.";
+        } else if (err.code === err.TIMEOUT) {
+          msg = "Waktu pencarian lokasi GPS habis (timeout).";
+        }
+        alert(msg + "\nAbsen tetap dikirim tanpa koordinat GPS.");
         submitClock(action, '', '');
       },
-      { timeout: 5000 }
+      { timeout: 5000, enableHighAccuracy: true }
     );
   }
 
