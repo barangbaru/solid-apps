@@ -1,4 +1,4 @@
-VERSION = "2.2.9"
+VERSION = "2.2.10"
 RELEASE_DATE = "2026-07-03"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -20,5 +20,6 @@ RELEASE_NOTES = (
     "v2.2.6: Memperbaiki error NoneType not subscriptable pada halaman profil jika user dihapus atau tidak aktif. "
     "v2.2.7: Menambahkan opsi --reset-superadmin pada script deploy-ubuntu.sh untuk melakukan reset password superadmin. "
     "v2.2.8: Memperbaiki pemuatan variabel lingkungan (.env) saat menjalankan reset password superadmin. "
-    "v2.2.9: Memperbaiki SyntaxError di PostgreSQL pada halaman Infrastruktur Aset dan Lisensi Aset akibat tanda kutip ganda."
+    "v2.2.9: Memperbaiki SyntaxError di PostgreSQL pada halaman Infrastruktur Aset dan Lisensi Aset akibat tanda kutip ganda. "
+    "v2.2.10: Menghapus menu dan rute error log yang redundan di TalentCore (digantikan oleh Audit Trail Portal)."
 )

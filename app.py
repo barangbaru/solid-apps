@@ -8765,45 +8765,7 @@ def eval_export_pdf(eval_id):
 
 # ─── Admin Routes ──────────────────────────────────────────────────────────────
 
-@app.route('/admin/error-log')
-@login_required
-def admin_error_log():
-    if session.get('user_role') != 'superadmin':
-        flash('Akses ditolak', 'danger')
-        return redirect(url_for('index'))
-    db    = get_db()
-    page  = request.args.get('page', 1, type=int)
-    limit = 30
-    offset = (page - 1) * limit
-    errors = db.execute('''SELECT * FROM audit_errors
-                           ORDER BY created_at DESC LIMIT ? OFFSET ?''',
-                        (limit, offset)).fetchall()
-    total  = db.execute('SELECT COUNT(*) FROM audit_errors').fetchone()[0]
-    return render_template('admin_error_log.html', errors=errors,
-                           page=page, total=total, limit=limit)
 
-
-@app.route('/admin/error-log/<int:eid>/delete', methods=['POST'])
-@login_required
-def admin_error_log_delete(eid):
-    if session.get('user_role') != 'superadmin':
-        return jsonify({'ok': False})
-    db = get_db()
-    db.execute('DELETE FROM audit_errors WHERE id=?', (eid,))
-    db.commit()
-    return jsonify({'ok': True})
-
-
-@app.route('/admin/error-log/clear', methods=['POST'])
-@login_required
-def admin_error_log_clear():
-    if session.get('user_role') != 'superadmin':
-        return jsonify({'ok': False})
-    db = get_db()
-    db.execute('DELETE FROM audit_errors')
-    db.commit()
-    flash('Error log dikosongkan', 'success')
-    return redirect(url_for('admin_error_log'))
 
 
 @app.route('/admin')
