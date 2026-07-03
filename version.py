@@ -1,4 +1,4 @@
-VERSION = "2.2.13"
+VERSION = "2.2.14"
 RELEASE_DATE = "2026-07-03"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -24,5 +24,6 @@ RELEASE_NOTES = (
     "v2.2.10: Menghapus menu dan rute error log yang redundan di TalentCore (digantikan oleh Audit Trail Portal). "
     "v2.2.11: Mengubah HelpdeskCore menjadi AttendanceCore dengan fitur live attendance, leave, overtime, dan correction. "
     "v2.2.12: Menambahkan integrasi Telegram Bot untuk melakukan absensi (Clock In / Clock Out) dengan mengirimkan lokasi (Send Location). "
-    "v2.2.13: Peningkatan ketahanan Webhook Telegram (case-insensitive username, edited_message) dan integrasi perbaikan/error-handling pencatatan lokasi di Web UI."
+    "v2.2.13: Peningkatan ketahanan Webhook Telegram (case-insensitive username, edited_message) dan integrasi perbaikan/error-handling pencatatan lokasi di Web UI. "
+    "v2.2.14: Memperbaiki pencocokan identitas user Telegram di Webhook saat mengirim lokasi di dalam grup dengan memetakan user.id (sender) alih-alih chat.id (group ID)."
 )

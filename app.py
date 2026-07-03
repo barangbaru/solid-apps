@@ -12937,7 +12937,9 @@ def telegram_webhook():
         return 'OK', 200
 
     chat_id = message['chat']['id']
-    username = message.get('from', {}).get('username', '')
+    from_user = message.get('from', {})
+    from_id = from_user.get('id')
+    username = from_user.get('username', '')
 
     def reply(text):
         req_lib.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
@@ -12946,7 +12948,11 @@ def telegram_webhook():
         })
 
     try:
-        tg_id_variants = [str(chat_id)]
+        tg_id_variants = []
+        if from_id:
+            tg_id_variants.append(str(from_id))
+        if chat_id:
+            tg_id_variants.append(str(chat_id))
         if username:
             tg_id_variants.append(username)
             tg_id_variants.append(f"@{username}")
