@@ -65,7 +65,17 @@ if $RESET_SUPERADMIN; then
     info "Mereset password untuk user 'superadmin'..."
     cd "$APP_DIR"
     if venv/bin/python3 -c "
-import sys
+import sys, os
+# Load env variables manually from .env if exists
+env_file = '.env'
+if os.path.exists(env_file):
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                os.environ[k.strip()] = v.strip().strip('\"').strip('\'')
+
 from app import app, get_db, generate_password_hash
 new_pass = sys.argv[1]
 with app.app_context():
