@@ -1,5 +1,5 @@
-VERSION = "2.2.17"
-RELEASE_DATE = "2026-07-04"
+VERSION = "2.2.18"
+RELEASE_DATE = "2026-07-05"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
     "peer review 5 dimensi, benchmark per grade, AI summary (Ollama), "
@@ -28,5 +28,6 @@ RELEASE_NOTES = (
     "v2.2.14: Memperbaiki pencocokan identitas user Telegram di Webhook saat mengirim lokasi di dalam grup dengan memetakan user.id (sender) alih-alih chat.id (group ID). "
     "v2.2.15: Mewajibkan strict Geolocation GPS pada Clock In dan Clock Out Web Attendance Core (tanpa fallback koordinat kosong) dan menghapus input catatan. "
     "v2.2.16: Integrasi PLAN dan PROGRESS dari Telegram Bot ke modul Presensi Harian (AttendanceCore) dengan tampilan UI detail modal. "
-    "v2.2.17: Menghapus secara permanen record registrasi aplikasi obsolete (HelpdeskCore) dari database superapp_apps saat inisialisasi aplikasi."
+    "v2.2.17: Menghapus secara permanen record registrasi aplikasi obsolete (HelpdeskCore) dari database superapp_apps saat inisialisasi aplikasi. "
+    "v2.2.18: Memperbaiki konversi datetime SQLite ke PostgreSQL untuk query AssetCore dan penanganan duplicate username agar kompatibel dengan psycopg2."
 )

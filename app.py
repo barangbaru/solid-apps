@@ -69,6 +69,20 @@ def get_divisi_list(db):
     except Exception:
         return DIVISI_LIST
 
+
+def _is_db_integrity_error(exc):
+    """True untuk unique/constraint violation dari SQLite maupun psycopg2."""
+    if isinstance(exc, sqlite3.IntegrityError):
+        return True
+    try:
+        import psycopg2
+        return isinstance(exc, psycopg2.IntegrityError)
+    except ImportError:
+        return any(
+            cls.__name__ == 'IntegrityError' and cls.__module__.startswith('psycopg2')
+            for cls in type(exc).__mro__
+        )
+
 # ─── DB Helpers ────────────────────────────────────────────────────────────────
 # Thin wrapper sehingga kode SQLite (placeholder "?", row['col']) tetap bekerja
 # tanpa perubahan saat menggunakan PostgreSQL (placeholder "%s", RealDictCursor).
@@ -135,14 +149,14 @@ class _DBWrapper:
             sql, flags=re.IGNORECASE)
         # last_insert_rowid() → lastval()
         sql = re.sub(r'\blast_insert_rowid\s*\(\s*\)', 'lastval()', sql, flags=re.IGNORECASE)
-        # date('now') → CURRENT_DATE  (harus sebelum pola date(col) di bawah)
-        sql = re.sub(r"date\('now'\)", "CURRENT_DATE", sql, flags=re.IGNORECASE)
+        # date('now') / date("now") → CURRENT_DATE  (harus sebelum pola date(col) di bawah)
+        sql = re.sub(r"date\(\s*['\"]now['\"]\s*\)", "CURRENT_DATE", sql, flags=re.IGNORECASE)
         # date(col_expr) → (col_expr)::date  — konversi SQLite date() ke PostgreSQL cast
         sql = re.sub(r"\bdate\(([^)]+)\)", r"(\1)::date", sql, flags=re.IGNORECASE)
-        # datetime('now','localtime') → NOW()  (di query DML, bukan DDL)
-        sql = re.sub(r"datetime\('now',\s*'localtime'\)", "NOW()", sql, flags=re.IGNORECASE)
-        # datetime('now') → NOW()
-        sql = re.sub(r"datetime\('now'\)", "NOW()", sql, flags=re.IGNORECASE)
+        # datetime('now','localtime') / datetime("now","localtime") → NOW()
+        sql = re.sub(r"datetime\(\s*['\"]now['\"]\s*,\s*['\"]localtime['\"]\s*\)", "NOW()", sql, flags=re.IGNORECASE)
+        # datetime('now') / datetime("now") → NOW()
+        sql = re.sub(r"datetime\(\s*['\"]now['\"]\s*\)", "NOW()", sql, flags=re.IGNORECASE)
         # strftime('%Y-%m-%d', col) → TO_CHAR(col::date, 'YYYY-MM-DD')
         sql = re.sub(
             r"strftime\('%Y-%m-%d',\s*([^)]+)\)",
@@ -4210,8 +4224,12 @@ def user_add():
                 db.commit()
                 flash(f'User {username} berhasil dibuat', 'success')
                 return redirect(url_for('users_list'))
-            except sqlite3.IntegrityError:
-                flash('Username sudah digunakan', 'danger')
+            except Exception as e:
+                db.rollback()
+                if _is_db_integrity_error(e):
+                    flash('Username sudah digunakan', 'danger')
+                else:
+                    raise
     return render_template('user_form.html', user=None)
 
 @app.route('/users/<int:uid>/edit', methods=['GET', 'POST'])
@@ -4583,8 +4601,12 @@ def portal_user_add():
                 db.commit()
                 flash(f'User {username} berhasil dibuat', 'success')
                 return redirect(url_for('portal_users'))
-            except sqlite3.IntegrityError:
-                flash('Username sudah digunakan', 'danger')
+            except Exception as e:
+                db.rollback()
+                if _is_db_integrity_error(e):
+                    flash('Username sudah digunakan', 'danger')
+                else:
+                    raise
     free_emps = db.execute(
         'SELECT id,name,jabatan,divisi FROM employees WHERE is_active=1 AND user_id IS NULL ORDER BY name'
     ).fetchall()
