@@ -1499,6 +1499,23 @@ DEFAULT_SETTINGS = {
     'ai_base_url':           '',               # hanya untuk openai_compat
     # backward compat
     'anthropic_api_key':     '',
+    'backup_sched_enabled': '0',
+    'backup_sched_interval': 'daily',
+    'backup_sched_time': '02:00',
+    'backup_target_app': '1',
+    'backup_target_uploads': '1',
+    'backup_target_db': '1',
+    'backup_dest_email_enabled': '0',
+    'backup_dest_email_recipient': '',
+    'backup_dest_s3_enabled': '0',
+    'backup_dest_s3_endpoint': '',
+    'backup_dest_s3_access_key': '',
+    'backup_dest_s3_secret_key': '',
+    'backup_dest_s3_bucket': '',
+    'backup_dest_s3_region': '',
+    'backup_sched_last_run': '',
+    'backup_last_status': '',
+    'backup_last_log': '',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -3660,6 +3677,9 @@ def start_scheduler():
         scheduler.add_job(check_for_updates,
                           'interval', hours=6,
                           id='update_check', replace_existing=True)
+        scheduler.add_job(check_and_run_scheduled_backup,
+                          'interval', minutes=1,
+                          id='backup_scheduler', replace_existing=True)
         scheduler.start()
         import atexit
         atexit.register(scheduler.shutdown)
@@ -13102,6 +13122,426 @@ def telegram_webhook():
 
     return 'OK', 200
 
+
+
+
+# ─── Backup and Restore Helpers ────────────────────────────────────────────────
+
+def dump_postgres(output_path):
+    import subprocess
+    host = os.environ.get('PG_HOST', 'localhost')
+    port = os.environ.get('PG_PORT', 5432)
+    dbname = os.environ.get('PG_NAME', 'hive_db')
+    user = os.environ.get('PG_USER', 'hive')
+    password = os.environ.get('PG_PASS', '')
+    
+    cmd = ['pg_dump', '-h', host, '-p', str(port), '-U', user, '-F', 'p', '-f', output_path, dbname]
+    env = os.environ.copy()
+    if password:
+        env['PGPASSWORD'] = password
+        
+    res = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise Exception(f"pg_dump failed: {res.stderr}")
+
+def create_backup_zip(backup_app=True, backup_uploads=True, backup_db=True):
+    import zipfile
+    import shutil
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    backups_dir = os.path.join(base_dir, 'backups')
+    os.makedirs(backups_dir, exist_ok=True)
+    
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    zip_filename = f"backup_hive_{timestamp}.zip"
+    zip_filepath = os.path.join(backups_dir, zip_filename)
+    
+    temp_dir = os.path.join(backups_dir, f"temp_{timestamp}")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    try:
+        # 1. Backup DB
+        if backup_db:
+            if DB_TYPE == 'postgresql':
+                db_dump_path = os.path.join(temp_dir, 'database_dump.sql')
+                dump_postgres(db_dump_path)
+            else:
+                # SQLite
+                db_dump_path = os.path.join(temp_dir, 'evaluasi.db')
+                if os.path.exists(DB_PATH):
+                    shutil.copy2(DB_PATH, db_dump_path)
+                else:
+                    with open(db_dump_path, 'w') as f:
+                        pass
+        
+        # 2. Backup Uploads
+        if backup_uploads:
+            uploads_src = os.path.join(base_dir, 'static', 'uploads')
+            if os.path.exists(uploads_src):
+                uploads_dest = os.path.join(temp_dir, 'uploads')
+                shutil.copytree(uploads_src, uploads_dest, dirs_exist_ok=True)
+        
+        # 3. Backup App (source code)
+        if backup_app:
+            app_dest = os.path.join(temp_dir, 'app_source')
+            os.makedirs(app_dest, exist_ok=True)
+            exclude_folders = {'.git', 'venv', '.venv', '__pycache__', 'backups', 'static/uploads', '.agents', '.claude', 'node_modules'}
+            exclude_files = {'evaluasi.db', '.env'}
+            
+            for root, dirs, files in os.walk(base_dir):
+                rel_root = os.path.relpath(root, base_dir)
+                if rel_root == '.':
+                    rel_root = ''
+                
+                parts = rel_root.replace('\\', '/').split('/')
+                skip = False
+                for part in parts:
+                    if part in exclude_folders:
+                        skip = True
+                        break
+                if skip:
+                    dirs[:] = []
+                    continue
+                
+                if rel_root:
+                    os.makedirs(os.path.join(app_dest, rel_root), exist_ok=True)
+                
+                for file in files:
+                    file_rel_path = os.path.join(rel_root, file) if rel_root else file
+                    file_norm = file_rel_path.replace('\\', '/')
+                    if file_norm in exclude_files:
+                        continue
+                    if file.endswith('.zip') and 'backup' in file:
+                        continue
+                    shutil.copy2(os.path.join(root, file), os.path.join(app_dest, file_rel_path))
+                    
+        # Compress
+        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(temp_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, temp_dir)
+                    zip_file.write(file_path, arcname)
+                    
+        return zip_filepath
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+
+def send_email_with_attachment(settings, to_email, subject, html_body, filepath):
+    from email.mime.base import MIMEBase
+    from email import encoders
+    try:
+        msg = MIMEMultipart()
+        msg['Subject'] = subject
+        msg['From']    = settings.get('smtp_from') or settings.get('smtp_user', '')
+        msg['To']      = to_email
+        
+        msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+        
+        filename = os.path.basename(filepath)
+        with open(filepath, 'rb') as f:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+            msg.attach(part)
+            
+        use_ssl = settings.get('smtp_ssl', '0') == '1'
+        host, port = settings.get('smtp_host',''), int(settings.get('smtp_port', 587))
+        server = smtplib.SMTP_SSL(host, port) if use_ssl else smtplib.SMTP(host, port)
+        if not use_ssl:
+            server.starttls()
+        server.login(settings.get('smtp_user',''), settings.get('smtp_password',''))
+        server.send_message(msg)
+        server.quit()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+def upload_to_s3(endpoint, access_key, secret_key, bucket, region, filepath):
+    import boto3
+    from botocore.config import Config
+    
+    filename = os.path.basename(filepath)
+    config = Config(
+        region_name=region or 'us-east-1',
+        signature_version='s3v4'
+    )
+    s3 = boto3.client(
+        's3',
+        endpoint_url=endpoint or None,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=config
+    )
+    s3.upload_file(filepath, bucket, filename)
+
+def test_s3_connection(endpoint, access_key, secret_key, bucket, region):
+    import boto3
+    from botocore.config import Config
+    config = Config(
+        region_name=region or 'us-east-1',
+        signature_version='s3v4'
+    )
+    s3 = boto3.client(
+        's3',
+        endpoint_url=endpoint or None,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=config
+    )
+    s3.list_objects_v2(Bucket=bucket, MaxKeys=1)
+    return True
+
+# Scheduler callback
+def check_and_run_scheduled_backup():
+    db = _get_raw_db()
+    try:
+        cfg = get_settings(db)
+        if cfg.get('backup_sched_enabled') != '1':
+            return
+            
+        interval = cfg.get('backup_sched_interval', 'daily')
+        time_str = cfg.get('backup_sched_time', '02:00')
+        
+        try:
+            hour, minute = map(int, time_str.split(':'))
+        except Exception:
+            hour, minute = 2, 0
+            
+        now = datetime.now()
+        
+        if now.hour == hour and abs(now.minute - minute) < 5:
+            should_run = False
+            last_run_str = cfg.get('backup_sched_last_run', '')
+            if not last_run_str:
+                should_run = True
+            else:
+                last_run = datetime.strptime(last_run_str, '%Y-%m-%d %H:%M:%S')
+                if interval == 'daily':
+                    should_run = (now.date() > last_run.date())
+                elif interval == 'weekly':
+                    should_run = (now - last_run).days >= 7
+                elif interval == 'monthly':
+                    should_run = (now.year > last_run.year or now.month > last_run.month)
+            
+            if should_run:
+                lock_key = f"backup_lock_{now.strftime('%Y%m%d_%H%M')}"
+                try:
+                    res = db.execute("SELECT value FROM app_settings WHERE key=?", (lock_key,)).fetchone()
+                    if res:
+                        return
+                    db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", (lock_key, '1'))
+                    db.commit()
+                except Exception:
+                    return
+                
+                db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_sched_last_run', now.strftime('%Y-%m-%d %H:%M:%S')))
+                db.commit()
+                
+                import threading
+                threading.Thread(target=execute_scheduled_backup, args=(cfg,)).start()
+    finally:
+        db.close()
+
+def execute_scheduled_backup(cfg):
+    try:
+        backup_app = cfg.get('backup_target_app', '1') == '1'
+        backup_uploads = cfg.get('backup_target_uploads', '1') == '1'
+        backup_db = cfg.get('backup_target_db', '1') == '1'
+        
+        filepath = create_backup_zip(backup_app=backup_app, backup_uploads=backup_uploads, backup_db=backup_db)
+        
+        # Dest 1: Email
+        if cfg.get('backup_dest_email_enabled') == '1' and cfg.get('backup_dest_email_recipient'):
+            subject = f"Scheduled Backup HIVE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            html_body = "<p>Terlampir adalah file backup otomatis HIVE.</p>"
+            send_email_with_attachment(cfg, cfg.get('backup_dest_email_recipient'), subject, html_body, filepath)
+            
+        # Dest 2: S3
+        if cfg.get('backup_dest_s3_enabled') == '1':
+            endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+            access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+            secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+            bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+            region = cfg.get('backup_dest_s3_region', '').strip()
+            if endpoint or access_key:
+                upload_to_s3(endpoint, access_key, secret_key, bucket, region, filepath)
+                
+        # Status success
+        db = _get_raw_db()
+        try:
+            log_msg = f"Backup otomatis berhasil pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Sukses'))
+            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', log_msg))
+            db.commit()
+        finally:
+            db.close()
+            
+    except Exception as e:
+        db = _get_raw_db()
+        try:
+            log_msg = f"Backup otomatis gagal pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {str(e)}"
+            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Gagal'))
+            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', log_msg))
+            db.commit()
+        finally:
+            db.close()
+
+# Routes
+@app.route('/portal/backup', methods=['GET'])
+@login_required
+def portal_backup():
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db = get_db()
+    cfg = get_settings(db)
+    
+    # Get last 10 backup files in backups/ directory
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    backups_dir = os.path.join(base_dir, 'backups')
+    backup_files = []
+    if os.path.exists(backups_dir):
+        for f in os.listdir(backups_dir):
+            if f.endswith('.zip') and f.startswith('backup_hive_'):
+                fpath = os.path.join(backups_dir, f)
+                stat = os.stat(fpath)
+                backup_files.append({
+                    'filename': f,
+                    'size': f"{stat.st_size / (1024*1024):.2f} MB",
+                    'created_at': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                })
+        backup_files.sort(key=lambda x: x['created_at'], reverse=True)
+        backup_files = backup_files[:10]
+        
+    return render_template('portal_backup.html', cfg=cfg, backup_files=backup_files)
+
+@app.route('/portal/backup/download/<filename>')
+@login_required
+def download_backup_file(filename):
+    if not is_portal_admin():
+        abort(403)
+    from flask import send_from_directory
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    backups_dir = os.path.join(base_dir, 'backups')
+    return send_from_directory(backups_dir, filename, as_attachment=True)
+
+@app.route('/portal/backup/run', methods=['POST'])
+@login_required
+def run_backup_manual():
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak.'})
+        
+    backup_app = request.form.get('backup_app') == '1'
+    backup_uploads = request.form.get('backup_uploads') == '1'
+    backup_db = request.form.get('backup_db') == '1'
+    dest_download = request.form.get('dest_download') == '1'
+    dest_email = request.form.get('dest_email') == '1'
+    dest_s3 = request.form.get('dest_s3') == '1'
+    
+    db = get_db()
+    cfg = get_settings(db)
+    
+    try:
+        filepath = create_backup_zip(backup_app=backup_app, backup_uploads=backup_uploads, backup_db=backup_db)
+        log_msgs = []
+        
+        if dest_email:
+            recipient = request.form.get('email_recipient', '').strip()
+            if not recipient:
+                recipient = cfg.get('backup_dest_email_recipient')
+            if recipient:
+                subject = f"Manual Backup HIVE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                html_body = "<p>Terlampir adalah file backup manual HIVE.</p>"
+                ok, err = send_email_with_attachment(cfg, recipient, subject, html_body, filepath)
+                if ok:
+                    log_msgs.append("Kirim email berhasil.")
+                else:
+                    log_msgs.append(f"Kirim email gagal: {err}")
+            else:
+                log_msgs.append("Kirim email gagal: Alamat email penerima kosong.")
+                
+        if dest_s3:
+            endpoint = request.form.get('s3_endpoint', '').strip() or cfg.get('backup_dest_s3_endpoint')
+            access_key = request.form.get('s3_access_key', '').strip() or cfg.get('backup_dest_s3_access_key')
+            secret_key = request.form.get('s3_secret_key', '').strip() or cfg.get('backup_dest_s3_secret_key')
+            bucket = request.form.get('s3_bucket', '').strip() or cfg.get('backup_dest_s3_bucket')
+            region = request.form.get('s3_region', '').strip() or cfg.get('backup_dest_s3_region')
+            
+            try:
+                upload_to_s3(endpoint, access_key, secret_key, bucket, region, filepath)
+                log_msgs.append("Upload ke Object Storage S3 berhasil.")
+            except Exception as e:
+                log_msgs.append(f"Upload ke S3 gagal: {str(e)}")
+                
+        # Simpan status manual backup
+        status_msg = f"Manual backup sukses pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
+        if log_msgs:
+            status_msg += " Info: " + ", ".join(log_msgs)
+            
+        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Sukses'))
+        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', status_msg))
+        db.commit()
+        
+        filename = os.path.basename(filepath)
+        return jsonify({
+            'ok': True,
+            'msg': status_msg,
+            'filename': filename if dest_download else None
+        })
+    except Exception as e:
+        status_msg = f"Manual backup gagal pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {str(e)}"
+        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Gagal'))
+        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', status_msg))
+        db.commit()
+        return jsonify({'ok': False, 'msg': status_msg})
+
+@app.route('/portal/backup/settings', methods=['POST'])
+@login_required
+def save_backup_settings():
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db = get_db()
+    
+    keys_to_save = [
+        'backup_sched_enabled', 'backup_sched_interval', 'backup_sched_time',
+        'backup_target_app', 'backup_target_uploads', 'backup_target_db',
+        'backup_dest_email_enabled', 'backup_dest_email_recipient',
+        'backup_dest_s3_enabled', 'backup_dest_s3_endpoint',
+        'backup_dest_s3_access_key', 'backup_dest_s3_secret_key',
+        'backup_dest_s3_bucket', 'backup_dest_s3_region'
+    ]
+    
+    for k in keys_to_save:
+        if k in ('backup_sched_enabled', 'backup_target_app', 'backup_target_uploads',
+                 'backup_target_db', 'backup_dest_email_enabled', 'backup_dest_s3_enabled'):
+            v = '1' if request.form.get(k) else '0'
+        else:
+            v = request.form.get(k, '').strip()
+        save_setting(db, k, v)
+        
+    db.commit()
+    flash('Pengaturan backup berhasil disimpan.', 'success')
+    return redirect(url_for('portal_backup'))
+
+@app.route('/portal/backup/test-s3', methods=['POST'])
+@login_required
+def portal_test_s3():
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak.'})
+    endpoint = request.form.get('s3_endpoint', '').strip()
+    access_key = request.form.get('s3_access_key', '').strip()
+    secret_key = request.form.get('s3_secret_key', '').strip()
+    bucket = request.form.get('s3_bucket', '').strip()
+    region = request.form.get('s3_region', '').strip()
+    
+    try:
+        test_s3_connection(endpoint, access_key, secret_key, bucket, region)
+        return jsonify({'ok': True, 'msg': 'Koneksi ke Object Storage S3 berhasil!'})
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'Koneksi S3 gagal: {str(e)}'})
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
 

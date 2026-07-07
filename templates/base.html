@@ -374,6 +374,11 @@
         {% endif %}
       </a>
     </li>
+    <li>
+      <a href="/portal/backup" class="{{ 'active' if '/portal/backup' in request.path }}">
+        <i class="bi bi-database-fill-gear nav-icon"></i> Backup Center
+      </a>
+    </li>
     {% if chatbot_enabled %}
     <li>
       <a href="/chatbot" class="{{ 'active' if '/chatbot' in request.path }}">

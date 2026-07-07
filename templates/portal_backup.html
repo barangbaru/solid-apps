@@ -1,0 +1,383 @@
+{% extends 'base.html' %}
+{% block title %}Backup & Restore — Hive{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Backup Center</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div class="d-flex align-items-center gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-database-fill-gear text-primary me-1"></i>Backup Center</h5>
+    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 ms-1" style="font-size:.72rem">
+      System Backup & Scheduler
+    </span>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Sisi Kiri: Trigger Manual & Scheduler Form -->
+  <div class="col-lg-8">
+    <!-- Card 1: Trigger Backup Manual -->
+    <div class="card mb-4">
+      <div class="card-header py-3 fw-bold d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-play-circle-fill text-success me-2"></i>Trigger Backup Manual</span>
+        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25" style="font-size: 0.75rem;">Instant Run</span>
+      </div>
+      <div class="card-body">
+        <form id="manualBackupForm">
+          <div class="row g-3">
+            <!-- Pilihan Data Target -->
+            <div class="col-md-6">
+              <label class="form-label fw-bold small text-muted text-uppercase mb-2">1. Pilih Data yang Ingin Di-backup</label>
+              <div class="p-3 border rounded bg-light">
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="backup_app" id="manualApp" value="1" checked>
+                  <label class="form-check-label fw-semibold" for="manualApp">
+                    Kode Aplikasi <span class="fw-normal text-muted">(Source Code)</span>
+                  </label>
+                </div>
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="backup_uploads" id="manualUploads" value="1" checked>
+                  <label class="form-check-label fw-semibold" for="manualUploads">
+                    Konten Media <span class="fw-normal text-muted">(static/uploads)</span>
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="backup_db" id="manualDb" value="1" checked>
+                  <label class="form-check-label fw-semibold" for="manualDb">
+                    Database <span class="fw-normal text-muted">({{ 'PostgreSQL' if DB_TYPE == 'postgresql' else 'SQLite' }})</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pilihan Destinasi -->
+            <div class="col-md-6">
+              <label class="form-label fw-bold small text-muted text-uppercase mb-2">2. Pilih Media Pengiriman</label>
+              <div class="p-3 border rounded bg-light">
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="dest_download" id="destDownload" value="1" checked>
+                  <label class="form-check-label fw-semibold" for="destDownload">
+                    Download File Langsung <span class="fw-normal text-muted">(.zip)</span>
+                  </label>
+                </div>
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="dest_email" id="destEmail" value="1">
+                  <label class="form-check-label fw-semibold" for="destEmail">
+                    Kirim ke Email Penerima
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="dest_s3" id="destS3" value="1">
+                  <label class="form-check-label fw-semibold" for="destS3">
+                    Upload ke Object Storage S3
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 d-flex align-items-center justify-content-between">
+            <button type="button" class="btn btn-success fw-semibold" id="btnRunBackup" onclick="runManualBackup()">
+              <i class="bi bi-lightning-charge-fill me-1"></i> Mulai Proses Backup
+            </button>
+            <div id="backupProgress" class="spinner-border spinner-border-sm text-success d-none" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+          <div id="manualBackupResult" class="mt-3 small"></div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Card 2: Pengaturan Scheduller & Media -->
+    <div class="card mb-4">
+      <div class="card-header py-3 fw-bold">
+        <i class="bi bi-clock-history text-primary me-2"></i>Konfigurasi Backup Otomatis & Destinasi
+      </div>
+      <div class="card-body">
+        <form method="post" action="/portal/backup/settings">
+          <!-- Penjadwalan -->
+          <h6 class="fw-bold mb-3"><i class="bi bi-alarm me-1 text-primary"></i>1. Penjadwal (Scheduler)</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <div class="form-check form-switch pt-2">
+                <input class="form-check-input" type="checkbox" name="backup_sched_enabled" id="schedEnabled" value="1"
+                       {{ 'checked' if cfg.backup_sched_enabled == '1' else '' }}>
+                <label class="form-check-label fw-semibold" for="schedEnabled">Aktifkan Scheduler</label>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Interval</label>
+              <select name="backup_sched_interval" class="form-select form-select-sm">
+                <option value="daily" {{ 'selected' if cfg.backup_sched_interval == 'daily' else '' }}>Harian (Daily)</option>
+                <option value="weekly" {{ 'selected' if cfg.backup_sched_interval == 'weekly' else '' }}>Mingguan (Weekly)</option>
+                <option value="monthly" {{ 'selected' if cfg.backup_sched_interval == 'monthly' else '' }}>Bulanan (Monthly)</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Waktu Eksekusi (HH:MM)</label>
+              <input type="text" name="backup_sched_time" class="form-control form-control-sm"
+                     value="{{ cfg.backup_sched_time or '02:00' }}" placeholder="02:00">
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- Email -->
+          <h6 class="fw-bold mb-3"><i class="bi bi-envelope-fill me-1 text-primary"></i>2. Pengiriman Email SMTP</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-4">
+              <div class="form-check form-switch pt-2">
+                <input class="form-check-input" type="checkbox" name="backup_dest_email_enabled" id="destEmailEnabled" value="1"
+                       {{ 'checked' if cfg.backup_dest_email_enabled == '1' else '' }}>
+                <label class="form-check-label fw-semibold" for="destEmailEnabled">Kirim Email Otomatis</label>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small fw-semibold">Email Penerima</label>
+              <input type="email" name="backup_dest_email_recipient" class="form-control form-control-sm"
+                     value="{{ cfg.backup_dest_email_recipient or '' }}" placeholder="backup-receiver@perusahaan.com">
+              <div class="form-text text-muted" style="font-size:0.75rem">
+                Menggunakan SMTP server yang dikonfigurasi di <a href="/portal/system-settings" target="_blank">Pengaturan Sistem</a>.
+              </div>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
+          <!-- Object Storage S3 -->
+          <h6 class="fw-bold mb-3"><i class="bi bi-cloud-arrow-up-fill me-1 text-primary"></i>3. Object Storage (S3 Compatible)</h6>
+          <div class="row g-3">
+            <div class="col-md-12">
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" name="backup_dest_s3_enabled" id="destS3Enabled" value="1"
+                       {{ 'checked' if cfg.backup_dest_s3_enabled == '1' else '' }}>
+                <label class="form-check-label fw-semibold" for="destS3Enabled">Aktifkan Upload S3</label>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small fw-semibold">Endpoint URL</label>
+              <input type="url" name="backup_dest_s3_endpoint" id="s3Endpoint" class="form-control form-control-sm"
+                     value="{{ cfg.backup_dest_s3_endpoint or '' }}" placeholder="https://s3.amazonaws.com atau https://r2.cloudflare.com">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Region</label>
+              <input type="text" name="backup_dest_s3_region" id="s3Region" class="form-control form-control-sm"
+                     value="{{ cfg.backup_dest_s3_region or '' }}" placeholder="us-east-1">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Access Key ID</label>
+              <input type="text" name="backup_dest_s3_access_key" id="s3AccessKey" class="form-control form-control-sm"
+                     value="{{ cfg.backup_dest_s3_access_key or '' }}" placeholder="AKIAIOSFODNN7EXAMPLE">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">Secret Access Key</label>
+              <div class="input-group input-group-sm">
+                <input type="password" name="backup_dest_s3_secret_key" id="s3SecretKey" class="form-control"
+                       value="{{ cfg.backup_dest_s3_secret_key or '' }}">
+                <button type="button" class="btn btn-outline-secondary" onclick="toggleField('s3SecretKey')">
+                  <i class="bi bi-eye"></i>
+                </button>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <label class="form-label small fw-semibold">Bucket Name</label>
+              <input type="text" name="backup_dest_s3_bucket" id="s3Bucket" class="form-control form-control-sm"
+                     value="{{ cfg.backup_dest_s3_bucket or '' }}" placeholder="my-backup-bucket">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+              <button type="button" class="btn btn-outline-primary btn-sm w-100 fw-semibold" onclick="testS3Connection()">
+                <i class="bi bi-broadcast"></i> Test Koneksi S3
+              </button>
+            </div>
+          </div>
+          <div id="s3TestResult" class="mt-2 small"></div>
+
+          <hr class="my-4">
+
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="fw-bold mb-0">Target Default Backup Scheduler:</h6>
+            <div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" name="backup_target_app" id="schedApp" value="1"
+                       {{ 'checked' if cfg.backup_target_app == '1' else '' }}>
+                <label class="form-check-label small" for="schedApp">Aplikasi</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" name="backup_target_uploads" id="schedUploads" value="1"
+                       {{ 'checked' if cfg.backup_target_uploads == '1' else '' }}>
+                <label class="form-check-label small" for="schedUploads">Media</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" name="backup_target_db" id="schedDb" value="1"
+                       {{ 'checked' if cfg.backup_target_db == '1' else '' }}>
+                <label class="form-check-label small" for="schedDb">Database</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button type="submit" class="btn btn-primary fw-semibold">
+              <i class="bi bi-save-fill me-1"></i> Simpan Konfigurasi Backup
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sisi Kanan: Status Terakhir & File Riwayat Backup -->
+  <div class="col-lg-4">
+    <!-- Status Terakhir -->
+    <div class="card mb-4 border-{{ 'success' if cfg.backup_last_status == 'Sukses' else 'danger' if cfg.backup_last_status == 'Gagal' else 'secondary' }}">
+      <div class="card-header py-3 fw-bold bg-{{ 'success' if cfg.backup_last_status == 'Sukses' else 'danger' if cfg.backup_last_status == 'Gagal' else 'secondary' }} bg-opacity-10 text-{{ 'success' if cfg.backup_last_status == 'Sukses' else 'danger' if cfg.backup_last_status == 'Gagal' else 'dark' }}">
+        <i class="bi bi-info-circle-fill me-2"></i>Status Backup Terakhir
+      </div>
+      <div class="card-body">
+        <div class="mb-3 d-flex align-items-center justify-content-between">
+          <span class="fw-semibold">Status:</span>
+          {% if cfg.backup_last_status == 'Sukses' %}
+            <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Sukses</span>
+          {% elif cfg.backup_last_status == 'Gagal' %}
+            <span class="badge bg-danger"><i class="bi bi-x-circle-fill me-1"></i>Gagal</span>
+          {% else %}
+            <span class="badge bg-secondary">Belum Pernah Run</span>
+          {% endif %}
+        </div>
+        <div class="mb-3">
+          <span class="fw-semibold d-block mb-1">Terakhir Diaktifkan Scheduler:</span>
+          <code class="text-dark bg-light p-1 rounded small">{{ cfg.backup_sched_last_run or '-' }}</code>
+        </div>
+        <div>
+          <span class="fw-semibold d-block mb-1">Pesan Log:</span>
+          <div class="bg-light p-2 border rounded" style="font-size:0.78rem; max-height: 120px; overflow-y: auto;">
+            {{ cfg.backup_last_log or 'Tidak ada aktivitas tercatat.' }}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Riwayat Backup Lokal -->
+    <div class="card">
+      <div class="card-header py-3 fw-bold bg-light">
+        <i class="bi bi-file-earmark-zip me-2"></i>Daftar Backup Lokal (Terbaru)
+      </div>
+      <div class="card-body p-0">
+        {% if backup_files %}
+          <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+            {% for bf in backup_files %}
+              <div class="list-group-item py-2 px-3">
+                <div class="d-flex align-items-center justify-content-between">
+                  <div class="text-truncate me-2" style="max-width: 180px;">
+                    <a href="/portal/backup/download/{{ bf.filename }}" class="fw-semibold text-decoration-none text-dark small" title="{{ bf.filename }}">
+                      <i class="bi bi-file-zip text-warning me-1"></i>{{ bf.filename }}
+                    </a>
+                    <span class="d-block text-muted" style="font-size:0.7rem">{{ bf.created_at }}</span>
+                  </div>
+                  <div>
+                    <span class="badge bg-light text-dark border me-1 small" style="font-size:0.7rem">{{ bf.size }}</span>
+                    <a href="/portal/backup/download/{{ bf.filename }}" class="btn btn-outline-primary btn-xs" title="Download">
+                      <i class="bi bi-download"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="p-4 text-center text-muted small">
+            <i class="bi bi-folder-x display-6 mb-2 d-block"></i> Belum ada file backup lokal yang terdeteksi.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleField(id) {
+  var el = document.getElementById(id);
+  if (el.type === "password") {
+    el.type = "text";
+  } else {
+    el.type = "password";
+  }
+}
+
+function runManualBackup() {
+  const form = document.getElementById('manualBackupForm');
+  const formData = new FormData(form);
+  
+  const btn = document.getElementById('btnRunBackup');
+  const spinner = document.getElementById('backupProgress');
+  const resultDiv = document.getElementById('manualBackupResult');
+  
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+  resultDiv.innerHTML = '<div class="alert alert-info py-2">Sedang memproses backup... Harap tunggu.</div>';
+  
+  fetch('/portal/backup/run', {
+    method: 'POST',
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+    
+    if (data.ok) {
+      let msg = `<div class="alert alert-success py-2"><i class="bi bi-check-circle-fill me-1"></i>${data.msg}</div>`;
+      if (data.filename) {
+        msg += `<div class="mt-2"><a href="/portal/backup/download/${data.filename}" class="btn btn-primary btn-sm"><i class="bi bi-download me-1"></i>Unduh Berkas Backup (${data.filename})</a></div>`;
+      }
+      resultDiv.innerHTML = msg;
+      
+      // Reload page after 3 seconds to update lists and logs
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+    } else {
+      resultDiv.innerHTML = `<div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>${data.msg}</div>`;
+    }
+  })
+  .catch(err => {
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+    resultDiv.innerHTML = `<div class="alert alert-danger py-2">Error: Koneksi terputus atau backend gagal memproses.</div>`;
+  });
+}
+
+function testS3Connection() {
+  const endpoint = document.getElementById('s3Endpoint').value;
+  const access_key = document.getElementById('s3AccessKey').value;
+  const secret_key = document.getElementById('s3SecretKey').value;
+  const bucket = document.getElementById('s3Bucket').value;
+  const region = document.getElementById('s3Region').value;
+  
+  const resultDiv = document.getElementById('s3TestResult');
+  resultDiv.innerHTML = '<span class="text-info"><i class="spinner-border spinner-border-sm me-1"></i> Menguji koneksi S3...</span>';
+  
+  const formData = new FormData();
+  formData.append('s3_endpoint', endpoint);
+  formData.append('s3_access_key', access_key);
+  formData.append('s3_secret_key', secret_key);
+  formData.append('s3_bucket', bucket);
+  formData.append('s3_region', region);
+  
+  fetch('/portal/backup/test-s3', {
+    method: 'POST',
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.ok) {
+      resultDiv.innerHTML = `<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i> ${data.msg}</span>`;
+    } else {
+      resultDiv.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-circle-fill me-1"></i> ${data.msg}</span>`;
+    }
+  })
+  .catch(err => {
+    resultDiv.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle-fill me-1"></i> Gagal menghubungi server.</span>';
+  });
+}
+</script>
+{% endblock %}
