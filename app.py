@@ -11156,6 +11156,18 @@ def booking_resource_edit(rid):
                 sort_order=?,is_active=?,image=? WHERE id=?''',
                 (name, rtype, subtype, capacity, location, description,
                  facilities, notes, color, icon, sort_order, is_active, image, rid))
+            
+            # Handle additional gallery images
+            gallery_files = request.files.getlist('images')
+            sort_base = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM bk_resource_images WHERE resource_id=?', (rid,)).fetchone()[0]
+            for i, gf in enumerate(gallery_files):
+                if gf and gf.filename:
+                    saved_g = _save_upload(gf, 'resources')
+                    if saved_g:
+                        caption = request.form.get(f'caption_{i}', '')
+                        db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
+                                   (rid, saved_g, caption, sort_base + i + 1))
+            
             db.commit()
             flash('Resource berhasil diperbarui.', 'success')
             return redirect(url_for('booking_resource_detail', rid=rid))
@@ -11190,11 +11202,24 @@ def booking_resource_add():
         if not name:
             flash('Nama resource wajib diisi.', 'danger')
         else:
-            db.execute('''INSERT INTO bk_resources(name,type,subtype,capacity,location,
+            cur = db.execute('''INSERT INTO bk_resources(name,type,subtype,capacity,location,
                 description,facilities,notes,color,icon,sort_order,image)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (name, rtype, subtype, capacity, location, description,
                  facilities, notes, color, icon, sort_order, image))
+            rid = cur.lastrowid
+            
+            # Handle additional gallery images
+            gallery_files = request.files.getlist('images')
+            sort_base = 0
+            for i, gf in enumerate(gallery_files):
+                if gf and gf.filename:
+                    saved_g = _save_upload(gf, 'resources')
+                    if saved_g:
+                        caption = request.form.get(f'caption_{i}', '')
+                        db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
+                                   (rid, saved_g, caption, sort_base + i + 1))
+            
             db.commit()
             flash(f'Resource "{name}" berhasil ditambahkan.', 'success')
             return redirect(url_for('booking_index'))
@@ -11214,6 +11239,7 @@ def booking_resource_images(rid):
         if img_id:
             db.execute('DELETE FROM bk_resource_images WHERE id=? AND resource_id=?', (img_id, rid))
             db.commit()
+        return jsonify({'ok': True, 'msg': 'Foto galeri berhasil dihapus.'})
     else:
         files = request.files.getlist('images')
         sort_base = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM bk_resource_images WHERE resource_id=?', (rid,)).fetchone()[0]
@@ -11226,6 +11252,16 @@ def booking_resource_images(rid):
                                (rid, saved, caption, sort_base + i + 1))
         db.commit()
     return redirect(url_for('booking_resource_edit', rid=rid))
+
+@app.route('/booking/resource/<int:rid>/delete-main-image', methods=['POST'])
+@login_required
+def booking_resource_delete_main_image(rid):
+    redir = _bk_require_access()
+    if redir: return redir
+    db = get_db()
+    db.execute('UPDATE bk_resources SET image=? WHERE id=?', ('', rid))
+    db.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/booking/<int:bid>')
