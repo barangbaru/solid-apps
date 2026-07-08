@@ -11048,10 +11048,11 @@ def booking_public():
 
     # Fetch bookings for current range
     booking_query = '''
-        SELECT b.*, r.name res_name, r.color res_color, r.icon res_icon
+        SELECT b.*, r.name res_name, r.color res_color, r.icon res_icon, u.full_name booker_name
         FROM bk_bookings b
         JOIN bk_resources r ON b.resource_id = r.id
-        WHERE b.start_time >= ? AND b.start_time <= ? AND r.is_active = 1
+        LEFT JOIN users u ON u.id = b.booked_by
+        WHERE b.start_dt >= ? AND b.start_dt <= ? AND r.is_active = 1
     '''
     params = [cal_start.strftime('%Y-%m-%d 00:00:00'), cal_end.strftime('%Y-%m-%d 23:59:59')]
     if resource_id:
@@ -11064,22 +11065,22 @@ def booking_public():
     bookings_by_date = {}
     for b in db_bookings:
         try:
-            b_date = datetime.strptime(b['start_time'][:10], '%Y-%m-%d').date()
+            b_date = datetime.strptime(b['start_dt'][:10], '%Y-%m-%d').date()
         except Exception:
             continue
         if b_date not in bookings_by_date:
             bookings_by_date[b_date] = []
         
         try:
-            start_t = datetime.strptime(b['start_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
-            end_t = datetime.strptime(b['end_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+            start_t = datetime.strptime(b['start_dt'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+            end_t = datetime.strptime(b['end_dt'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
         except Exception:
             try:
-                start_t = datetime.strptime(b['start_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
-                end_t = datetime.strptime(b['end_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+                start_t = datetime.strptime(b['start_dt'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+                end_t = datetime.strptime(b['end_dt'], '%Y-%m-%d %H:%M').strftime('%H:%M')
             except Exception:
-                start_t = b['start_time']
-                end_t = b['end_time']
+                start_t = b['start_dt']
+                end_t = b['end_dt']
         
         bookings_by_date[b_date].append({
             'id': b['id'],
@@ -11089,16 +11090,17 @@ def booking_public():
             'res_icon': b['res_icon'],
             'time_range': f"{start_t} - {end_t}",
             'title': b['title'],
-            'booked_by': b['booked_by']
+            'booked_by': b['booker_name'] or b['booked_by']
         })
 
     # Fetch today's bookings for display
     today_query = '''
-        SELECT b.*, r.name res_name, r.color res_color, r.icon res_icon
+        SELECT b.*, r.name res_name, r.color res_color, r.icon res_icon, u.full_name booker_name
         FROM bk_bookings b
         JOIN bk_resources r ON b.resource_id = r.id
-        WHERE DATE(b.start_time) = ? AND r.is_active = 1
-        ORDER BY b.start_time ASC
+        LEFT JOIN users u ON u.id = b.booked_by
+        WHERE DATE(b.start_dt) = ? AND r.is_active = 1
+        ORDER BY b.start_dt ASC
     '''
     today_bookings = db.execute(today_query, (ref_date.strftime('%Y-%m-%d'),)).fetchall()
     
@@ -11106,15 +11108,15 @@ def booking_public():
     formatted_today_bookings = []
     for tb in today_bookings:
         try:
-            st = datetime.strptime(tb['start_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
-            et = datetime.strptime(tb['end_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+            st = datetime.strptime(tb['start_dt'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+            et = datetime.strptime(tb['end_dt'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
         except Exception:
             try:
-                st = datetime.strptime(tb['start_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
-                et = datetime.strptime(tb['end_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+                st = datetime.strptime(tb['start_dt'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+                et = datetime.strptime(tb['end_dt'], '%Y-%m-%d %H:%M').strftime('%H:%M')
             except Exception:
-                st = tb['start_time']
-                et = tb['end_time']
+                st = tb['start_dt']
+                et = tb['end_dt']
         formatted_today_bookings.append({
             'id': tb['id'],
             'resource_id': tb['resource_id'],
@@ -11123,7 +11125,7 @@ def booking_public():
             'res_icon': tb['res_icon'],
             'time_range': f"{st} - {et}",
             'title': tb['title'],
-            'booked_by': tb['booked_by'],
+            'booked_by': tb['booker_name'] or tb['booked_by'],
             'notes': tb.get('notes', '')
         })
 
