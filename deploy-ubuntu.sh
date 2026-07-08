@@ -278,14 +278,14 @@ if ! $IS_UPDATE; then
     apt-get update -qq
     PKGS="python3 python3-pip python3-venv nginx git rsync"
     if [ "$DB_TYPE" = "postgresql" ]; then
-        PKGS="$PKGS libpq-dev python3-dev"
+        PKGS="$PKGS libpq-dev python3-dev postgresql-client"
     fi
     apt-get install -y $PKGS
     success "System dependencies terpasang."
 else
-    # Pastikan libpq-dev ada jika PostgreSQL
+    # Pastikan libpq-dev dan postgresql-client ada jika PostgreSQL
     if [ "$DB_TYPE" = "postgresql" ]; then
-        apt-get install -y libpq-dev python3-dev -qq
+        apt-get install -y libpq-dev python3-dev postgresql-client -qq
     fi
     info "Mode update — sistem dependencies dilewati."
 fi

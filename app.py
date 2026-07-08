@@ -13135,7 +13135,8 @@ def dump_postgres(output_path):
     user = os.environ.get('PG_USER', 'hive')
     password = os.environ.get('PG_PASS', '')
     
-    cmd = ['pg_dump', '-h', host, '-p', str(port), '-U', user, '-F', 'p', '-f', output_path, dbname]
+    pg_dump_bin = os.environ.get('PG_DUMP_PATH', 'pg_dump')
+    cmd = [pg_dump_bin, '-h', host, '-p', str(port), '-U', user, '-F', 'p', '-f', output_path, dbname]
     env = os.environ.copy()
     if password:
         env['PGPASSWORD'] = password

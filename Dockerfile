@@ -33,9 +33,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     START_SCHEDULER=1 \
     TZ=Asia/Jakarta
 
-# Install tzdata untuk timezone
+# Install tzdata untuk timezone dan postgresql-client untuk DB backup
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        tzdata curl \
+        tzdata curl postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtualenv dari builder
