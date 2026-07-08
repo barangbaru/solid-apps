@@ -66,6 +66,7 @@ ALLOWED_IMAGE_EXT = {'jpg', 'jpeg', 'png', 'webp', 'gif'}
 
 def _save_upload(file_obj, subfolder=''):
     import uuid
+    import shutil
     ext = file_obj.filename.rsplit('.', 1)[-1].lower()
     if ext not in ALLOWED_IMAGE_EXT:
         return None
@@ -81,6 +82,7 @@ def _save_upload(file_obj, subfolder=''):
         pass
         
     if storage_type == 's3':
+        temp_path = None
         try:
             endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
             access_key = cfg.get('backup_dest_s3_access_key', '').strip()
@@ -88,47 +90,63 @@ def _save_upload(file_obj, subfolder=''):
             bucket = cfg.get('backup_dest_s3_bucket', '').strip()
             region = cfg.get('backup_dest_s3_region', '').strip()
             
-            s3_key = f"upload/media/{subfolder}/{fname}" if subfolder else f"upload/media/{fname}"
-            
-            # Temporary local save to upload
-            temp_path = os.path.join(UPLOAD_FOLDER, 'temp_' + fname)
-            file_obj.save(temp_path)
-            
-            import boto3
-            from botocore.config import Config
-            config = Config(
-                region_name=region or 'us-east-1',
-                signature_version='s3v4'
-            )
-            s3 = boto3.client(
-                's3',
-                endpoint_url=endpoint or None,
-                aws_access_key_id=access_key,
-                aws_secret_access_key=secret_key,
-                config=config
-            )
-            # Upload (try with public-read ACL, fallback if forbidden)
-            try:
-                s3.upload_file(temp_path, bucket, s3_key, ExtraArgs={'ACL': 'public-read'})
-            except Exception:
-                s3.upload_file(temp_path, bucket, s3_key)
+            # Only attempt S3 upload if required credentials are provided
+            if access_key and secret_key and bucket:
+                s3_key = f"upload/media/{subfolder}/{fname}" if subfolder else f"upload/media/{fname}"
                 
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
+                # Temporary local save to upload
+                temp_path = os.path.join(UPLOAD_FOLDER, 'temp_' + fname)
+                file_obj.save(temp_path)
                 
-            if endpoint:
-                base_url = endpoint.rstrip('/')
-                return f"{base_url}/{bucket}/{s3_key}"
-            else:
-                r_str = f"-{region}" if region else ""
-                return f"https://{bucket}.s3{r_str}.amazonaws.com/{s3_key}"
+                import boto3
+                from botocore.config import Config
+                config = Config(
+                    region_name=region or 'us-east-1',
+                    signature_version='s3v4',
+                    connect_timeout=3,
+                    read_timeout=5,
+                    retries={'max_attempts': 1}
+                )
+                s3 = boto3.client(
+                    's3',
+                    endpoint_url=endpoint or None,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    config=config
+                )
+                # Upload (try with public-read ACL, fallback if forbidden)
+                try:
+                    s3.upload_file(temp_path, bucket, s3_key, ExtraArgs={'ACL': 'public-read'})
+                except Exception:
+                    s3.upload_file(temp_path, bucket, s3_key)
+                    
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+                    
+                if endpoint:
+                    base_url = endpoint.rstrip('/')
+                    return f"{base_url}/{bucket}/{s3_key}"
+                else:
+                    r_str = f"-{region}" if region else ""
+                    return f"https://{bucket}.s3{r_str}.amazonaws.com/{s3_key}"
         except Exception:
-            # Fallback to local on upload failure
-            pass
+            # Fallback: if we already saved the file to temp_path, move it to local destination
+            if temp_path and os.path.exists(temp_path):
+                folder = os.path.join(UPLOAD_FOLDER, subfolder)
+                os.makedirs(folder, exist_ok=True)
+                try:
+                    shutil.move(temp_path, os.path.join(folder, fname))
+                    return f'/static/uploads/{subfolder}/{fname}' if subfolder else f'/static/uploads/{fname}'
+                except Exception:
+                    pass
             
     # Local Storage fallback
+    try:
+        file_obj.seek(0)
+    except Exception:
+        pass
     folder = os.path.join(UPLOAD_FOLDER, subfolder)
     os.makedirs(folder, exist_ok=True)
     file_obj.save(os.path.join(folder, fname))
