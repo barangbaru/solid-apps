@@ -1,4 +1,4 @@
-VERSION = "2.2.29"
+VERSION = "2.2.30"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -40,5 +40,6 @@ RELEASE_NOTES = (
     "v2.2.26: Memperbaiki bug 0-byte image upload akibat stream consumption dan timeout/Gunicorn restart saat S3 enabled tapi credentials kosong/koneksi lambat. "
     "v2.2.27: Implementasi rute media proxy (/media/proxy/<path:key>) untuk mengamankan data S3 tetap private dengan streaming file media secara terotentikasi. "
     "v2.2.28: Memindahkan rute media_proxy ke posisi setelah definisi login_required di app.py untuk mengatasi NameError saat boot. "
-    "v2.2.29: Memperbaiki bug nested forms pada template edit resource BookingCore, mengaktifkan AJAX image deletion, dan mendukung multi-upload gallery saat menambahkan resource."
+    "v2.2.29: Memperbaiki bug nested forms pada template edit resource BookingCore, mengaktifkan AJAX image deletion, dan mendukung multi-upload gallery saat menambahkan resource. "
+    "v2.2.30: Memperbaiki TemplateSyntaxError (stray endif tag) di booking_resource_edit.html setelah pembersihan nested forms."
 )
