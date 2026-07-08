@@ -1,4 +1,4 @@
-VERSION = "2.2.27"
+VERSION = "2.2.28"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -38,5 +38,6 @@ RELEASE_NOTES = (
     "v2.2.24: Menambahkan perbaikan environment PATH di evaluasi.service dan script backup_db.sh untuk mengatasi error command not found (dirname, grep, xargs, pg_dump). "
     "v2.2.25: Mengaktifkan default auto backup lokal & S3 di DEFAULT_SETTINGS, serta mendukung opsi penyimpanan konten media (static/uploads) ke S3 (folder upload/media/). "
     "v2.2.26: Memperbaiki bug 0-byte image upload akibat stream consumption dan timeout/Gunicorn restart saat S3 enabled tapi credentials kosong/koneksi lambat. "
-    "v2.2.27: Implementasi rute media proxy (/media/proxy/<path:key>) untuk mengamankan data S3 tetap private dengan streaming file media secara terotentikasi."
+    "v2.2.27: Implementasi rute media proxy (/media/proxy/<path:key>) untuk mengamankan data S3 tetap private dengan streaming file media secara terotentikasi. "
+    "v2.2.28: Memindahkan rute media_proxy ke posisi setelah definisi login_required di app.py untuk mengatasi NameError saat boot."
 )
