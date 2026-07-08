@@ -11129,6 +11129,16 @@ def booking_public():
             'notes': tb.get('notes', '')
         })
 
+    if month_start.month == 1:
+        prev_month = month_start.replace(year=month_start.year - 1, month=12, day=1).isoformat()
+    else:
+        prev_month = month_start.replace(month=month_start.month - 1, day=1).isoformat()
+        
+    if month_start.month == 12:
+        next_month = month_start.replace(year=month_start.year + 1, month=1, day=1).isoformat()
+    else:
+        next_month = month_start.replace(month=month_start.month + 1, day=1).isoformat()
+
     return render_template('booking_public_dashboard.html',
                            resources=resources,
                            resource_id=resource_id,
@@ -11139,7 +11149,9 @@ def booking_public():
                            view=view,
                            ref_date=ref_date,
                            today_bookings=formatted_today_bookings,
-                           today=today)
+                           today=today,
+                           prev_month=prev_month,
+                           next_month=next_month)
 
 
 @app.route('/booking/')

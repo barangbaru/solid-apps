@@ -323,15 +323,13 @@
         
         <!-- Pagination controls -->
         <div class="d-flex align-items-center gap-2">
-          {% set prev_month = (month_start - timedelta(days=15)).replace(day=1) %}
-          {% set next_month = (month_start + timedelta(days=40)).replace(day=1) %}
-          <a href="?view=month&resource={{ resource_id or '' }}&date={{ prev_month.strftime('%Y-%m-%d') }}" class="btn btn-sm btn-outline-secondary">
+          <a href="?view=month&resource={{ resource_id or '' }}&date={{ prev_month }}" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-chevron-left"></i>
           </a>
           <span class="fw-bold text-center px-2" style="min-width: 140px;">
             {{ month_start.strftime('%B %Y') }}
           </span>
-          <a href="?view=month&resource={{ resource_id or '' }}&date={{ next_month.strftime('%Y-%m-%d') }}" class="btn btn-sm btn-outline-secondary">
+          <a href="?view=month&resource={{ resource_id or '' }}&date={{ next_month }}" class="btn btn-sm btn-outline-secondary">
             <i class="bi bi-chevron-right"></i>
           </a>
         </div>
