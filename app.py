@@ -13332,12 +13332,12 @@ def check_and_run_scheduled_backup():
                     res = db.execute("SELECT value FROM app_settings WHERE key=?", (lock_key,)).fetchone()
                     if res:
                         return
-                    db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", (lock_key, '1'))
+                    save_setting(db, lock_key, '1')
                     db.commit()
                 except Exception:
                     return
                 
-                db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_sched_last_run', now.strftime('%Y-%m-%d %H:%M:%S')))
+                save_setting(db, 'backup_sched_last_run', now.strftime('%Y-%m-%d %H:%M:%S'))
                 db.commit()
                 
                 import threading
@@ -13373,8 +13373,8 @@ def execute_scheduled_backup(cfg):
         db = _get_raw_db()
         try:
             log_msg = f"Backup otomatis berhasil pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Sukses'))
-            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', log_msg))
+            save_setting(db, 'backup_last_status', 'Sukses')
+            save_setting(db, 'backup_last_log', log_msg)
             db.commit()
         finally:
             db.close()
@@ -13383,8 +13383,8 @@ def execute_scheduled_backup(cfg):
         db = _get_raw_db()
         try:
             log_msg = f"Backup otomatis gagal pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {str(e)}"
-            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Gagal'))
-            db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', log_msg))
+            save_setting(db, 'backup_last_status', 'Gagal')
+            save_setting(db, 'backup_last_log', log_msg)
             db.commit()
         finally:
             db.close()
@@ -13481,8 +13481,8 @@ def run_backup_manual():
         if log_msgs:
             status_msg += " Info: " + ", ".join(log_msgs)
             
-        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Sukses'))
-        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', status_msg))
+        save_setting(db, 'backup_last_status', 'Sukses')
+        save_setting(db, 'backup_last_log', status_msg)
         db.commit()
         
         filename = os.path.basename(filepath)
@@ -13493,8 +13493,8 @@ def run_backup_manual():
         })
     except Exception as e:
         status_msg = f"Manual backup gagal pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {str(e)}"
-        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_status', 'Gagal'))
-        db.execute("INSERT OR REPLACE INTO app_settings(key, value) VALUES(?, ?)", ('backup_last_log', status_msg))
+        save_setting(db, 'backup_last_status', 'Gagal')
+        save_setting(db, 'backup_last_log', status_msg)
         db.commit()
         return jsonify({'ok': False, 'msg': status_msg})
 
