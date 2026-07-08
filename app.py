@@ -125,12 +125,7 @@ def _save_upload(file_obj, subfolder=''):
                 except Exception:
                     pass
                     
-                if endpoint:
-                    base_url = endpoint.rstrip('/')
-                    return f"{base_url}/{bucket}/{s3_key}"
-                else:
-                    r_str = f"-{region}" if region else ""
-                    return f"https://{bucket}.s3{r_str}.amazonaws.com/{s3_key}"
+                return f"/media/proxy/{s3_key}"
         except Exception:
             # Fallback: if we already saved the file to temp_path, move it to local destination
             if temp_path and os.path.exists(temp_path):
@@ -151,6 +146,74 @@ def _save_upload(file_obj, subfolder=''):
     os.makedirs(folder, exist_ok=True)
     file_obj.save(os.path.join(folder, fname))
     return f'/static/uploads/{subfolder}/{fname}' if subfolder else f'/static/uploads/{fname}'
+
+@app.route('/media/proxy/<path:key>')
+@login_required
+def media_proxy(key):
+    from flask import send_file
+    import io
+    
+    # Retrieve S3 configurations
+    db = get_db()
+    cfg = get_settings(db)
+    storage_type = cfg.get('media_storage_type', 'local')
+    
+    if storage_type != 's3':
+        # If media storage type is local, but they requested via proxy, try to serve from local uploads
+        safe_path = os.path.join(UPLOAD_FOLDER, key.replace('upload/media/', '', 1))
+        if os.path.exists(safe_path):
+            return send_file(safe_path)
+        abort(404)
+        
+    # S3 mode: fetch from S3 and stream back
+    endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+    access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+    secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+    bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+    region = cfg.get('backup_dest_s3_region', '').strip()
+    
+    if not (access_key and secret_key and bucket):
+        # Fallback to local
+        safe_path = os.path.join(UPLOAD_FOLDER, key.replace('upload/media/', '', 1))
+        if os.path.exists(safe_path):
+            return send_file(safe_path)
+        abort(404)
+        
+    try:
+        import boto3
+        from botocore.config import Config
+        
+        config = Config(
+            region_name=region or 'us-east-1',
+            signature_version='s3v4',
+            connect_timeout=3,
+            read_timeout=5,
+            retries={'max_attempts': 1}
+        )
+        s3 = boto3.client(
+            's3',
+            endpoint_url=endpoint or None,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=config
+        )
+        
+        # Get S3 object
+        response = s3.get_object(Bucket=bucket, Key=key)
+        content_type = response.get('ContentType', 'application/octet-stream')
+        data = response['Body'].read()
+        
+        return send_file(
+            io.BytesIO(data),
+            mimetype=content_type,
+            download_name=os.path.basename(key)
+        )
+    except Exception:
+        # Fallback to local
+        safe_path = os.path.join(UPLOAD_FOLDER, key.replace('upload/media/', '', 1))
+        if os.path.exists(safe_path):
+            return send_file(safe_path)
+        abort(404)
 
 def get_divisi_list(db):
     try:
