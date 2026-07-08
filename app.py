@@ -10964,6 +10964,54 @@ def _bk_generate_recurring(base, resource_id, title, purpose, booked_by, attende
     db.commit()
 
 
+_holidays_cache = {}  # {year: {date_str: holiday_name}}
+
+def get_indonesian_holidays(year):
+    global _holidays_cache
+    if year in _holidays_cache:
+        return _holidays_cache[year]
+    
+    import urllib.request
+    import json
+
+    year_holidays = {}
+    # Try upset.dev API first
+    url = f"https://tanggalmerah.upset.dev/api/holidays?year={year}"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode())
+            if isinstance(data, dict) and 'data' in data:
+                for item in data['data']:
+                    d_str = item.get('date')
+                    name = item.get('name')
+                    if d_str and name:
+                        year_holidays[d_str] = name
+                _holidays_cache[year] = year_holidays
+                return year_holidays
+    except Exception as e:
+        print(f"Failed to fetch holidays from upset.dev: {e}")
+
+    # Try libur.deno.dev fallback
+    url_fallback = f"https://libur.deno.dev/api?year={year}"
+    try:
+        req = urllib.request.Request(url_fallback, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode())
+            if isinstance(data, list):
+                for item in data:
+                    d_str = item.get('date')
+                    name = item.get('name') or item.get('holiday')
+                    if d_str and name:
+                        year_holidays[d_str] = name
+                _holidays_cache[year] = year_holidays
+                return year_holidays
+    except Exception as e:
+        print(f"Failed to fetch holidays from libur.deno.dev: {e}")
+
+    return {}
+
+
 @app.route('/booking/')
 @app.route('/booking')
 def booking_index():
@@ -11020,6 +11068,12 @@ def booking_index():
     q += ' ORDER BY b.start_dt'
     bookings = db.execute(q, params).fetchall()
 
+    # Fetch holidays for all years in cal_dates
+    cal_years = {d.year for d in cal_dates}
+    holidays = {}
+    for y in cal_years:
+        holidays.update(get_indonesian_holidays(y))
+
     return render_template('booking_index.html',
         resources=resources, bookings=bookings,
         selected_resource=resource_id, view=view,
@@ -11028,7 +11082,8 @@ def booking_index():
         prev_week=(week_start - timedelta(days=7)).isoformat(),
         next_week=(week_start + timedelta(days=7)).isoformat(),
         cal_dates=cal_dates, month_start=month_start,
-        prev_month=prev_month, next_month=next_month)
+        prev_month=prev_month, next_month=next_month,
+        holidays=holidays)
 
 
 @app.route('/booking/new', methods=['GET','POST'])

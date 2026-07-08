@@ -84,13 +84,21 @@
             {% set day_idx = row * 7 + col %}
             {% set day_date = cal_dates[day_idx] %}
             {% set is_current_month = day_date.month == month_start.month %}
-            <td class="p-2" style="height:120px; vertical-align:top; background: {{ '#fffdf0' if day_date == today else ('#ffffff' if is_current_month else '#f8f9fa') }}; opacity: {{ 1.0 if is_current_month else 0.5 }}">
+            {% set day_str = day_date.isoformat() %}
+            {% set is_holiday = day_str in holidays %}
+            {% set holiday_name = holidays[day_str] if is_holiday else '' %}
+            <td class="p-2" style="height:120px; vertical-align:top; background: {{ '#fffdf0' if day_date == today else ('#fff5f5' if is_holiday else ('#ffffff' if is_current_month else '#f8f9fa')) }}; opacity: {{ 1.0 if is_current_month else 0.5 }}">
               <div class="d-flex justify-content-between align-items-center mb-1">
-                <span class="fw-bold small {{ 'text-danger' if col >= 5 else 'text-dark' }}" style="font-size: .85rem;">{{ day_date.day }}</span>
+                <span class="fw-bold small {{ 'text-danger' if (col >= 5 or is_holiday) else 'text-dark' }}" style="font-size: .85rem;">{{ day_date.day }}</span>
                 {% if day_date == today %}
                 <span class="badge bg-warning text-white small" style="font-size: .6rem; padding: 2px 5px;">Hari Ini</span>
                 {% endif %}
               </div>
+              {% if is_holiday %}
+              <div class="text-danger fw-semibold text-truncate mb-1" style="font-size: .62rem;" title="{{ holiday_name }}">
+                <i class="bi bi-gift-fill me-1"></i>{{ holiday_name }}
+              </div>
+              {% endif %}
               <div class="d-flex flex-column gap-1 overflow-auto" style="max-height:85px;">
                 {% for b in bookings if b.start_dt[:10] == day_date.isoformat() %}
                 <a href="/booking/{{ b.id }}" class="text-decoration-none rounded p-1 d-block" 
