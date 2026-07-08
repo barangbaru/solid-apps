@@ -11214,17 +11214,20 @@ def booking_resource_edit(rid):
         sort_order = request.form.get('sort_order', 0, type=int)
         is_active  = 1 if request.form.get('is_active') else 0
         image      = resource['image'] or ''
-        # Handle image upload
-        f = request.files.get('image')
-        if f and f.filename:
-            saved = _save_upload(f, 'resources')
-            if saved:
-                image = saved
-            else:
-                flash('Format gambar tidak didukung. Gunakan JPG, PNG, atau WEBP.', 'warning')
-        # Handle remove image
-        if request.form.get('remove_image') == '1':
-            image = ''
+        
+        # Handle library selected main image or uploaded file
+        selected_main = request.form.get('selected_main_image')
+        if selected_main:
+            image = selected_main
+        else:
+            f = request.files.get('image')
+            if f and f.filename:
+                saved = _save_upload(f, 'bookingcore')
+                if saved:
+                    image = saved
+                else:
+                    flash('Format gambar tidak didukung. Gunakan JPG, PNG, atau WEBP.', 'warning')
+        
         if not name:
             flash('Nama resource wajib diisi.', 'danger')
         else:
@@ -11234,16 +11237,25 @@ def booking_resource_edit(rid):
                 (name, rtype, subtype, capacity, location, description,
                  facilities, notes, color, icon, sort_order, is_active, image, rid))
             
-            # Handle additional gallery images
+            # Handle additional uploaded gallery images
             gallery_files = request.files.getlist('images')
             sort_base = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM bk_resource_images WHERE resource_id=?', (rid,)).fetchone()[0]
             for i, gf in enumerate(gallery_files):
                 if gf and gf.filename:
-                    saved_g = _save_upload(gf, 'resources')
+                    saved_g = _save_upload(gf, 'bookingcore')
                     if saved_g:
                         caption = request.form.get(f'caption_{i}', '')
                         db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
                                    (rid, saved_g, caption, sort_base + i + 1))
+                        sort_base += 1
+            
+            # Handle additional selected gallery images from library
+            selected_galleries = request.form.getlist('selected_gallery_images')
+            for sg in selected_galleries:
+                if sg:
+                    db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
+                               (rid, sg, '', sort_base + 1))
+                    sort_base += 1
             
             db.commit()
             flash('Resource berhasil diperbarui.', 'success')
@@ -11269,14 +11281,20 @@ def booking_resource_add():
         notes      = request.form.get('notes', '').strip()
         color      = request.form.get('color', '#d97706').strip()
         icon       = request.form.get('icon', 'door-open').strip()
-        sort_order = request.form.get('sort_order', 0, type=int)
         is_active  = 1 if request.form.get('is_active') else 0
         image      = ''
-        f = request.files.get('image')
-        if f and f.filename:
-            saved = _save_upload(f, 'resources')
-            if saved:
-                image = saved
+        
+        # Handle library selected main image or uploaded file
+        selected_main = request.form.get('selected_main_image')
+        if selected_main:
+            image = selected_main
+        else:
+            f = request.files.get('image')
+            if f and f.filename:
+                saved = _save_upload(f, 'bookingcore')
+                if saved:
+                    image = saved
+                    
         if not name:
             flash('Nama resource wajib diisi.', 'danger')
         else:
@@ -11287,16 +11305,25 @@ def booking_resource_add():
                  facilities, notes, color, icon, sort_order, image, is_active))
             rid = cur.lastrowid
             
-            # Handle additional gallery images
+            # Handle additional uploaded gallery images
             gallery_files = request.files.getlist('images')
             sort_base = 0
             for i, gf in enumerate(gallery_files):
                 if gf and gf.filename:
-                    saved_g = _save_upload(gf, 'resources')
+                    saved_g = _save_upload(gf, 'bookingcore')
                     if saved_g:
                         caption = request.form.get(f'caption_{i}', '')
                         db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
                                    (rid, saved_g, caption, sort_base + i + 1))
+                        sort_base += 1
+            
+            # Handle additional selected gallery images from library
+            selected_galleries = request.form.getlist('selected_gallery_images')
+            for sg in selected_galleries:
+                if sg:
+                    db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
+                               (rid, sg, '', sort_base + 1))
+                    sort_base += 1
             
             db.commit()
             flash(f'Resource "{name}" berhasil ditambahkan.', 'success')
@@ -11323,7 +11350,7 @@ def booking_resource_images(rid):
         sort_base = db.execute('SELECT COALESCE(MAX(sort_order),0) FROM bk_resource_images WHERE resource_id=?', (rid,)).fetchone()[0]
         for i, f in enumerate(files):
             if f and f.filename:
-                saved = _save_upload(f, 'resources')
+                saved = _save_upload(f, 'bookingcore')
                 if saved:
                     caption = request.form.get(f'caption_{i}', '')
                     db.execute('INSERT INTO bk_resource_images(resource_id,image,caption,sort_order) VALUES(?,?,?,?)',
@@ -11340,6 +11367,90 @@ def booking_resource_delete_main_image(rid):
     db.execute('UPDATE bk_resources SET image=? WHERE id=?', ('', rid))
     db.commit()
     return jsonify({'ok': True})
+
+
+@app.route('/booking/media/list')
+@login_required
+def booking_media_list():
+    redir = _bk_require_access()
+    if redir: return redir
+    
+    db = get_db()
+    cfg = get_settings(db)
+    storage_type = cfg.get('media_storage_type', 'local')
+    
+    urls = set()
+    
+    # 1. Query unique images from DB tables
+    rows_res = db.execute("SELECT DISTINCT image FROM bk_resources WHERE image IS NOT NULL AND image != ''").fetchall()
+    rows_gal = db.execute("SELECT DISTINCT image FROM bk_resource_images WHERE image IS NOT NULL AND image != ''").fetchall()
+    for r in rows_res:
+        urls.add(r['image'])
+    for r in rows_gal:
+        urls.add(r['image'])
+        
+    # 2. List from local static uploads folder
+    import os
+    local_dir = os.path.join('static', 'uploads', 'bookingcore')
+    if os.path.exists(local_dir):
+        for f in os.listdir(local_dir):
+            if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                urls.add(f'/static/uploads/bookingcore/{f}')
+                
+    # 3. List from S3 folder
+    if storage_type == 's3':
+        try:
+            endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+            access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+            secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+            bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+            region = cfg.get('backup_dest_s3_region', '').strip()
+            
+            if access_key and secret_key and bucket:
+                import boto3
+                from botocore.config import Config
+                config = Config(
+                    region_name=region or 'us-east-1',
+                    signature_version='s3v4',
+                    connect_timeout=3,
+                    read_timeout=5,
+                    retries={'max_attempts': 1}
+                )
+                s3 = boto3.client(
+                    's3',
+                    endpoint_url=endpoint or None,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    config=config
+                )
+                paginator = s3.get_paginator('list_objects_v2')
+                for page in paginator.paginate(Bucket=bucket, Prefix='upload/media/bookingcore/'):
+                    for obj in page.get('Contents', []):
+                        key = obj['Key']
+                        if key.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                            urls.add(f"/media/proxy/{key}")
+        except Exception as e:
+            print(f"Error listing S3 media: {e}")
+            
+    # Sort and return unique images list
+    return jsonify({'ok': True, 'images': sorted(list(urls))})
+
+
+@app.route('/booking/resource/<int:rid>/delete', methods=['POST'])
+@login_required
+def booking_resource_delete(rid):
+    redir = _bk_require_access()
+    if redir: return redir
+    db = get_db()
+    
+    # Cascade delete bookings and resource images
+    db.execute('DELETE FROM bk_bookings WHERE resource_id=?', (rid,))
+    db.execute('DELETE FROM bk_resource_images WHERE resource_id=?', (rid,))
+    db.execute('DELETE FROM bk_resources WHERE id=?', (rid,))
+    db.commit()
+    
+    flash('Resource berhasil dihapus secara permanen.', 'success')
+    return redirect(url_for('booking_index'))
 
 
 @app.route('/booking/<int:bid>')

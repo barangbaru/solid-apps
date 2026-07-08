@@ -1,4 +1,4 @@
-VERSION = "2.2.34"
+VERSION = "2.2.35"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -45,5 +45,6 @@ RELEASE_NOTES = (
     "v2.2.31: Menambahkan tampilan dashboard BookingCore berformat kalender bulanan lengkap dengan detail jadwal resources dan pemesan. "
     "v2.2.32: Sinkronisasi kalender bulanan BookingCore dengan libur nasional Indonesia dan cuti bersama menggunakan REST API. "
     "v2.2.33: Mengubah informasi booking di dalam kalender bulanan BookingCore agar menampilkan nama Resource, Jam Booking, dan Pemesan. "
-    "v2.2.34: Memperbaiki bug input is_active yang terlewat saat proses penambahan resource baru di BookingCore."
+    "v2.2.34: Memperbaiki bug input is_active yang terlewat saat proses penambahan resource baru di BookingCore. "
+    "v2.2.35: Implementasi Media Library Selector untuk memilih media terunggah (local/S3), folder penyimpanan bookingcore khusus, dan fitur hapus resource secara permanen."
 )
