@@ -69,9 +69,68 @@ def _save_upload(file_obj, subfolder=''):
     ext = file_obj.filename.rsplit('.', 1)[-1].lower()
     if ext not in ALLOWED_IMAGE_EXT:
         return None
+    fname = uuid.uuid4().hex + '.' + ext
+    
+    # Check media storage type from settings
+    storage_type = 'local'
+    try:
+        db = get_db()
+        cfg = get_settings(db)
+        storage_type = cfg.get('media_storage_type', 'local')
+    except Exception:
+        pass
+        
+    if storage_type == 's3':
+        try:
+            endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+            access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+            secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+            bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+            region = cfg.get('backup_dest_s3_region', '').strip()
+            
+            s3_key = f"upload/media/{subfolder}/{fname}" if subfolder else f"upload/media/{fname}"
+            
+            # Temporary local save to upload
+            temp_path = os.path.join(UPLOAD_FOLDER, 'temp_' + fname)
+            file_obj.save(temp_path)
+            
+            import boto3
+            from botocore.config import Config
+            config = Config(
+                region_name=region or 'us-east-1',
+                signature_version='s3v4'
+            )
+            s3 = boto3.client(
+                's3',
+                endpoint_url=endpoint or None,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                config=config
+            )
+            # Upload (try with public-read ACL, fallback if forbidden)
+            try:
+                s3.upload_file(temp_path, bucket, s3_key, ExtraArgs={'ACL': 'public-read'})
+            except Exception:
+                s3.upload_file(temp_path, bucket, s3_key)
+                
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+                
+            if endpoint:
+                base_url = endpoint.rstrip('/')
+                return f"{base_url}/{bucket}/{s3_key}"
+            else:
+                r_str = f"-{region}" if region else ""
+                return f"https://{bucket}.s3{r_str}.amazonaws.com/{s3_key}"
+        except Exception:
+            # Fallback to local on upload failure
+            pass
+            
+    # Local Storage fallback
     folder = os.path.join(UPLOAD_FOLDER, subfolder)
     os.makedirs(folder, exist_ok=True)
-    fname = uuid.uuid4().hex + '.' + ext
     file_obj.save(os.path.join(folder, fname))
     return f'/static/uploads/{subfolder}/{fname}' if subfolder else f'/static/uploads/{fname}'
 
@@ -1512,7 +1571,7 @@ DEFAULT_SETTINGS = {
     'ai_base_url':           '',               # hanya untuk openai_compat
     # backward compat
     'anthropic_api_key':     '',
-    'backup_sched_enabled': '0',
+    'backup_sched_enabled': '1',
     'backup_sched_interval': 'daily',
     'backup_sched_time': '02:00',
     'backup_target_app': '1',
@@ -1520,7 +1579,7 @@ DEFAULT_SETTINGS = {
     'backup_target_db': '1',
     'backup_dest_email_enabled': '0',
     'backup_dest_email_recipient': '',
-    'backup_dest_s3_enabled': '0',
+    'backup_dest_s3_enabled': '1',
     'backup_dest_s3_endpoint': '',
     'backup_dest_s3_access_key': '',
     'backup_dest_s3_secret_key': '',
@@ -1530,6 +1589,7 @@ DEFAULT_SETTINGS = {
     'backup_last_status': '',
     'backup_last_log': '',
     'backup_retention_days': '30',
+    'media_storage_type': 'local',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -13581,7 +13641,8 @@ def save_backup_settings():
         'backup_dest_s3_enabled', 'backup_dest_s3_endpoint',
         'backup_dest_s3_access_key', 'backup_dest_s3_secret_key',
         'backup_dest_s3_bucket', 'backup_dest_s3_region',
-        'backup_retention_days'
+        'backup_retention_days',
+        'media_storage_type'
     ]
     
     for k in keys_to_save:

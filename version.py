@@ -1,4 +1,4 @@
-VERSION = "2.2.24"
+VERSION = "2.2.25"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -35,5 +35,6 @@ RELEASE_NOTES = (
     "v2.2.21: Memperbaiki bug status backup yang tidak terupdate ('Belum Pernah Run') di PostgreSQL karena transaction rollback akibat kegagalan query dengan RETURNING id pada tabel app_settings. "
     "v2.2.22: Menambahkan manual loader untuk berkas .env pada inisialisasi awal app.py agar DB_TYPE terdeteksi sesuai (PostgreSQL) serta menambahkan prefix folder backups/ pada upload S3. "
     "v2.2.23: Implementasi script backup_db.sh terpisah untuk backup PostgreSQL dengan credential env/admin, fitur hapus backup langsung, dan batas retensi housekeeping lokal. "
-    "v2.2.24: Menambahkan perbaikan environment PATH di evaluasi.service dan script backup_db.sh untuk mengatasi error command not found (dirname, grep, xargs, pg_dump)."
+    "v2.2.24: Menambahkan perbaikan environment PATH di evaluasi.service dan script backup_db.sh untuk mengatasi error command not found (dirname, grep, xargs, pg_dump). "
+    "v2.2.25: Mengaktifkan default auto backup lokal & S3 di DEFAULT_SETTINGS, serta mendukung opsi penyimpanan konten media (static/uploads) ke S3 (folder upload/media/)."
 )

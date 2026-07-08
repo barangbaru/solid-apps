@@ -194,6 +194,29 @@
 
           <hr class="my-4">
 
+          <!-- Media Storage Settings -->
+          <h6 class="fw-bold mb-3"><i class="bi bi-hdd-fill me-1 text-primary"></i>4. Penyimpanan Media Karyawan (static/uploads)</h6>
+          <div class="row g-3 align-items-center mb-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold mb-0">Lokasi Penyimpanan File Media:</label>
+              <div class="text-muted small">Pilih lokasi penyimpanan berkas media/unggahan di aplikasi. Jika menggunakan Object Storage, file akan disimpan di folder <code>upload/media/</code> dalam bucket S3 yang dikonfigurasi di atas.</div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-check form-check-inline me-3">
+                <input class="form-check-input" type="radio" name="media_storage_type" id="mediaLocal" value="local"
+                       {{ 'checked' if cfg.media_storage_type != 's3' else '' }}>
+                <label class="form-check-label fw-semibold" for="mediaLocal">Lokal Server</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="media_storage_type" id="mediaS3" value="s3"
+                       {{ 'checked' if cfg.media_storage_type == 's3' else '' }}>
+                <label class="form-check-label fw-semibold" for="mediaS3">Object Storage S3</label>
+              </div>
+            </div>
+          </div>
+
+          <hr class="my-4">
+
           <div class="d-flex justify-content-between align-items-center">
             <h6 class="fw-bold mb-0">Target Default Backup Scheduler:</h6>
             <div>
