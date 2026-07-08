@@ -15,6 +15,19 @@ from seed_data import ALL_DIVISIONS, ABILITY_ITEMS
 from version import VERSION, RELEASE_DATE, RELEASE_NOTES
 import pyotp, qrcode
 
+# Load .env file manually if it exists
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+if os.path.exists(_env_path):
+    with open(_env_path, 'r', encoding='utf-8') as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                _k = _k.strip()
+                _v = _v.strip().strip('\'"').strip("'\"")
+                if _k:
+                    os.environ[_k] = _v
+
 app = Flask(__name__)
 _default_secret = os.environ.get('SECRET_KEY', '')
 if not _default_secret:
@@ -13264,6 +13277,7 @@ def upload_to_s3(endpoint, access_key, secret_key, bucket, region, filepath):
     from botocore.config import Config
     
     filename = os.path.basename(filepath)
+    s3_key = f"backups/{filename}"
     config = Config(
         region_name=region or 'us-east-1',
         signature_version='s3v4'
@@ -13275,7 +13289,7 @@ def upload_to_s3(endpoint, access_key, secret_key, bucket, region, filepath):
         aws_secret_access_key=secret_key,
         config=config
     )
-    s3.upload_file(filepath, bucket, filename)
+    s3.upload_file(filepath, bucket, s3_key)
 
 def test_s3_connection(endpoint, access_key, secret_key, bucket, region):
     import boto3
