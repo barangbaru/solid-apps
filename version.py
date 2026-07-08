@@ -1,4 +1,4 @@
-VERSION = "2.2.32"
+VERSION = "2.2.33"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -43,5 +43,6 @@ RELEASE_NOTES = (
     "v2.2.29: Memperbaiki bug nested forms pada template edit resource BookingCore, mengaktifkan AJAX image deletion, dan mendukung multi-upload gallery saat menambahkan resource. "
     "v2.2.30: Memperbaiki TemplateSyntaxError (stray endif tag) di booking_resource_edit.html setelah pembersihan nested forms. "
     "v2.2.31: Menambahkan tampilan dashboard BookingCore berformat kalender bulanan lengkap dengan detail jadwal resources dan pemesan. "
-    "v2.2.32: Sinkronisasi kalender bulanan BookingCore dengan libur nasional Indonesia dan cuti bersama menggunakan REST API."
+    "v2.2.32: Sinkronisasi kalender bulanan BookingCore dengan libur nasional Indonesia dan cuti bersama menggunakan REST API. "
+    "v2.2.33: Mengubah informasi booking di dalam kalender bulanan BookingCore agar menampilkan nama Resource, Jam Booking, dan Pemesan."
 )

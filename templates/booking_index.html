@@ -105,9 +105,11 @@
                    style="background: {{ b.res_color }}18; border-left: 3px solid {{ b.res_color }}; font-size: .68rem; line-height: 1.2;" 
                    title="{{ b.title }} ({{ b.booker_name }} - {{ b.start_dt[11:16] }}–{{ b.end_dt[11:16] }})">
                   <div class="fw-bold text-truncate" style="color: {{ b.res_color }};">
-                    {{ b.start_dt[11:16] }}–{{ b.end_dt[11:16] }}
+                    <i class="bi bi-{{ b.res_icon }} me-1"></i>{{ b.res_name }}
                   </div>
-                  <div class="text-dark text-truncate fw-semibold">{{ b.title }}</div>
+                  <div class="text-dark text-truncate fw-semibold">
+                    <i class="bi bi-clock me-1"></i>{{ b.start_dt[11:16] }}–{{ b.end_dt[11:16] }}
+                  </div>
                   <div class="text-muted text-truncate" style="font-size: .62rem;"><i class="bi bi-person me-1"></i>{{ b.booker_name }}</div>
                 </a>
                 {% endfor %}
