@@ -33,15 +33,86 @@
 
 {# View toggle #}
 <div class="d-flex gap-2 mb-3">
-  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=list"
-     class="btn btn-sm {{ 'btn-dark' if view == 'list' else 'btn-outline-secondary' }}">
-    <i class="bi bi-list-ul me-1"></i>List
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=month&date={{ ref_date }}"
+     class="btn btn-sm {{ 'btn-dark' if view == 'month' else 'btn-outline-secondary' }}">
+    <i class="bi bi-calendar3 me-1"></i>Bulan
   </a>
   <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=week&date={{ ref_date }}"
      class="btn btn-sm {{ 'btn-dark' if view == 'week' else 'btn-outline-secondary' }}">
     <i class="bi bi-calendar-week me-1"></i>Minggu Ini
   </a>
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=list"
+     class="btn btn-sm {{ 'btn-dark' if view == 'list' else 'btn-outline-secondary' }}">
+    <i class="bi bi-list-ul me-1"></i>List
+  </a>
 </div>
+
+{% if view == 'month' %}
+{# Month Nav #}
+<div class="d-flex align-items-center justify-content-between mb-3 bg-white p-2 rounded shadow-sm">
+  <div class="d-flex align-items-center gap-2">
+    <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=month&date={{ prev_month }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <span class="fw-bold text-dark fs-5">{{ ref_date.strftime('%B %Y') }}</span>
+    <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=month&date={{ next_month }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+  <a href="?{% if selected_resource %}resource={{ selected_resource }}&{% endif %}view=month&date={{ today.isoformat() }}" class="btn btn-sm btn-outline-warning">Bulan Ini</a>
+</div>
+
+{# Month calendar grid #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="table-responsive">
+    <table class="table table-bordered mb-0 align-top" style="min-width:900px; table-layout: fixed;">
+      <thead class="table-light">
+        <tr>
+          <th class="text-center py-2" style="width:14.28%">Senin</th>
+          <th class="text-center py-2" style="width:14.28%">Selasa</th>
+          <th class="text-center py-2" style="width:14.28%">Rabu</th>
+          <th class="text-center py-2" style="width:14.28%">Kamis</th>
+          <th class="text-center py-2" style="width:14.28%">Jumat</th>
+          <th class="text-center py-2 text-danger" style="width:14.28%">Sabtu</th>
+          <th class="text-center py-2 text-danger" style="width:14.28%">Minggu</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in range(6) %}
+        <tr>
+          {% for col in range(7) %}
+            {% set day_idx = row * 7 + col %}
+            {% set day_date = cal_dates[day_idx] %}
+            {% set is_current_month = day_date.month == month_start.month %}
+            <td class="p-2" style="height:120px; vertical-align:top; background: {{ '#fffdf0' if day_date == today else ('#ffffff' if is_current_month else '#f8f9fa') }}; opacity: {{ 1.0 if is_current_month else 0.5 }}">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-bold small {{ 'text-danger' if col >= 5 else 'text-dark' }}" style="font-size: .85rem;">{{ day_date.day }}</span>
+                {% if day_date == today %}
+                <span class="badge bg-warning text-white small" style="font-size: .6rem; padding: 2px 5px;">Hari Ini</span>
+                {% endif %}
+              </div>
+              <div class="d-flex flex-column gap-1 overflow-auto" style="max-height:85px;">
+                {% for b in bookings if b.start_dt[:10] == day_date.isoformat() %}
+                <a href="/booking/{{ b.id }}" class="text-decoration-none rounded p-1 d-block" 
+                   style="background: {{ b.res_color }}18; border-left: 3px solid {{ b.res_color }}; font-size: .68rem; line-height: 1.2;" 
+                   title="{{ b.title }} ({{ b.booker_name }} - {{ b.start_dt[11:16] }}–{{ b.end_dt[11:16] }})">
+                  <div class="fw-bold text-truncate" style="color: {{ b.res_color }};">
+                    {{ b.start_dt[11:16] }}–{{ b.end_dt[11:16] }}
+                  </div>
+                  <div class="text-dark text-truncate fw-semibold">{{ b.title }}</div>
+                  <div class="text-muted text-truncate" style="font-size: .62rem;"><i class="bi bi-person me-1"></i>{{ b.booker_name }}</div>
+                </a>
+                {% endfor %}
+              </div>
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 
 {% if view == 'week' %}
 {# Week nav #}

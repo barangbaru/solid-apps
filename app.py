@@ -10972,7 +10972,7 @@ def booking_index():
     db = get_db()
     resources = db.execute('SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order').fetchall()
     resource_id = request.args.get('resource', type=int)
-    view = request.args.get('view', 'list')
+    view = request.args.get('view', 'month')
     date_str = request.args.get('date', '')
 
     from datetime import datetime, timedelta
@@ -10983,6 +10983,23 @@ def booking_index():
     else:
         ref_date = today
 
+    # Month calculations
+    month_start = ref_date.replace(day=1)
+    cal_start = month_start - timedelta(days=month_start.weekday())
+    cal_dates = [cal_start + timedelta(days=i) for i in range(42)]
+    cal_end = cal_start + timedelta(days=41)
+
+    if month_start.month == 1:
+        prev_month = month_start.replace(year=month_start.year - 1, month=12, day=1).isoformat()
+    else:
+        prev_month = month_start.replace(month=month_start.month - 1, day=1).isoformat()
+        
+    if month_start.month == 12:
+        next_month = month_start.replace(year=month_start.year + 1, month=1, day=1).isoformat()
+    else:
+        next_month = month_start.replace(month=month_start.month + 1, day=1).isoformat()
+
+    # Week calculations
     week_start = ref_date - timedelta(days=ref_date.weekday())
     week_dates = [week_start + timedelta(days=i) for i in range(7)]
 
@@ -10991,7 +11008,10 @@ def booking_index():
     if resource_id:
         q += ' AND b.resource_id=?'
         params.append(resource_id)
-    if view == 'week':
+    if view == 'month':
+        q += ' AND date(b.start_dt)>=? AND date(b.start_dt)<=?'
+        params += [cal_start.isoformat(), cal_end.isoformat()]
+    elif view == 'week':
         q += ' AND date(b.start_dt)>=? AND date(b.start_dt)<=?'
         params += [week_start.isoformat(), (week_start + timedelta(days=6)).isoformat()]
     else:
@@ -11006,7 +11026,9 @@ def booking_index():
         ref_date=ref_date, today=today,
         week_dates=week_dates,
         prev_week=(week_start - timedelta(days=7)).isoformat(),
-        next_week=(week_start + timedelta(days=7)).isoformat())
+        next_week=(week_start + timedelta(days=7)).isoformat(),
+        cal_dates=cal_dates, month_start=month_start,
+        prev_month=prev_month, next_month=next_month)
 
 
 @app.route('/booking/new', methods=['GET','POST'])
