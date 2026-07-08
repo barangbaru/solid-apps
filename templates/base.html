@@ -493,6 +493,7 @@
   </ul>
   {% set room_resources = bk_resources | selectattr('type', 'equalto', 'room') | list %}
   {% set vehicle_resources = bk_resources | selectattr('type', 'equalto', 'vehicle') | list %}
+  {% set other_resources = bk_resources | rejectattr('type', 'equalto', 'room') | rejectattr('type', 'equalto', 'vehicle') | list %}
   {% if room_resources %}
   <div class="sidebar-section">Ruangan</div>
   <ul class="sidebar-nav">
@@ -512,6 +513,18 @@
     <li>
       <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
         <i class="bi bi-{{ r.icon }} nav-icon"></i> {{ r.name }}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if other_resources %}
+  <div class="sidebar-section">Lainnya</div>
+  <ul class="sidebar-nav">
+    {% for r in other_resources %}
+    <li>
+      <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
+        <i class="bi bi-{{ r.icon or 'box' }} nav-icon"></i> {{ r.name }}
       </a>
     </li>
     {% endfor %}
