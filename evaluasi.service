@@ -13,7 +13,7 @@ WorkingDirectory=/var/www/evaluasi
 
 # ─── Environment ──────────────────────────────────────────────────────────────
 EnvironmentFile=/var/www/evaluasi/.env
-Environment="PATH=/var/www/evaluasi/venv/bin"
+Environment="PATH=/var/www/evaluasi/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # ─── Perintah Start ───────────────────────────────────────────────────────────
 ExecStart=/var/www/evaluasi/venv/bin/gunicorn \
