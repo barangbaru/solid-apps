@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public Booking Dashboard | HIVE</title>
+  
+  <!-- CSS Library CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Auto Refresh Page Every 60 Seconds -->
+  <meta http-equiv="refresh" content="60">
+
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary-glow: #38bdf8;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 10% 20%, rgba(56, 189, 248, 0.08) 0px, transparent 50%),
+        radial-gradient(at 90% 80%, rgba(99, 102, 241, 0.08) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Glassmorphism styling */
+    .glass-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      transition: all 0.3s ease;
+    }
+
+    .glass-card:hover {
+      border-color: rgba(56, 189, 248, 0.2);
+      box-shadow: 0 8px 32px 0 rgba(56, 189, 248, 0.1);
+    }
+
+    .ticking-clock {
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+    }
+
+    .status-badge-busy {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);
+    }
+
+    .status-badge-vacant {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.15);
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.3);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.5);
+    }
+
+    /* Monthly Calendar adjustments for Dark Mode */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+    }
+    .calendar-header-cell {
+      text-align: center;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 10px 0;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 1px;
+    }
+    .calendar-cell {
+      min-height: 120px;
+      background: rgba(30, 41, 59, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.2s ease;
+    }
+    .calendar-cell.today {
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      box-shadow: inset 0 0 12px rgba(56, 189, 248, 0.1);
+    }
+    .calendar-cell.other-month {
+      opacity: 0.3;
+    }
+    .calendar-cell.weekend {
+      background: rgba(239, 68, 68, 0.03);
+    }
+    .calendar-cell.holiday {
+      background: rgba(239, 68, 68, 0.06);
+      border-color: rgba(239, 68, 68, 0.2);
+    }
+    .holiday-title {
+      font-size: 0.65rem;
+      color: #f87171;
+      font-weight: 500;
+      margin-top: 2px;
+      line-height: 1.1;
+    }
+    .day-number {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text-main);
+    }
+    .day-number.red-date {
+      color: #f87171;
+    }
+    
+    .badge-booking-public {
+      font-size: 0.68rem;
+      padding: 4px 6px;
+      border-radius: 4px;
+      margin-top: 3px;
+      display: block;
+      color: #fff;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .badge-booking-public:hover {
+      opacity: 0.85;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="py-3 px-4 mb-4 border-bottom border-secondary border-opacity-25" style="background: rgba(15, 23, 42, 0.8);">
+    <div class="container-fluid d-flex flex-wrap align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <div class="rounded-3 bg-primary bg-opacity-20 d-flex align-items-center justify-content-center" style="width: 42px; height: 42px;">
+          <i class="bi bi-calendar-event text-primary fs-4"></i>
+        </div>
+        <div>
+          <span class="fs-5 fw-bold d-block">BookingCore Dashboard</span>
+          <span class="text-muted small" style="font-size: .75rem;">Public Monitoring Screen</span>
+        </div>
+      </div>
+      
+      <!-- Live Clock & Date -->
+      <div class="text-end d-none d-md-block">
+        <div id="liveClock" class="ticking-clock">00:00:00</div>
+        <div id="liveDate" class="text-muted small fw-medium">Loading...</div>
+      </div>
+      
+      <!-- Filter and View Mode Toggles -->
+      <div class="d-flex gap-2">
+        <div class="btn-group">
+          <a href="?view=dashboard&resource={{ resource_id or '' }}" class="btn btn-sm {{ 'btn-primary' if view == 'dashboard' else 'btn-outline-secondary' }}">
+            <i class="bi bi-speedometer2 me-1"></i>TV Display
+          </a>
+          <a href="?view=month&resource={{ resource_id or '' }}" class="btn btn-sm {{ 'btn-primary' if view == 'month' else 'btn-outline-secondary' }}">
+            <i class="bi bi-calendar3 me-1"></i>Kalender
+          </a>
+        </div>
+        
+        <form method="GET" class="d-flex gap-1">
+          <input type="hidden" name="view" value="{{ view }}">
+          <select name="resource" onchange="this.form.submit()" class="form-select form-select-sm bg-dark text-white border-secondary border-opacity-50" style="max-width: 180px;">
+            <option value="">Semua Resource</option>
+            {% for res in resources %}
+            <option value="{{ res.id }}" {{ 'selected' if resource_id == res.id }}>{{ res.name }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <main class="container-fluid px-4 pb-5">
+    
+    {% if view == 'dashboard' %}
+    {# ─── VIEW 1: LOBBY TV DASHBOARD ─── #}
+    <div class="row g-4">
+      
+      <!-- Left Column: Resource Status Cards -->
+      <div class="col-lg-5">
+        <h4 class="fw-bold mb-3"><i class="bi bi-display text-primary me-2"></i>Status Resource Saat Ini</h4>
+        <div class="row g-3">
+          {% for res in resources %}
+            {% if not resource_id or res.id == resource_id %}
+            <div class="col-12">
+              <div class="glass-card p-3 d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="rounded-3 d-flex align-items-center justify-content-center text-white" 
+                       style="width: 52px; height: 52px; background-color: {{ res.color or '#475569' }};">
+                    <i class="bi bi-{{ res.icon or 'door-open' }} fs-4"></i>
+                  </div>
+                  <div>
+                    <h5 class="fw-bold mb-0" style="font-size: 1.1rem;">{{ res.name }}</h5>
+                    <span class="text-muted small" style="font-size: .8rem;">{{ res.location }}</span>
+                  </div>
+                </div>
+                
+                <!-- Busy/Vacant state detection (using current time) -->
+                {% set ns = namespace(is_busy=false, booker='', time_range='') %}
+                {% for tb in today_bookings %}
+                  {% if tb.resource_id == res.id %}
+                    <!-- Check if current time falls within booking time -->
+                    {% set ns.is_busy = true %}
+                    {% set ns.booker = tb.booked_by %}
+                    {% set ns.time_range = tb.time_range %}
+                  {% endif %}
+                {% endfor %}
+
+                <div>
+                  {% if ns.is_busy %}
+                    <span class="badge status-badge-busy py-2 px-3 rounded-pill text-uppercase fw-bold" style="font-size: .75rem;">
+                      <i class="bi bi-slash-circle me-1"></i>Terpakai
+                    </span>
+                    <div class="text-muted small text-end mt-1" style="font-size: .7rem;">{{ ns.time_range }} oleh {{ ns.booker }}</div>
+                  {% else %}
+                    <span class="badge status-badge-vacant py-2 px-3 rounded-pill text-uppercase fw-bold" style="font-size: .75rem;">
+                      <i class="bi bi-check-circle me-1"></i>Tersedia
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      
+      <!-- Right Column: Today's Booking Schedule Timeline -->
+      <div class="col-lg-7">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h4 class="fw-bold mb-0"><i class="bi bi-clock-history text-primary me-2"></i>Jadwal Hari Ini</h4>
+          <span class="badge bg-secondary py-2 px-3" style="font-size: .8rem;">
+            {{ ref_date.strftime('%d %B %Y') }}
+          </span>
+        </div>
+        
+        <div class="glass-card p-4">
+          {% if today_bookings %}
+            <div class="position-relative border-start border-secondary border-opacity-25 ps-4 py-2">
+              {% for tb in today_bookings %}
+                <div class="mb-4 position-relative">
+                  <!-- Timeline indicator dot -->
+                  <div class="position-absolute rounded-circle bg-primary" 
+                       style="width: 12px; height: 12px; left: -30px; top: 6px; border: 2px solid var(--bg-dark);"></div>
+                  
+                  <div class="p-3 rounded-3" style="background: rgba(30, 41, 59, 0.4); border: 1px solid var(--card-border);">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                      <span class="badge py-1 px-2 rounded text-white fw-semibold" style="background-color: {{ tb.res_color or '#3b82f6' }}; font-size: .72rem;">
+                        <i class="bi bi-{{ tb.res_icon or 'door-open' }} me-1"></i>{{ tb.res_name }}
+                      </span>
+                      <span class="text-primary fw-bold" style="font-size: .9rem;"><i class="bi bi-clock me-1"></i>{{ tb.time_range }}</span>
+                    </div>
+                    
+                    <h5 class="fw-bold mb-1" style="font-size: 1.05rem; color: var(--text-main);">{{ tb.title }}</h5>
+                    
+                    <div class="d-flex justify-content-between align-items-center mt-3 text-muted small" style="font-size: .8rem;">
+                      <span><i class="bi bi-person me-1"></i>{{ tb.booked_by }}</span>
+                      {% if tb.notes %}
+                        <span class="text-truncate" style="max-width: 250px;"><i class="bi bi-chat-left-text me-1"></i>{{ tb.notes }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="text-center py-5 text-muted">
+              <i class="bi bi-calendar-x fs-1 d-block mb-3 opacity-50"></i>
+              Tidak ada jadwal booking untuk hari ini.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    {% else %}
+    {# ─── VIEW 2: MONTHLY CALENDAR GRID ─── #}
+    <div class="glass-card p-4">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="fw-bold mb-0"><i class="bi bi-calendar-month text-primary me-2"></i>Kalender Bulanan</h4>
+        
+        <!-- Pagination controls -->
+        <div class="d-flex align-items-center gap-2">
+          {% set prev_month = (month_start - timedelta(days=15)).replace(day=1) %}
+          {% set next_month = (month_start + timedelta(days=40)).replace(day=1) %}
+          <a href="?view=month&resource={{ resource_id or '' }}&date={{ prev_month.strftime('%Y-%m-%d') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-chevron-left"></i>
+          </a>
+          <span class="fw-bold text-center px-2" style="min-width: 140px;">
+            {{ month_start.strftime('%B %Y') }}
+          </span>
+          <a href="?view=month&resource={{ resource_id or '' }}&date={{ next_month.strftime('%Y-%m-%d') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-chevron-right"></i>
+          </a>
+        </div>
+      </div>
+
+      <div class="calendar-grid">
+        <!-- Day headers -->
+        <div class="calendar-header-cell text-danger">Sen</div>
+        <div class="calendar-header-cell">Sel</div>
+        <div class="calendar-header-cell">Rab</div>
+        <div class="calendar-header-cell">Kam</div>
+        <div class="calendar-header-cell">Jum</div>
+        <div class="calendar-header-cell">Sab</div>
+        <div class="calendar-header-cell text-danger">Min</div>
+
+        <!-- Month Grid Dates -->
+        {% for d in cal_dates %}
+          {% set is_today = (d == today) %}
+          {% set is_other = (d.month != month_start.month) %}
+          {% set is_weekend = (d.weekday() in [5, 6]) %}
+          
+          {% set holiday = holidays.get(d.strftime('%Y-%m-%d')) %}
+          {% set is_holiday = holiday is not none %}
+          {% set red_date = is_weekend or is_holiday %}
+
+          <div class="calendar-cell {% if is_today %}today{% endif %} {% if is_other %}other-month{% endif %} {% if is_weekend %}weekend{% endif %} {% if is_holiday %}holiday{% endif %}">
+            <div class="d-flex justify-content-between align-items-start">
+              <span class="day-number {% if red_date %}red-date{% endif %}">{{ d.day }}</span>
+              {% if is_today %}
+                <span class="badge bg-primary text-uppercase fw-bold" style="font-size: .58rem; letter-spacing: 0.5px;">Hari Ini</span>
+              {% endif %}
+            </div>
+
+            <!-- Booking list for this date -->
+            <div class="flex-grow-1 overflow-y-auto mt-2" style="max-height: 85px;">
+              {% if is_holiday %}
+                <div class="holiday-title" style="white-space: normal; word-wrap: break-word;"><i class="bi bi-info-circle-fill me-1"></i>{{ holiday }}</div>
+              {% endif %}
+              
+              {% if bookings_by_date.get(d) %}
+                {% for b in bookings_by_date.get(d) %}
+                  <div class="badge-booking-public d-block text-truncate" 
+                       style="background-color: {{ b.res_color or '#475569' }};"
+                       title="{{ b.res_name }} ({{ b.time_range }}) oleh {{ b.booked_by }}">
+                    <i class="bi bi-{{ b.res_icon or 'door-open' }} me-1"></i>
+                    <strong>{{ b.res_name }}</strong><br>
+                    <span style="opacity: 0.85;">{{ b.time_range }} — {{ b.booked_by }}</span>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
+
+  <script>
+    // Live ticking clock implementation
+    function updateClock() {
+      const now = new Date();
+      
+      // Time formatting
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      
+      const clockEl = document.getElementById('liveClock');
+      if (clockEl) {
+        clockEl.textContent = `${hours}:${minutes}:${seconds}`;
+      }
+      
+      // Date formatting (Indonesian locale)
+      const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      const dateEl = document.getElementById('liveDate');
+      if (dateEl) {
+        dateEl.textContent = now.toLocaleDateString('id-ID', options);
+      }
+    }
+    
+    // Start ticking
+    setInterval(updateClock, 1000);
+    updateClock();
+  </script>
+</body>
+</html>

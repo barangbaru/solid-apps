@@ -2352,8 +2352,11 @@ def superadmin_required(f):
     return decorated
 
 @app.route('/media/proxy/<path:key>')
-@login_required
 def media_proxy(key):
+    # Public access is allowed for bookingcore/resources images. Others require login.
+    if 'bookingcore' not in key and 'resources' not in key:
+        if not session.get('user_id'):
+            abort(401)
     from flask import send_file
     import io
     
@@ -11010,6 +11013,131 @@ def get_indonesian_holidays(year):
         print(f"Failed to fetch holidays from libur.deno.dev: {e}")
 
     return {}
+
+
+@app.route('/booking/public')
+def booking_public():
+    db = get_db()
+    resources = db.execute('SELECT * FROM bk_resources WHERE is_active=1 ORDER BY sort_order').fetchall()
+    resource_id = request.args.get('resource', type=int)
+    view = request.args.get('view', 'dashboard')
+    date_str = request.args.get('date', '')
+    
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    
+    if date_str:
+        try: ref_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except: ref_date = today
+    else:
+        ref_date = today
+
+    # Month calculations
+    month_start = ref_date.replace(day=1)
+    cal_start = month_start - timedelta(days=month_start.weekday())
+    cal_dates = [cal_start + timedelta(days=i) for i in range(42)]
+    cal_end = cal_start + timedelta(days=41)
+
+    # Fetch holidays
+    start_year = cal_start.year
+    end_year = cal_end.year
+    holidays = {}
+    for y in range(start_year, end_year + 1):
+        y_holidays = get_indonesian_holidays(y)
+        holidays.update(y_holidays)
+
+    # Fetch bookings for current range
+    booking_query = '''
+        SELECT b.*, r.name res_name, r.color res_color, r.icon res_icon
+        FROM bk_bookings b
+        JOIN bk_resources r ON b.resource_id = r.id
+        WHERE b.start_time >= ? AND b.start_time <= ? AND r.is_active = 1
+    '''
+    params = [cal_start.strftime('%Y-%m-%d 00:00:00'), cal_end.strftime('%Y-%m-%d 23:59:59')]
+    if resource_id:
+        booking_query += ' AND b.resource_id = ?'
+        params.append(resource_id)
+        
+    db_bookings = db.execute(booking_query, params).fetchall()
+
+    # Map bookings by date
+    bookings_by_date = {}
+    for b in db_bookings:
+        try:
+            b_date = datetime.strptime(b['start_time'][:10], '%Y-%m-%d').date()
+        except Exception:
+            continue
+        if b_date not in bookings_by_date:
+            bookings_by_date[b_date] = []
+        
+        try:
+            start_t = datetime.strptime(b['start_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+            end_t = datetime.strptime(b['end_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+        except Exception:
+            try:
+                start_t = datetime.strptime(b['start_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+                end_t = datetime.strptime(b['end_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+            except Exception:
+                start_t = b['start_time']
+                end_t = b['end_time']
+        
+        bookings_by_date[b_date].append({
+            'id': b['id'],
+            'resource_id': b['resource_id'],
+            'res_name': b['res_name'],
+            'res_color': b['res_color'],
+            'res_icon': b['res_icon'],
+            'time_range': f"{start_t} - {end_t}",
+            'title': b['title'],
+            'booked_by': b['booked_by']
+        })
+
+    # Fetch today's bookings for display
+    today_query = '''
+        SELECT b.*, r.name res_name, r.color res_color, r.icon res_icon
+        FROM bk_bookings b
+        JOIN bk_resources r ON b.resource_id = r.id
+        WHERE DATE(b.start_time) = ? AND r.is_active = 1
+        ORDER BY b.start_time ASC
+    '''
+    today_bookings = db.execute(today_query, (ref_date.strftime('%Y-%m-%d'),)).fetchall()
+    
+    # Format today's bookings
+    formatted_today_bookings = []
+    for tb in today_bookings:
+        try:
+            st = datetime.strptime(tb['start_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+            et = datetime.strptime(tb['end_time'], '%Y-%m-%d %H:%M:%S').strftime('%H:%M')
+        except Exception:
+            try:
+                st = datetime.strptime(tb['start_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+                et = datetime.strptime(tb['end_time'], '%Y-%m-%d %H:%M').strftime('%H:%M')
+            except Exception:
+                st = tb['start_time']
+                et = tb['end_time']
+        formatted_today_bookings.append({
+            'id': tb['id'],
+            'resource_id': tb['resource_id'],
+            'res_name': tb['res_name'],
+            'res_color': tb['res_color'],
+            'res_icon': tb['res_icon'],
+            'time_range': f"{st} - {et}",
+            'title': tb['title'],
+            'booked_by': tb['booked_by'],
+            'notes': tb.get('notes', '')
+        })
+
+    return render_template('booking_public_dashboard.html',
+                           resources=resources,
+                           resource_id=resource_id,
+                           cal_dates=cal_dates,
+                           month_start=month_start,
+                           bookings_by_date=bookings_by_date,
+                           holidays=holidays,
+                           view=view,
+                           ref_date=ref_date,
+                           today_bookings=formatted_today_bookings,
+                           today=today)
 
 
 @app.route('/booking/')
