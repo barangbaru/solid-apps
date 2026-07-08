@@ -1529,6 +1529,7 @@ DEFAULT_SETTINGS = {
     'backup_sched_last_run': '',
     'backup_last_status': '',
     'backup_last_log': '',
+    'backup_retention_days': '30',
 }
 
 LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Senior Manager', 'General Manager', 'Director']
@@ -13142,21 +13143,64 @@ def telegram_webhook():
 
 def dump_postgres(output_path):
     import subprocess
-    host = os.environ.get('PG_HOST', 'localhost')
-    port = os.environ.get('PG_PORT', 5432)
-    dbname = os.environ.get('PG_NAME', 'hive_db')
-    user = os.environ.get('PG_USER', 'hive')
-    password = os.environ.get('PG_PASS', '')
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    script_path = os.path.join(base_dir, 'backup_db.sh')
     
-    pg_dump_bin = os.environ.get('PG_DUMP_PATH', 'pg_dump')
-    cmd = [pg_dump_bin, '-h', host, '-p', str(port), '-U', user, '-F', 'p', '-f', output_path, dbname]
-    env = os.environ.copy()
-    if password:
-        env['PGPASSWORD'] = password
+    # Ensure script is executable if running on unix
+    if os.path.exists(script_path) and os.name != 'nt':
+        try:
+            os.chmod(script_path, 0o755)
+        except Exception:
+            pass
+            
+    # Fallback to direct pg_dump if script_path doesn't exist
+    if not os.path.exists(script_path):
+        host = os.environ.get('PG_HOST', 'localhost')
+        port = os.environ.get('PG_PORT', 5432)
+        dbname = os.environ.get('PG_NAME', 'hive_db')
+        user = os.environ.get('PG_USER', 'hive')
+        password = os.environ.get('PG_PASS', '')
+        pg_dump_bin = os.environ.get('PG_DUMP_PATH', 'pg_dump')
+        cmd = [pg_dump_bin, '-h', host, '-p', str(port), '-U', user, '-F', 'p', '-f', output_path, dbname]
+        env = os.environ.copy()
+        if password:
+            env['PGPASSWORD'] = password
+        res = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    else:
+        # Run using bash shell script
+        if os.name == 'nt':
+            cmd = ['bash', script_path, output_path]
+        else:
+            cmd = [script_path, output_path]
+        res = subprocess.run(cmd, capture_output=True, text=True)
         
-    res = subprocess.run(cmd, env=env, capture_output=True, text=True)
     if res.returncode != 0:
-        raise Exception(f"pg_dump failed: {res.stderr}")
+        raise Exception(f"pg_dump / backup_db.sh failed: {res.stderr}")
+
+def run_backup_housekeeping(retention_days):
+    import time
+    if not retention_days:
+        return
+    try:
+        days = int(retention_days)
+        if days <= 0:
+            return
+        retention_sec = days * 24 * 60 * 60
+        now = time.time()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        backups_dir = os.path.join(base_dir, 'backups')
+        if os.path.exists(backups_dir):
+            for f in os.listdir(backups_dir):
+                if f.endswith('.zip') and f.startswith('backup_hive_'):
+                    fpath = os.path.join(backups_dir, f)
+                    stat = os.stat(fpath)
+                    if (now - stat.st_mtime) > retention_sec:
+                        try:
+                            os.remove(fpath)
+                        except Exception:
+                            pass
+    except Exception:
+        pass
 
 def create_backup_zip(backup_app=True, backup_uploads=True, backup_db=True):
     import zipfile
@@ -13236,6 +13280,16 @@ def create_backup_zip(backup_app=True, backup_uploads=True, backup_db=True):
                     arcname = os.path.relpath(file_path, temp_dir)
                     zip_file.write(file_path, arcname)
                     
+        # Housekeeping
+        try:
+            db = _get_raw_db()
+            cfg = get_settings(db)
+            db.close()
+            retention = cfg.get('backup_retention_days', '30')
+            run_backup_housekeeping(retention)
+        except Exception:
+            pass
+            
         return zip_filepath
     finally:
         if os.path.exists(temp_dir):
@@ -13430,7 +13484,7 @@ def portal_backup():
         backup_files.sort(key=lambda x: x['created_at'], reverse=True)
         backup_files = backup_files[:10]
         
-    return render_template('portal_backup.html', cfg=cfg, backup_files=backup_files)
+    return render_template('portal_backup.html', cfg=cfg, backup_files=backup_files, DB_TYPE=DB_TYPE)
 
 @app.route('/portal/backup/download/<filename>')
 @login_required
@@ -13526,7 +13580,8 @@ def save_backup_settings():
         'backup_dest_email_enabled', 'backup_dest_email_recipient',
         'backup_dest_s3_enabled', 'backup_dest_s3_endpoint',
         'backup_dest_s3_access_key', 'backup_dest_s3_secret_key',
-        'backup_dest_s3_bucket', 'backup_dest_s3_region'
+        'backup_dest_s3_bucket', 'backup_dest_s3_region',
+        'backup_retention_days'
     ]
     
     for k in keys_to_save:
@@ -13540,6 +13595,25 @@ def save_backup_settings():
     db.commit()
     flash('Pengaturan backup berhasil disimpan.', 'success')
     return redirect(url_for('portal_backup'))
+
+@app.route('/portal/backup/delete/<filename>', methods=['POST'])
+@login_required
+def delete_backup_file(filename):
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak.'})
+    # Secure filename
+    import werkzeug
+    filename = werkzeug.utils.secure_filename(filename)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    backups_dir = os.path.join(base_dir, 'backups')
+    filepath = os.path.join(backups_dir, filename)
+    if os.path.exists(filepath):
+        try:
+            os.remove(filepath)
+            return jsonify({'ok': True, 'msg': f'File backup {filename} berhasil dihapus.'})
+        except Exception as e:
+            return jsonify({'ok': False, 'msg': str(e)})
+    return jsonify({'ok': False, 'msg': 'File tidak ditemukan.'})
 
 @app.route('/portal/backup/test-s3', methods=['POST'])
 @login_required

@@ -1,4 +1,4 @@
-VERSION = "2.2.22"
+VERSION = "2.2.23"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -33,5 +33,6 @@ RELEASE_NOTES = (
     "v2.2.19: Menambahkan modul Backup Center di Portal untuk backup source code aplikasi, konten uploads, dan database dengan pengiriman email, upload S3, download langsung, dan scheduler. "
     "v2.2.20: Memperbaiki kegagalan manual backup PostgreSQL akibat program pg_dump tidak ditemukan dengan menambahkan dependency postgresql-client dan dukungan kustom PG_DUMP_PATH. "
     "v2.2.21: Memperbaiki bug status backup yang tidak terupdate ('Belum Pernah Run') di PostgreSQL karena transaction rollback akibat kegagalan query dengan RETURNING id pada tabel app_settings. "
-    "v2.2.22: Menambahkan manual loader untuk berkas .env pada inisialisasi awal app.py agar DB_TYPE terdeteksi sesuai (PostgreSQL) serta menambahkan prefix folder backups/ pada upload S3."
+    "v2.2.22: Menambahkan manual loader untuk berkas .env pada inisialisasi awal app.py agar DB_TYPE terdeteksi sesuai (PostgreSQL) serta menambahkan prefix folder backups/ pada upload S3. "
+    "v2.2.23: Implementasi script backup_db.sh terpisah untuk backup PostgreSQL dengan credential env/admin, fitur hapus backup langsung, dan batas retensi housekeeping lokal."
 )
