@@ -11270,6 +11270,7 @@ def booking_resource_add():
         color      = request.form.get('color', '#d97706').strip()
         icon       = request.form.get('icon', 'door-open').strip()
         sort_order = request.form.get('sort_order', 0, type=int)
+        is_active  = 1 if request.form.get('is_active') else 0
         image      = ''
         f = request.files.get('image')
         if f and f.filename:
@@ -11280,10 +11281,10 @@ def booking_resource_add():
             flash('Nama resource wajib diisi.', 'danger')
         else:
             cur = db.execute('''INSERT INTO bk_resources(name,type,subtype,capacity,location,
-                description,facilities,notes,color,icon,sort_order,image)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+                description,facilities,notes,color,icon,sort_order,image,is_active)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                 (name, rtype, subtype, capacity, location, description,
-                 facilities, notes, color, icon, sort_order, image))
+                 facilities, notes, color, icon, sort_order, image, is_active))
             rid = cur.lastrowid
             
             # Handle additional gallery images

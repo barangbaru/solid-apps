@@ -1,4 +1,4 @@
-VERSION = "2.2.33"
+VERSION = "2.2.34"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -26,8 +26,8 @@ RELEASE_NOTES = (
     "v2.2.12: Menambahkan integrasi Telegram Bot untuk melakukan absensi (Clock In / Clock Out) dengan mengirimkan lokasi (Send Location). "
     "v2.2.13: Peningkatan ketahanan Webhook Telegram (case-insensitive username, edited_message) dan integrasi perbaikan/error-handling pencatatan lokasi di Web UI. "
     "v2.2.14: Memperbaiki pencocokan identitas user Telegram di Webhook saat mengirim lokasi di dalam grup dengan memetakan user.id (sender) alih-alih chat.id (group ID). "
-    "v2.2.15: Mewajibkan strict Geolocation GPS pada Clock In dan Clock Out Web Attendance Core (tanpa fallback koordinat kosong) dan menghapus input catatan. "
-    "v2.2.16: Integrasi PLAN dan PROGRESS dari Telegram Bot ke modul Presensi Harian (AttendanceCore) dengan tampilan UI detail modal. "
+    "v2.2.15: Mewajibkan strict Geolocation GPS pada Clock In dan Clock Out Web Attendance Core (tanpa fallback koordinat kosong) and menghapus input catatan. "
+    "v2.2.16: Integrasi PLAN and PROGRESS dari Telegram Bot ke modul Presensi Harian (AttendanceCore) dengan tampilan UI detail modal. "
     "v2.2.17: Menghapus secara permanen record registrasi aplikasi obsolete (HelpdeskCore) dari database superapp_apps saat inisialisasi aplikasi. "
     "v2.2.18: Memperbaiki konversi datetime SQLite ke PostgreSQL untuk query AssetCore dan penanganan duplicate username agar kompatibel dengan psycopg2. "
     "v2.2.19: Menambahkan modul Backup Center di Portal untuk backup source code aplikasi, konten uploads, dan database dengan pengiriman email, upload S3, download langsung, dan scheduler. "
@@ -44,5 +44,6 @@ RELEASE_NOTES = (
     "v2.2.30: Memperbaiki TemplateSyntaxError (stray endif tag) di booking_resource_edit.html setelah pembersihan nested forms. "
     "v2.2.31: Menambahkan tampilan dashboard BookingCore berformat kalender bulanan lengkap dengan detail jadwal resources dan pemesan. "
     "v2.2.32: Sinkronisasi kalender bulanan BookingCore dengan libur nasional Indonesia dan cuti bersama menggunakan REST API. "
-    "v2.2.33: Mengubah informasi booking di dalam kalender bulanan BookingCore agar menampilkan nama Resource, Jam Booking, dan Pemesan."
+    "v2.2.33: Mengubah informasi booking di dalam kalender bulanan BookingCore agar menampilkan nama Resource, Jam Booking, dan Pemesan. "
+    "v2.2.34: Memperbaiki bug input is_active yang terlewat saat proses penambahan resource baru di BookingCore."
 )
