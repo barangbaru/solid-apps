@@ -1,0 +1,185 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — Request Alat Kerja{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Request Alat Kerja</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <div style="width:32px;height:32px;border-radius:8px;background:#f43f5e;display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-laptop text-white"></i>
+    </div>
+    <h6 class="fw-bold mb-0">Request Alat Kerja (Laptop / Device)</h6>
+  </div>
+  <a href="/aset/tool-requests/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Tambah Request</a>
+</div>
+
+<form method="get" class="d-flex gap-2 mb-3 flex-wrap">
+  <select name="status" class="form-select form-select-sm" style="max-width:180px">
+    <option value="">Semua Status</option>
+    {% for s in ['Pending','Approved','Rejected','Completed'] %}
+    <option {{ 'selected' if s==status_filter }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <select name="sort" class="form-select form-select-sm" style="max-width:200px">
+    <option value="updated"   {{ 'selected' if sort=='updated' }}>Terbaru diperbarui</option>
+    <option value="requested" {{ 'selected' if sort=='requested' }}>Tgl request</option>
+  </select>
+  <button class="btn btn-sm btn-outline-secondary">Filter</button>
+  {% if status_filter or sort != 'updated' %}<a href="/aset/tool-requests" class="btn btn-sm btn-link">Reset</a>{% endif %}
+</form>
+
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Alat Kerja</th>
+          <th>Pemohon</th>
+          <th>Divisi</th>
+          <th>Alasan / Kebutuhan</th>
+          <th>Rekomendasi & Spek Admin</th>
+          <th>Tanggal</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in requests %}
+        <tr>
+          <td>
+            <div class="fw-semibold small">{{ r.item_name }}</div>
+            {% if r.resolved_by %}
+              <div class="text-muted small" style="font-size: .72rem;">Resolved by {{ r.resolved_by }}</div>
+            {% endif %}
+          </td>
+          <td class="small">{{ r.emp_name or '—' }}</td>
+          <td class="small text-muted">{{ r.divisi or '—' }}</td>
+          <td class="small text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.reason }}">{{ r.reason or '—' }}</td>
+          <td>
+            {% if r.admin_item_type or r.admin_specs or r.admin_url or r.admin_price or r.notes %}
+              <div class="p-2 rounded bg-light border border-light-subtle small" style="font-size: 0.78rem; min-width: 250px;">
+                {% if r.admin_item_type %}
+                  <div><strong>Tipe:</strong> {{ r.admin_item_type }}</div>
+                {% endif %}
+                {% if r.admin_specs %}
+                  <div class="text-muted text-wrap"><strong>Spek:</strong> {{ r.admin_specs }}</div>
+                {% endif %}
+                {% if r.admin_url %}
+                  <div>
+                    <strong>Link:</strong> 
+                    <a href="{{ r.admin_url }}" target="_blank" class="text-decoration-none">
+                      <i class="bi bi-box-arrow-up-right me-1"></i>Beli Online
+                    </a>
+                  </div>
+                {% endif %}
+                {% if r.admin_price %}
+                  <div><strong>Harga Est:</strong> Rp {{ "{:,.0f}".format(r.admin_price).replace(',', '.') }}</div>
+                {% endif %}
+                {% if r.notes %}
+                  <div class="text-info mt-1"><i class="bi bi-chat-left-dots me-1"></i>{{ r.notes }}</div>
+                {% endif %}
+              </div>
+            {% else %}
+              <span class="text-muted small">Menunggu rekomendasi admin</span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ r.requested_at[:10] }}</td>
+          <td>
+            <span class="badge {{ 'bg-warning text-dark' if r.status=='Pending' else ('bg-success' if r.status=='Approved' else ('bg-info' if r.status=='Completed' else 'bg-danger')) }}">
+              {{ r.status }}
+            </span>
+          </td>
+          <td>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
+                    data-bs-toggle="modal" data-bs-target="#modalStatus"
+                    data-rid="{{ r.id }}" data-name="{{ r.item_name }}" data-status="{{ r.status }}" 
+                    data-type="{{ r.admin_item_type }}" data-specs="{{ r.admin_specs }}" 
+                    data-url="{{ r.admin_url }}" data-price="{{ r.admin_price }}" data-notes="{{ r.notes }}">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+            <form method="post" action="/aset/tool-requests/{{ r.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus request ini?')">
+              <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Belum ada request.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal update status & specifications -->
+<div class="modal fade" id="modalStatus" tabindex="-1">
+  <div class="modal-dialog modal-md">
+    <div class="modal-content">
+      <form method="post" id="formStatus">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold"><i class="bi bi-laptop me-2 text-primary"></i>Kelola Request Alat Kerja</h6>
+          <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold small text-muted text-uppercase mb-0">Nama Alat Kerja</label>
+            <div class="fw-semibold text-dark fs-5" id="modalItemName"></div>
+          </div>
+          
+          <div class="row g-2 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold small">Status Request</label>
+              <select name="status" id="modalSelectStatus" class="form-select form-select-sm">
+                {% for s in ['Pending','Approved','Rejected','Completed'] %}
+                <option>{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold small">Estimasi Harga (Rp)</label>
+              <input type="number" step="any" name="admin_price" id="modalPrice" class="form-control form-control-sm" placeholder="Contoh: 15000000">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Tipe / Brand Rekomendasi</label>
+            <input type="text" name="admin_item_type" id="modalType" class="form-control form-control-sm" placeholder="Contoh: Lenovo ThinkPad L14">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Spesifikasi Detail</label>
+            <textarea name="admin_specs" id="modalSpecs" rows="3" class="form-control form-control-sm" placeholder="Contoh: Ryzen 5, 16GB DDR4 RAM, 512GB NVMe SSD, 14 inch FHD IPS"></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Link Pembelian Online (URL)</label>
+            <input type="url" name="admin_url" id="modalUrl" class="form-control form-control-sm" placeholder="Contoh: https://tokopedia.link/... atau shopee.co.id/...">
+          </div>
+
+          <div>
+            <label class="form-label fw-semibold small">Catatan Admin / PIC</label>
+            <textarea name="notes" id="modalNotes" rows="2" class="form-control form-control-sm" placeholder="Tambahkan catatan opsional..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary btn-sm">Simpan Rekomendasi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('modalStatus').addEventListener('show.bs.modal', function(e) {
+  var btn = e.relatedTarget;
+  document.getElementById('formStatus').action = '/aset/tool-requests/' + btn.dataset.rid + '/status';
+  document.getElementById('modalItemName').textContent = btn.dataset.name;
+  document.getElementById('modalSelectStatus').value = btn.dataset.status;
+  document.getElementById('modalType').value = btn.dataset.type || '';
+  document.getElementById('modalSpecs').value = btn.dataset.specs || '';
+  document.getElementById('modalUrl').value = btn.dataset.url || '';
+  document.getElementById('modalPrice').value = btn.dataset.price && btn.dataset.price !== 'None' ? btn.dataset.price : '';
+  document.getElementById('modalNotes').value = btn.dataset.notes || '';
+});
+</script>
+{% endblock %}

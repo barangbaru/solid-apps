@@ -1067,6 +1067,22 @@ CREATE TABLE IF NOT EXISTS ac_software_requests (
     resolved_by TEXT DEFAULT '',
     notes TEXT DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS ac_tool_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+    item_name TEXT NOT NULL,
+    reason TEXT DEFAULT '',
+    status TEXT DEFAULT 'Pending',
+    admin_item_type TEXT DEFAULT '',
+    admin_specs TEXT DEFAULT '',
+    admin_url TEXT DEFAULT '',
+    admin_price REAL DEFAULT 0.0,
+    requested_at TEXT DEFAULT (datetime('now','localtime')),
+    resolved_at TEXT DEFAULT '',
+    resolved_by TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS ac_maintenance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -11696,12 +11712,16 @@ def ac_index():
         'licenses':  db.execute('SELECT COUNT(*) FROM ac_licenses WHERE is_active=1').fetchone()[0],
         'subs':      db.execute('SELECT COUNT(*) FROM ac_subscriptions WHERE is_active=1').fetchone()[0],
         'requests':  db.execute("SELECT COUNT(*) FROM ac_software_requests WHERE status='Pending'").fetchone()[0],
+        'tool_requests': db.execute("SELECT COUNT(*) FROM ac_tool_requests WHERE status='Pending'").fetchone()[0],
     }
     expiring = db.execute(
         "SELECT * FROM ac_subscriptions WHERE is_active=1 AND end_date!='' AND end_date BETWEEN ? AND ? ORDER BY end_date",
         (today, limit30)).fetchall()
     recent_requests = db.execute(
         "SELECT r.*, e.name as emp_name FROM ac_software_requests r LEFT JOIN employees e ON r.employee_id=e.id ORDER BY r.requested_at DESC LIMIT 5"
+    ).fetchall()
+    recent_tool_requests = db.execute(
+        "SELECT r.*, e.name as emp_name FROM ac_tool_requests r LEFT JOIN employees e ON r.employee_id=e.id ORDER BY r.requested_at DESC LIMIT 5"
     ).fetchall()
     recent_history = db.execute(
         """SELECT h.*, e.name as emp_name,
@@ -11718,8 +11738,8 @@ def ac_index():
            ORDER BY next_maintenance ASC LIMIT 10""", (limit30,)
     ).fetchall()
     return render_template('ac_index.html', stats=stats, expiring=expiring,
-                           recent_requests=recent_requests, recent_history=recent_history,
-                           maintenance_alert=maintenance_alert, today=today)
+                           recent_requests=recent_requests, recent_tool_requests=recent_tool_requests,
+                           recent_history=recent_history, maintenance_alert=maintenance_alert, today=today)
 
 # ── Assets ────────────────────────────────────────────────────────────────────
 @app.route('/aset/assets')
@@ -12471,6 +12491,71 @@ def ac_request_delete(rid):
     if not ac_require('ac_manage_requests'): return redirect(url_for('ac_requests'))
     get_db().execute('DELETE FROM ac_software_requests WHERE id=?', (rid,)); get_db().commit()
     flash('Request dihapus.', 'success'); return redirect(url_for('ac_requests'))
+
+# ── Work Tool Requests ───────────────────────────────────────────────────────
+@app.route('/aset/tool-requests')
+@login_required
+def ac_tool_requests():
+    if not ac_require('ac_view'): return redirect(url_for('ac_index'))
+    db = get_db()
+    status_filter = request.args.get('status','')
+    sort = request.args.get('sort', 'updated')
+    sql = "SELECT r.*, e.name as emp_name, e.divisi FROM ac_tool_requests r LEFT JOIN employees e ON r.employee_id=e.id WHERE 1=1"
+    params = []
+    if status_filter:
+        sql += ' AND r.status=?'; params.append(status_filter)
+    order = ("COALESCE(NULLIF(r.updated_at,''),r.requested_at) DESC, r.id DESC" if sort == 'updated'
+             else 'r.requested_at DESC')
+    reqs = db.execute(sql + ' ORDER BY ' + order, params).fetchall()
+    return render_template('ac_tool_requests.html', requests=reqs, status_filter=status_filter, sort=sort)
+
+@app.route('/aset/tool-requests/new', methods=['GET','POST'])
+@login_required
+def ac_tool_request_new():
+    if not ac_require('ac_manage_requests'): return redirect(url_for('ac_tool_requests'))
+    db = get_db()
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+    if request.method == 'POST':
+        db.execute('''INSERT INTO ac_tool_requests(employee_id,item_name,reason) 
+                      VALUES(?,?,?)''',
+                   (request.form.get('employee_id') or None, request.form['item_name'].strip(),
+                    request.form.get('reason','').strip()))
+        db.commit(); flash('Request alat kerja ditambahkan.', 'success')
+        return redirect(url_for('ac_tool_requests'))
+    return render_template('ac_tool_request_form.html', employees=employees)
+
+@app.route('/aset/tool-requests/<int:rid>/status', methods=['POST'])
+@login_required
+def ac_tool_request_status(rid):
+    if not ac_require('ac_manage_requests'): return redirect(url_for('ac_tool_requests'))
+    from datetime import datetime as _dt
+    db = get_db()
+    new_status = request.form.get('status')
+    resolved_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S') if new_status in ('Approved','Rejected','Completed') else ''
+    
+    admin_item_type = request.form.get('admin_item_type', '').strip()
+    admin_specs = request.form.get('admin_specs', '').strip()
+    admin_url = request.form.get('admin_url', '').strip()
+    try:
+        admin_price = float(request.form.get('admin_price') or 0.0)
+    except ValueError:
+        admin_price = 0.0
+        
+    db.execute('''UPDATE ac_tool_requests 
+                  SET status=?, notes=?, admin_item_type=?, admin_specs=?, admin_url=?, admin_price=?, 
+                      resolved_at=?, resolved_by=?, updated_at=datetime("now","localtime") 
+                  WHERE id=?''',
+               (new_status, request.form.get('notes','').strip(), admin_item_type, admin_specs, admin_url, admin_price,
+                resolved_at, session.get('user_name',''), rid))
+    db.commit(); flash(f'Status request alat kerja diubah ke {new_status}.', 'success')
+    return redirect(url_for('ac_tool_requests'))
+
+@app.route('/aset/tool-requests/<int:rid>/delete', methods=['POST'])
+@login_required
+def ac_tool_request_delete(rid):
+    if not ac_require('ac_manage_requests'): return redirect(url_for('ac_tool_requests'))
+    get_db().execute('DELETE FROM ac_tool_requests WHERE id=?', (rid,)); get_db().commit()
+    flash('Request alat kerja dihapus.', 'success'); return redirect(url_for('ac_tool_requests'))
 
 # ─── ProjectCore ───────────────────────────────────────────────────────────────
 

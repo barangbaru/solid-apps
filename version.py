@@ -1,4 +1,4 @@
-VERSION = "2.2.38"
+VERSION = "2.2.39"
 RELEASE_DATE = "2026-07-08"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -49,5 +49,6 @@ RELEASE_NOTES = (
     "v2.2.35: Implementasi Media Library Selector untuk memilih media terunggah (local/S3), folder penyimpanan bookingcore khusus, dan fitur hapus resource secara permanen. "
     "v2.2.36: Implementasi Public Booking Dashboard (/booking/public) tanpa otentikasi login, dengan visualisasi TV Monitor modern, live clock, auto-refresh, dan S3 media public bypass untuk file resource. "
     "v2.2.37: Memperbaiki error UndefinedColumn start_time/end_time di PostgreSQL dengan mengubahnya ke start_dt/end_dt, dan menyertakan JOIN users untuk memuat nama pemesan. "
-    "v2.2.38: Menambahkan kategori sidebar 'Lainnya' untuk menampilkan equipment (Proyektor Portable), dan memperkuat visual/kontras TV display agar lebih enterprise-grade."
+    "v2.2.38: Menambahkan kategori sidebar 'Lainnya' untuk menampilkan equipment (Proyektor Portable), dan memperkuat visual/kontras TV display agar lebih enterprise-grade. "
+    "v2.2.39: Implementasi fitur Request Alat Kerja (Laptop) di AssetCore dengan input admin PIC untuk tipe, spesifikasi, link pembelian online, dan estimasi harga."
 )
