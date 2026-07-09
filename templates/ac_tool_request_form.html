@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}AssetCore — Tambah Request Alat Kerja{% endblock %}
+{% block title %}AssetCore - Tambah Request Alat Kerja{% endblock %}
 {% block page_title %}<span class="breadcrumb-page">Tambah Request Alat Kerja</span>{% endblock %}
 
 {% block content %}
@@ -8,26 +8,124 @@
   <h6 class="fw-bold mb-0">Tambah Request Alat Kerja</h6>
 </div>
 
-<div class="card border-0 shadow-sm" style="max-width:560px">
+<div class="card border-0 shadow-sm">
   <div class="card-body">
     <form method="post">
       <div class="row g-3">
-        <div class="col-12">
-          <label class="form-label fw-semibold small">Karyawan / Pemohon</label>
+        <div class="col-md-5">
+          <label class="form-label fw-semibold small">Karyawan / User Pengguna</label>
           <select name="employee_id" class="form-select form-select-sm">
-            <option value="">— Pilih Karyawan —</option>
+            <option value="">-- Pilih Karyawan --</option>
             {% for e in employees %}
             <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-12">
-          <label class="form-label fw-semibold small">Nama Alat Kerja (Contoh: Laptop) <span class="text-danger">*</span></label>
-          <input name="item_name" class="form-control form-control-sm" placeholder="Contoh: Laptop, PC, Monitor" required>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">User Manual</label>
+          <input name="manual_user_name" class="form-control form-control-sm" placeholder="Jika belum ada di TalentCore">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Tanggal Permintaan</label>
+          <input name="request_date" type="date" value="{{ today }}" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-md-7">
+          <label class="form-label fw-semibold small">Nama Barang <span class="text-danger">*</span></label>
+          <input name="item_name" class="form-control form-control-sm" placeholder="Contoh: ASUS Vivobook Go 14 Ryzen 5 16GB 512GB" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Kategori Barang</label>
+          <select name="item_category" class="form-select form-select-sm">
+            {% for c in ['Laptop','PC Desktop','All-in-One','Mini PC','Monitor','Printer','Lainnya'] %}
+            <option>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">Harga</label>
+          <input name="admin_price" type="number" step="any" class="form-control form-control-sm" placeholder="0">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Tanggal Pembelian</label>
+          <input name="purchase_date" type="date" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Tanggal Masuk</label>
+          <input name="received_date" type="date" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Tanggal Receipt</label>
+          <input name="receipt_date" type="date" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">PIC Support</label>
+          <input name="pic_support" class="form-control form-control-sm" placeholder="Nama PIC">
+        </div>
+
+        <div class="col-md-5">
+          <label class="form-label fw-semibold small">Brand / Model yang Dibeli</label>
+          <input name="admin_item_type" class="form-control form-control-sm" placeholder="Contoh: Lenovo ThinkPad L14">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold small">Link Pembelian</label>
+          <input name="admin_url" type="url" class="form-control form-control-sm" placeholder="https://...">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Asset Tag</label>
+          <input name="asset_tag" class="form-control form-control-sm" placeholder="MMI-001">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">CPU Type</label>
+          <input name="spec_cpu_type" class="form-control form-control-sm" placeholder="Intel Core i5-1235U">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">RAM</label>
+          <input name="spec_ram" class="form-control form-control-sm" placeholder="16 GB">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">Disk</label>
+          <input name="spec_disk" class="form-control form-control-sm" placeholder="512 GB SSD">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">GPU</label>
+          <input name="spec_gpu" class="form-control form-control-sm" placeholder="Intel Iris Xe">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-semibold small">Serial Number</label>
+          <input name="serial_number" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Layar</label>
+          <input name="spec_screen" class="form-control form-control-sm" placeholder="14 inch FHD">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">OS</label>
+          <input name="spec_os" class="form-control form-control-sm" placeholder="Windows 11 Pro">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Office</label>
+          <input name="spec_office" class="form-control form-control-sm" placeholder="OHS / M365">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Ket</label>
+          <input name="ket" class="form-control form-control-sm" placeholder="Asset IT">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">Alasan / Kebutuhan</label>
+          <textarea name="reason" rows="3" class="form-control form-control-sm" placeholder="Jelaskan kebutuhan alat kerja"></textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">Spesifikasi Detail / Catatan Pembelian</label>
+          <textarea name="admin_specs" rows="3" class="form-control form-control-sm" placeholder="Detail tambahan yang belum masuk field spek"></textarea>
         </div>
         <div class="col-12">
-          <label class="form-label fw-semibold small">Alasan / Kebutuhan</label>
-          <textarea name="reason" rows="3" class="form-control form-control-sm" placeholder="Jelaskan detail kebutuhan alat kerja…"></textarea>
+          <label class="form-label fw-semibold small">Catatan Admin</label>
+          <textarea name="notes" rows="2" class="form-control form-control-sm"></textarea>
         </div>
       </div>
       <div class="mt-3 d-flex gap-2">

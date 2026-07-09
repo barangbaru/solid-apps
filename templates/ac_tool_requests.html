@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}AssetCore — Request Alat Kerja{% endblock %}
+{% block title %}AssetCore - Request Alat Kerja{% endblock %}
 {% block page_title %}<span class="breadcrumb-page">Request Alat Kerja</span>{% endblock %}
 
 {% block content %}
@@ -33,12 +33,10 @@
     <table class="table table-sm table-hover mb-0 align-middle">
       <thead class="table-light">
         <tr>
-          <th>Alat Kerja</th>
-          <th>Pemohon</th>
-          <th>Divisi</th>
-          <th>Alasan / Kebutuhan</th>
-          <th>Rekomendasi & Spek Admin</th>
-          <th>Tanggal</th>
+          <th>Barang</th>
+          <th>User</th>
+          <th>Timeline</th>
+          <th>Pembelian & Spek</th>
           <th>Status</th>
           <th></th>
         </tr>
@@ -46,55 +44,87 @@
       <tbody>
         {% for r in requests %}
         <tr>
-          <td>
+          <td style="min-width:240px">
             <div class="fw-semibold small">{{ r.item_name }}</div>
-            {% if r.resolved_by %}
-              <div class="text-muted small" style="font-size: .72rem;">Resolved by {{ r.resolved_by }}</div>
+            <div class="text-muted small">{{ r.item_category or 'Laptop' }}</div>
+            {% if r.asset_id %}
+            <a href="/aset/assets/{{ r.asset_id }}" class="badge bg-secondary text-decoration-none mt-1">Asset #{{ r.asset_id }}</a>
             {% endif %}
           </td>
-          <td class="small">{{ r.emp_name or '—' }}</td>
-          <td class="small text-muted">{{ r.divisi or '—' }}</td>
-          <td class="small text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.reason }}">{{ r.reason or '—' }}</td>
-          <td>
-            {% if r.admin_item_type or r.admin_specs or r.admin_url or r.admin_price or r.notes %}
-              <div class="p-2 rounded bg-light border border-light-subtle small" style="font-size: 0.78rem; min-width: 250px;">
-                {% if r.admin_item_type %}
-                  <div><strong>Tipe:</strong> {{ r.admin_item_type }}</div>
+          <td class="small" style="min-width:160px">
+            <div>{{ r.emp_name or r.manual_user_name or '-' }}</div>
+            <div class="text-muted">{{ r.divisi or '-' }}</div>
+          </td>
+          <td class="small text-muted" style="min-width:170px">
+            <div>Request: {{ r.request_date or (r.requested_at[:10] if r.requested_at else '-') }}</div>
+            <div>Beli: {{ r.purchase_date or '-' }}</div>
+            <div>Masuk: {{ r.received_date or '-' }}</div>
+            <div>Receipt: {{ r.receipt_date or '-' }}</div>
+            {% if r.completion_days is not none %}
+            <span class="badge bg-light text-dark border mt-1">{{ r.completion_days }} hari</span>
+            {% endif %}
+          </td>
+          <td style="min-width:300px">
+            {% if r.admin_item_type or r.admin_specs or r.admin_url or r.admin_price or r.spec_cpu_type or r.spec_ram or r.spec_disk or r.notes %}
+              <div class="small" style="font-size:0.78rem">
+                {% if r.admin_item_type %}<div><strong>Model:</strong> {{ r.admin_item_type }}</div>{% endif %}
+                {% if r.spec_cpu_type or r.spec_ram or r.spec_disk %}
+                <div class="text-muted">
+                  {{ r.spec_cpu_type or '-' }} / {{ r.spec_ram or '-' }} / {{ r.spec_disk or '-' }}
+                </div>
                 {% endif %}
-                {% if r.admin_specs %}
-                  <div class="text-muted text-wrap"><strong>Spek:</strong> {{ r.admin_specs }}</div>
-                {% endif %}
+                {% if r.admin_specs %}<div class="text-muted text-wrap">{{ r.admin_specs }}</div>{% endif %}
+                {% if r.admin_price %}<div><strong>Harga:</strong> Rp {{ "{:,.0f}".format(r.admin_price).replace(',', '.') }}</div>{% endif %}
+                {% if r.pic_support %}<div class="text-muted">PIC: {{ r.pic_support }}</div>{% endif %}
                 {% if r.admin_url %}
-                  <div>
-                    <strong>Link:</strong> 
-                    <a href="{{ r.admin_url }}" target="_blank" class="text-decoration-none">
-                      <i class="bi bi-box-arrow-up-right me-1"></i>Beli Online
-                    </a>
-                  </div>
-                {% endif %}
-                {% if r.admin_price %}
-                  <div><strong>Harga Est:</strong> Rp {{ "{:,.0f}".format(r.admin_price).replace(',', '.') }}</div>
-                {% endif %}
-                {% if r.notes %}
-                  <div class="text-info mt-1"><i class="bi bi-chat-left-dots me-1"></i>{{ r.notes }}</div>
+                <a href="{{ r.admin_url }}" target="_blank" class="text-decoration-none">
+                  <i class="bi bi-box-arrow-up-right me-1"></i>Link pembelian
+                </a>
                 {% endif %}
               </div>
             {% else %}
-              <span class="text-muted small">Menunggu rekomendasi admin</span>
+              <span class="text-muted small">Menunggu data pembelian</span>
             {% endif %}
           </td>
-          <td class="small text-muted">{{ r.requested_at[:10] }}</td>
           <td>
             <span class="badge {{ 'bg-warning text-dark' if r.status=='Pending' else ('bg-success' if r.status=='Approved' else ('bg-info' if r.status=='Completed' else 'bg-danger')) }}">
               {{ r.status }}
             </span>
+            {% if r.resolved_by %}
+            <div class="text-muted small" style="font-size:.72rem">{{ r.resolved_by }}</div>
+            {% endif %}
           </td>
-          <td>
+          <td class="text-nowrap">
             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
                     data-bs-toggle="modal" data-bs-target="#modalStatus"
-                    data-rid="{{ r.id }}" data-name="{{ r.item_name }}" data-status="{{ r.status }}" 
-                    data-type="{{ r.admin_item_type }}" data-specs="{{ r.admin_specs }}" 
-                    data-url="{{ r.admin_url }}" data-price="{{ r.admin_price }}" data-notes="{{ r.notes }}">
+                    data-rid="{{ r.id }}"
+                    data-employee-id="{{ r.employee_id or '' }}"
+                    data-manual-user-name="{{ r.manual_user_name|e }}"
+                    data-item-name="{{ r.item_name|e }}"
+                    data-item-category="{{ r.item_category|e }}"
+                    data-reason="{{ r.reason|e }}"
+                    data-status="{{ r.status|e }}"
+                    data-admin-item-type="{{ r.admin_item_type|e }}"
+                    data-admin-specs="{{ r.admin_specs|e }}"
+                    data-admin-url="{{ r.admin_url|e }}"
+                    data-admin-price="{{ r.admin_price or '' }}"
+                    data-request-date="{{ r.request_date|e }}"
+                    data-purchase-date="{{ r.purchase_date|e }}"
+                    data-received-date="{{ r.received_date|e }}"
+                    data-receipt-date="{{ r.receipt_date|e }}"
+                    data-pic-support="{{ r.pic_support|e }}"
+                    data-ket="{{ r.ket|e }}"
+                    data-spec-cpu-type="{{ r.spec_cpu_type|e }}"
+                    data-spec-ram="{{ r.spec_ram|e }}"
+                    data-spec-disk="{{ r.spec_disk|e }}"
+                    data-spec-gpu="{{ r.spec_gpu|e }}"
+                    data-spec-screen="{{ r.spec_screen|e }}"
+                    data-spec-os="{{ r.spec_os|e }}"
+                    data-spec-office="{{ r.spec_office|e }}"
+                    data-asset-tag="{{ r.asset_tag|e }}"
+                    data-serial-number="{{ r.serial_number|e }}"
+                    data-notes="{{ r.notes|e }}"
+                    data-asset-id="{{ r.asset_id or '' }}">
               <i class="bi bi-pencil-square"></i>
             </button>
             <form method="post" action="/aset/tool-requests/{{ r.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus request ini?')">
@@ -103,16 +133,15 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="text-center text-muted py-4">Belum ada request.</td></tr>
+        <tr><td colspan="6" class="text-center text-muted py-4">Belum ada request.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
 
-<!-- Modal update status & specifications -->
 <div class="modal fade" id="modalStatus" tabindex="-1">
-  <div class="modal-dialog modal-md">
+  <div class="modal-dialog modal-xl">
     <div class="modal-content">
       <form method="post" id="formStatus">
         <div class="modal-header py-2">
@@ -120,49 +149,145 @@
           <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label fw-bold small text-muted text-uppercase mb-0">Nama Alat Kerja</label>
-            <div class="fw-semibold text-dark fs-5" id="modalItemName"></div>
-          </div>
-          
-          <div class="row g-2 mb-3">
-            <div class="col-sm-6">
-              <label class="form-label fw-semibold small">Status Request</label>
+          <div class="row g-3">
+            <div class="col-md-7">
+              <label class="form-label fw-semibold small">Nama Barang</label>
+              <input name="item_name" id="modalItemName" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Kategori Barang</label>
+              <select name="item_category" id="modalItemCategory" class="form-select form-select-sm">
+                {% for c in ['Laptop','PC Desktop','All-in-One','Mini PC','Monitor','Printer','Lainnya'] %}
+                <option>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Status</label>
               <select name="status" id="modalSelectStatus" class="form-select form-select-sm">
                 {% for s in ['Pending','Approved','Rejected','Completed'] %}
                 <option>{{ s }}</option>
                 {% endfor %}
               </select>
             </div>
-            <div class="col-sm-6">
-              <label class="form-label fw-semibold small">Estimasi Harga (Rp)</label>
-              <input type="number" step="any" name="admin_price" id="modalPrice" class="form-control form-control-sm" placeholder="Contoh: 15000000">
+
+            <div class="col-md-5">
+              <label class="form-label fw-semibold small">Karyawan / User Pengguna</label>
+              <select name="employee_id" id="modalEmployeeId" class="form-select form-select-sm">
+                <option value="">-- Tidak ada / Manual --</option>
+                {% for e in employees %}
+                <option value="{{ e.id }}">{{ e.name }} ({{ e.divisi }})</option>
+                {% endfor %}
+              </select>
             </div>
-          </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">User Manual</label>
+              <input name="manual_user_name" id="modalManualUserName" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Harga</label>
+              <input type="number" step="any" name="admin_price" id="modalPrice" class="form-control form-control-sm">
+            </div>
 
-          <div class="mb-3">
-            <label class="form-label fw-semibold small">Tipe / Brand Rekomendasi</label>
-            <input type="text" name="admin_item_type" id="modalType" class="form-control form-control-sm" placeholder="Contoh: Lenovo ThinkPad L14">
-          </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Tanggal Permintaan</label>
+              <input name="request_date" id="modalRequestDate" type="date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Tanggal Pembelian</label>
+              <input name="purchase_date" id="modalPurchaseDate" type="date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Tanggal Masuk</label>
+              <input name="received_date" id="modalReceivedDate" type="date" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Tanggal Receipt</label>
+              <input name="receipt_date" id="modalReceiptDate" type="date" class="form-control form-control-sm">
+            </div>
 
-          <div class="mb-3">
-            <label class="form-label fw-semibold small">Spesifikasi Detail</label>
-            <textarea name="admin_specs" id="modalSpecs" rows="3" class="form-control form-control-sm" placeholder="Contoh: Ryzen 5, 16GB DDR4 RAM, 512GB NVMe SSD, 14 inch FHD IPS"></textarea>
-          </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Brand / Model yang Dibeli</label>
+              <input name="admin_item_type" id="modalType" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Link Pembelian</label>
+              <input type="url" name="admin_url" id="modalUrl" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Asset Tag</label>
+              <input name="asset_tag" id="modalAssetTag" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Serial Number</label>
+              <input name="serial_number" id="modalSerialNumber" class="form-control form-control-sm">
+            </div>
 
-          <div class="mb-3">
-            <label class="form-label fw-semibold small">Link Pembelian Online (URL)</label>
-            <input type="url" name="admin_url" id="modalUrl" class="form-control form-control-sm" placeholder="Contoh: https://tokopedia.link/... atau shopee.co.id/...">
-          </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">CPU Type</label>
+              <input name="spec_cpu_type" id="modalSpecCpuType" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">RAM</label>
+              <input name="spec_ram" id="modalSpecRam" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Disk</label>
+              <input name="spec_disk" id="modalSpecDisk" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">GPU</label>
+              <input name="spec_gpu" id="modalSpecGpu" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Layar</label>
+              <input name="spec_screen" id="modalSpecScreen" class="form-control form-control-sm">
+            </div>
 
-          <div>
-            <label class="form-label fw-semibold small">Catatan Admin / PIC</label>
-            <textarea name="notes" id="modalNotes" rows="2" class="form-control form-control-sm" placeholder="Tambahkan catatan opsional..."></textarea>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">OS</label>
+              <input name="spec_os" id="modalSpecOs" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Office</label>
+              <input name="spec_office" id="modalSpecOffice" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">PIC Support</label>
+              <input name="pic_support" id="modalPicSupport" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Ket</label>
+              <input name="ket" id="modalKet" class="form-control form-control-sm">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Alasan / Kebutuhan</label>
+              <textarea name="reason" id="modalReason" rows="3" class="form-control form-control-sm"></textarea>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Spesifikasi Detail</label>
+              <textarea name="admin_specs" id="modalSpecs" rows="3" class="form-control form-control-sm"></textarea>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Catatan Admin</label>
+              <textarea name="notes" id="modalNotes" rows="3" class="form-control form-control-sm"></textarea>
+            </div>
+
+            <div class="col-12 d-none" id="createAssetWrap">
+              <div class="form-check p-2 rounded border bg-light">
+                <input class="form-check-input ms-0 me-2" type="checkbox" value="1" name="create_asset" id="modalCreateAsset">
+                <label class="form-check-label small fw-semibold" for="modalCreateAsset">
+                  Buat asset Laptop/PC dari request ini
+                </label>
+                <span class="small text-muted ms-2 d-none" id="assetLinkedHint">Asset sudah dibuat untuk request ini.</span>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer py-2">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
-          <button type="submit" class="btn btn-primary btn-sm">Simpan Rekomendasi</button>
+          <button type="submit" class="btn btn-primary btn-sm">Simpan</button>
         </div>
       </form>
     </div>
@@ -170,16 +295,62 @@
 </div>
 
 <script>
+var currentAssetId = '';
+var statusSelect = document.getElementById('modalSelectStatus');
+var createWrap = document.getElementById('createAssetWrap');
+var createAsset = document.getElementById('modalCreateAsset');
+var assetLinkedHint = document.getElementById('assetLinkedHint');
+
+function setField(id, value) {
+  var el = document.getElementById(id);
+  if (el) el.value = value || '';
+}
+
+function updateCreateAssetState() {
+  var isCompleted = statusSelect.value === 'Completed';
+  createWrap.classList.toggle('d-none', !isCompleted);
+  createAsset.disabled = !!currentAssetId;
+  assetLinkedHint.classList.toggle('d-none', !currentAssetId);
+  if (!isCompleted || currentAssetId) {
+    createAsset.checked = false;
+  } else {
+    createAsset.checked = true;
+  }
+}
+
 document.getElementById('modalStatus').addEventListener('show.bs.modal', function(e) {
   var btn = e.relatedTarget;
+  currentAssetId = btn.dataset.assetId || '';
   document.getElementById('formStatus').action = '/aset/tool-requests/' + btn.dataset.rid + '/status';
-  document.getElementById('modalItemName').textContent = btn.dataset.name;
-  document.getElementById('modalSelectStatus').value = btn.dataset.status;
-  document.getElementById('modalType').value = btn.dataset.type || '';
-  document.getElementById('modalSpecs').value = btn.dataset.specs || '';
-  document.getElementById('modalUrl').value = btn.dataset.url || '';
-  document.getElementById('modalPrice').value = btn.dataset.price && btn.dataset.price !== 'None' ? btn.dataset.price : '';
-  document.getElementById('modalNotes').value = btn.dataset.notes || '';
+  setField('modalEmployeeId', btn.dataset.employeeId);
+  setField('modalManualUserName', btn.dataset.manualUserName);
+  setField('modalItemName', btn.dataset.itemName);
+  setField('modalItemCategory', btn.dataset.itemCategory || 'Laptop');
+  setField('modalReason', btn.dataset.reason);
+  setField('modalSelectStatus', btn.dataset.status || 'Pending');
+  setField('modalType', btn.dataset.adminItemType);
+  setField('modalSpecs', btn.dataset.adminSpecs);
+  setField('modalUrl', btn.dataset.adminUrl);
+  setField('modalPrice', btn.dataset.adminPrice);
+  setField('modalRequestDate', btn.dataset.requestDate);
+  setField('modalPurchaseDate', btn.dataset.purchaseDate);
+  setField('modalReceivedDate', btn.dataset.receivedDate);
+  setField('modalReceiptDate', btn.dataset.receiptDate);
+  setField('modalPicSupport', btn.dataset.picSupport);
+  setField('modalKet', btn.dataset.ket);
+  setField('modalSpecCpuType', btn.dataset.specCpuType);
+  setField('modalSpecRam', btn.dataset.specRam);
+  setField('modalSpecDisk', btn.dataset.specDisk);
+  setField('modalSpecGpu', btn.dataset.specGpu);
+  setField('modalSpecScreen', btn.dataset.specScreen);
+  setField('modalSpecOs', btn.dataset.specOs);
+  setField('modalSpecOffice', btn.dataset.specOffice);
+  setField('modalAssetTag', btn.dataset.assetTag);
+  setField('modalSerialNumber', btn.dataset.serialNumber);
+  setField('modalNotes', btn.dataset.notes);
+  updateCreateAssetState();
 });
+
+statusSelect.addEventListener('change', updateCreateAssetState);
 </script>
 {% endblock %}

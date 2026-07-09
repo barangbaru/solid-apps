@@ -1070,13 +1070,31 @@ CREATE TABLE IF NOT EXISTS ac_software_requests (
 CREATE TABLE IF NOT EXISTS ac_tool_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+    manual_user_name TEXT DEFAULT '',
     item_name TEXT NOT NULL,
+    item_category TEXT DEFAULT 'Laptop',
     reason TEXT DEFAULT '',
     status TEXT DEFAULT 'Pending',
     admin_item_type TEXT DEFAULT '',
     admin_specs TEXT DEFAULT '',
     admin_url TEXT DEFAULT '',
     admin_price REAL DEFAULT 0.0,
+    request_date TEXT DEFAULT '',
+    purchase_date TEXT DEFAULT '',
+    received_date TEXT DEFAULT '',
+    receipt_date TEXT DEFAULT '',
+    pic_support TEXT DEFAULT '',
+    ket TEXT DEFAULT '',
+    spec_cpu_type TEXT DEFAULT '',
+    spec_ram TEXT DEFAULT '',
+    spec_disk TEXT DEFAULT '',
+    spec_gpu TEXT DEFAULT '',
+    spec_screen TEXT DEFAULT '',
+    spec_os TEXT DEFAULT '',
+    spec_office TEXT DEFAULT '',
+    asset_tag TEXT DEFAULT '',
+    serial_number TEXT DEFAULT '',
+    asset_id INTEGER REFERENCES ac_assets(id) ON DELETE SET NULL,
     requested_at TEXT DEFAULT (datetime('now','localtime')),
     resolved_at TEXT DEFAULT '',
     resolved_by TEXT DEFAULT '',
@@ -1413,6 +1431,24 @@ MIGRATIONS = [
     ('ac_licenses',          'updated_at',              "TEXT DEFAULT ''"),
     ('ac_subscriptions',     'updated_at',              "TEXT DEFAULT ''"),
     ('ac_software_requests', 'updated_at',              "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'manual_user_name',        "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'item_category',           "TEXT DEFAULT 'Laptop'"),
+    ('ac_tool_requests',     'request_date',            "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'purchase_date',           "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'received_date',           "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'receipt_date',            "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'pic_support',             "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'ket',                     "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'spec_cpu_type',           "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'spec_ram',                "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'spec_disk',               "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'spec_gpu',                "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'spec_screen',             "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'spec_os',                 "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'spec_office',             "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'asset_tag',               "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'serial_number',           "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'asset_id',                'INTEGER DEFAULT NULL'),
     ('bk_resources',         'image',                   "TEXT DEFAULT ''"),
     ('bk_resources',         'facilities',              "TEXT DEFAULT ''"),
     ('bk_resources',         'notes',                   "TEXT DEFAULT ''"),
@@ -11698,6 +11734,104 @@ def _record_asset_history(db, asset_id, employee_id, manual_name, started_at, re
         (asset_id, employee_id, manual_name or '', started_at or '', today, reason, notes)
     )
 
+AC_ASSET_DEVICE_TYPES = {'Laptop', 'PC Desktop', 'All-in-One', 'Mini PC'}
+
+def _clean_asset_device_type(category='', item_name=''):
+    category = (category or '').strip()
+    if category in AC_ASSET_DEVICE_TYPES:
+        return category
+    hay = f'{category} {item_name or ""}'.lower()
+    if 'all-in-one' in hay or 'all in one' in hay or 'aio' in hay:
+        return 'All-in-One'
+    if 'mini pc' in hay:
+        return 'Mini PC'
+    if 'desktop' in hay or 'pc' in hay or 'komputer' in hay or 'computer' in hay:
+        return 'PC Desktop'
+    if 'laptop' in hay or 'notebook' in hay:
+        return 'Laptop'
+    return ''
+
+def _tool_request_targets_asset(req):
+    return bool(_clean_asset_device_type(req['item_category'], req['item_name']))
+
+def _format_rupiah(value):
+    try:
+        amount = float(value or 0)
+    except (TypeError, ValueError):
+        return ''
+    if amount <= 0:
+        return ''
+    return 'Rp {:,.0f}'.format(amount).replace(',', '.')
+
+def _parse_float_value(value, default=0.0):
+    try:
+        return float(value or default)
+    except (TypeError, ValueError):
+        return default
+
+def _create_asset_from_tool_request(db, req):
+    """Create Laptop/PC asset from a completed tool request once."""
+    existing_asset_id = req['asset_id']
+    if existing_asset_id:
+        existing = db.execute('SELECT id FROM ac_assets WHERE id=?', (existing_asset_id,)).fetchone()
+        if existing:
+            return existing_asset_id, False
+
+    device_type = _clean_asset_device_type(req['item_category'], req['item_name'])
+    if not device_type:
+        return None, False
+
+    emp_id = req['employee_id'] or None
+    manual_name = (req['manual_user_name'] or '').strip() if not emp_id else ''
+    started = ''
+    if emp_id or manual_name:
+        started = req['receipt_date'] or req['received_date'] or date.today().isoformat()
+
+    notes = []
+    if req['reason']:
+        notes.append(f"Kebutuhan: {req['reason']}")
+    if req['admin_specs']:
+        notes.append(f"Spek rekomendasi: {req['admin_specs']}")
+    if req['spec_gpu']:
+        notes.append(f"GPU: {req['spec_gpu']}")
+    if req['spec_screen']:
+        notes.append(f"Layar: {req['spec_screen']}")
+    if req['pic_support']:
+        notes.append(f"PIC Support: {req['pic_support']}")
+    if req['ket']:
+        notes.append(f"Ket: {req['ket']}")
+    price_text = _format_rupiah(req['admin_price'])
+    if price_text:
+        notes.append(f"Harga pembelian: {price_text}")
+    if req['admin_url']:
+        notes.append(f"Link pembelian: {req['admin_url']}")
+
+    cur = db.execute(
+        '''INSERT INTO ac_assets
+           (employee_id,manual_employee_name,device_type,brand,os,processor,ram,disk,
+            office_version,asset_tag,serial_number,purchase_date,condition,notes,started_using)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        (emp_id, manual_name, device_type,
+         req['admin_item_type'] or req['item_name'],
+         req['spec_os'] or '',
+         req['spec_cpu_type'] or '',
+         req['spec_ram'] or '',
+         req['spec_disk'] or '',
+         req['spec_office'] or '',
+         req['asset_tag'] or '',
+         req['serial_number'] or '',
+         req['purchase_date'] or '',
+         'Baik',
+         ' | '.join(notes),
+         started)
+    )
+    asset_id = cur.lastrowid
+    db.execute(
+        'UPDATE ac_tool_requests SET asset_id=?, updated_at=datetime("now","localtime") WHERE id=?',
+        (asset_id, req['id'])
+    )
+    return asset_id, True
+
 @app.route('/aset/')
 @login_required
 def ac_index():
@@ -12500,29 +12634,75 @@ def ac_tool_requests():
     db = get_db()
     status_filter = request.args.get('status','')
     sort = request.args.get('sort', 'updated')
-    sql = "SELECT r.*, e.name as emp_name, e.divisi FROM ac_tool_requests r LEFT JOIN employees e ON r.employee_id=e.id WHERE 1=1"
+    if DB_TYPE == 'postgresql':
+        completion_days_expr = (
+            "CASE WHEN r.receipt_date!='' AND r.received_date!='' "
+            "THEN (NULLIF(r.receipt_date,'')::date - NULLIF(r.received_date,'')::date + 1) "
+            "ELSE NULL END"
+        )
+    else:
+        completion_days_expr = (
+            "CASE WHEN r.receipt_date!='' AND r.received_date!='' "
+            "THEN CAST((julianday(r.receipt_date) - julianday(r.received_date) + 1) AS INTEGER) "
+            "ELSE NULL END"
+        )
+    sql = """SELECT r.*, e.name as emp_name, e.divisi,
+             {completion_days_expr} as completion_days
+             FROM ac_tool_requests r LEFT JOIN employees e ON r.employee_id=e.id WHERE 1=1"""
+    sql = sql.format(completion_days_expr=completion_days_expr)
     params = []
     if status_filter:
         sql += ' AND r.status=?'; params.append(status_filter)
     order = ("COALESCE(NULLIF(r.updated_at,''),r.requested_at) DESC, r.id DESC" if sort == 'updated'
              else 'r.requested_at DESC')
     reqs = db.execute(sql + ' ORDER BY ' + order, params).fetchall()
-    return render_template('ac_tool_requests.html', requests=reqs, status_filter=status_filter, sort=sort)
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
+    return render_template('ac_tool_requests.html', requests=reqs, employees=employees,
+                           status_filter=status_filter, sort=sort)
 
 @app.route('/aset/tool-requests/new', methods=['GET','POST'])
 @login_required
 def ac_tool_request_new():
     if not ac_require('ac_manage_requests'): return redirect(url_for('ac_tool_requests'))
     db = get_db()
-    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+    employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
     if request.method == 'POST':
-        db.execute('''INSERT INTO ac_tool_requests(employee_id,item_name,reason) 
-                      VALUES(?,?,?)''',
-                   (request.form.get('employee_id') or None, request.form['item_name'].strip(),
-                    request.form.get('reason','').strip()))
+        item_name = request.form['item_name'].strip()
+        db.execute(
+            '''INSERT INTO ac_tool_requests
+               (employee_id,manual_user_name,item_name,item_category,reason,admin_item_type,admin_specs,
+                admin_url,admin_price,request_date,purchase_date,received_date,receipt_date,pic_support,
+                ket,spec_cpu_type,spec_ram,spec_disk,spec_gpu,spec_screen,spec_os,spec_office,
+                asset_tag,serial_number,notes)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (request.form.get('employee_id') or None,
+             request.form.get('manual_user_name','').strip(),
+             item_name,
+             request.form.get('item_category','Laptop').strip() or 'Laptop',
+             request.form.get('reason','').strip(),
+             request.form.get('admin_item_type','').strip(),
+             request.form.get('admin_specs','').strip(),
+             request.form.get('admin_url','').strip(),
+             _parse_float_value(request.form.get('admin_price')),
+             request.form.get('request_date','').strip(),
+             request.form.get('purchase_date','').strip(),
+             request.form.get('received_date','').strip(),
+             request.form.get('receipt_date','').strip(),
+             request.form.get('pic_support','').strip(),
+             request.form.get('ket','').strip(),
+             request.form.get('spec_cpu_type','').strip(),
+             request.form.get('spec_ram','').strip(),
+             request.form.get('spec_disk','').strip(),
+             request.form.get('spec_gpu','').strip(),
+             request.form.get('spec_screen','').strip(),
+             request.form.get('spec_os','').strip(),
+             request.form.get('spec_office','').strip(),
+             request.form.get('asset_tag','').strip(),
+             request.form.get('serial_number','').strip(),
+             request.form.get('notes','').strip()))
         db.commit(); flash('Request alat kerja ditambahkan.', 'success')
         return redirect(url_for('ac_tool_requests'))
-    return render_template('ac_tool_request_form.html', employees=employees)
+    return render_template('ac_tool_request_form.html', employees=employees, today=date.today().isoformat())
 
 @app.route('/aset/tool-requests/<int:rid>/status', methods=['POST'])
 @login_required
@@ -12532,22 +12712,58 @@ def ac_tool_request_status(rid):
     db = get_db()
     new_status = request.form.get('status')
     resolved_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S') if new_status in ('Approved','Rejected','Completed') else ''
-    
+
     admin_item_type = request.form.get('admin_item_type', '').strip()
     admin_specs = request.form.get('admin_specs', '').strip()
     admin_url = request.form.get('admin_url', '').strip()
-    try:
-        admin_price = float(request.form.get('admin_price') or 0.0)
-    except ValueError:
-        admin_price = 0.0
-        
-    db.execute('''UPDATE ac_tool_requests 
-                  SET status=?, notes=?, admin_item_type=?, admin_specs=?, admin_url=?, admin_price=?, 
-                      resolved_at=?, resolved_by=?, updated_at=datetime("now","localtime") 
+    admin_price = _parse_float_value(request.form.get('admin_price'))
+
+    db.execute('''UPDATE ac_tool_requests
+                  SET employee_id=?, manual_user_name=?, item_name=?, item_category=?, reason=?,
+                      status=?, notes=?, admin_item_type=?, admin_specs=?, admin_url=?, admin_price=?,
+                      request_date=?, purchase_date=?, received_date=?, receipt_date=?, pic_support=?,
+                      ket=?, spec_cpu_type=?, spec_ram=?, spec_disk=?, spec_gpu=?, spec_screen=?,
+                      spec_os=?, spec_office=?, asset_tag=?, serial_number=?,
+                      resolved_at=?, resolved_by=?, updated_at=datetime("now","localtime")
                   WHERE id=?''',
-               (new_status, request.form.get('notes','').strip(), admin_item_type, admin_specs, admin_url, admin_price,
+               (request.form.get('employee_id') or None,
+                request.form.get('manual_user_name','').strip(),
+                request.form.get('item_name','').strip(),
+                request.form.get('item_category','Laptop').strip() or 'Laptop',
+                request.form.get('reason','').strip(),
+                new_status, request.form.get('notes','').strip(), admin_item_type, admin_specs, admin_url, admin_price,
+                request.form.get('request_date','').strip(),
+                request.form.get('purchase_date','').strip(),
+                request.form.get('received_date','').strip(),
+                request.form.get('receipt_date','').strip(),
+                request.form.get('pic_support','').strip(),
+                request.form.get('ket','').strip(),
+                request.form.get('spec_cpu_type','').strip(),
+                request.form.get('spec_ram','').strip(),
+                request.form.get('spec_disk','').strip(),
+                request.form.get('spec_gpu','').strip(),
+                request.form.get('spec_screen','').strip(),
+                request.form.get('spec_os','').strip(),
+                request.form.get('spec_office','').strip(),
+                request.form.get('asset_tag','').strip(),
+                request.form.get('serial_number','').strip(),
                 resolved_at, session.get('user_name',''), rid))
-    db.commit(); flash(f'Status request alat kerja diubah ke {new_status}.', 'success')
+
+    asset_id = None
+    asset_created = False
+    if new_status == 'Completed' and request.form.get('create_asset') == '1':
+        req = db.execute('SELECT * FROM ac_tool_requests WHERE id=?', (rid,)).fetchone()
+        if req and _tool_request_targets_asset(req):
+            asset_id, asset_created = _create_asset_from_tool_request(db, req)
+
+    db.commit()
+    if asset_created:
+        audit_log('create', 'ac_assets', asset_id, f"Asset dari request alat kerja #{rid}", 'aset')
+        flash(f'Status request alat kerja diubah ke {new_status}. Asset Laptop/PC berhasil dibuat.', 'success')
+    elif new_status == 'Completed' and request.form.get('create_asset') == '1' and not asset_id:
+        flash(f'Status request alat kerja diubah ke {new_status}. Asset tidak dibuat karena kategori bukan Laptop/PC.', 'warning')
+    else:
+        flash(f'Status request alat kerja diubah ke {new_status}.', 'success')
     return redirect(url_for('ac_tool_requests'))
 
 @app.route('/aset/tool-requests/<int:rid>/delete', methods=['POST'])

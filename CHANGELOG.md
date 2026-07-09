@@ -7,6 +7,15 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [2.2.40] - 2026-07-09
+### Fitur: AssetCore Request Alat Kerja
+- Form Request Alat Kerja diperluas mengikuti format pembelian laptop: tanggal permintaan, tanggal pembelian, tanggal masuk, tanggal receipt, PIC Support, ket, user, dan harga.
+- Tambah detail spek opsional: CPU type, RAM, disk, GPU, layar, OS, Office, asset tag, dan serial number.
+- Saat request berstatus `Completed`, admin dapat membuat asset Laptop/PC otomatis dan mengaitkannya ke karyawan atau user manual.
+- Query total waktu penyelesaian disesuaikan agar kompatibel dengan SQLite dan PostgreSQL.
+
+---
+
 ## [1.9.3] — 2026-06-27
 ### Bug Fix
 - Fix `psycopg2.errors.SyntaxError: ON CONFLICT DO UPDATE requires inference specification` saat simpan pengaturan sistem
