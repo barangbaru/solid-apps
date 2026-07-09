@@ -1,4 +1,4 @@
-VERSION = "2.2.44"
+VERSION = "2.2.45"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -55,5 +55,6 @@ RELEASE_NOTES = (
     "v2.2.41: Menambahkan requested-by channel pada Request Alat Kerja serta multi attachment untuk capture request dan foto unit pembelian/checking. "
     "v2.2.42: Memperbaiki otorisasi AssetCore (dan core lainnya) agar mendeteksi role spesifik aplikasi (app_role dari user_app_access) dan menggabungkannya ke user_perms. "
     "v2.2.43: Mengunci request alat kerja yang Completed (greyed out & disabled) serta menghubungkan detail asset & list asset dengan info request alat kerja asal. "
-    "v2.2.44: Menambahkan requestor name, mengubah label Tanggal Masuk menjadi Tanggal Proses IT Support, serta implementasi master hardware specs/software dengan combo datalist."
+    "v2.2.44: Menambahkan requestor name, mengubah label Tanggal Masuk menjadi Tanggal Proses IT Support, serta implementasi master hardware specs/software dengan combo datalist. "
+    "v2.2.45: Redesain halaman Laporan & Analitik SupportCore dengan visualisasi modern ala Meridian (KPI Cards dan interactive charts dengan ApexCharts)."
 )

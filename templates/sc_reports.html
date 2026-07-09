@@ -1,241 +1,465 @@
 {% extends 'base.html' %}
-{% block title %}Laporan — SupportCore{% endblock %}
+{% block title %}Laporan & Analitik — SupportCore{% endblock %}
 {% block page_title %}<span class="breadcrumb-page">Laporan & Analitik</span>{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div>
-    <h5 class="fw-bold mb-0"><i class="bi bi-bar-chart-line text-primary me-2"></i>Laporan & Analitik</h5>
-    <div class="text-muted small mt-1">Ringkasan tiket support per tahun</div>
-  </div>
-  <button class="btn btn-sm btn-outline-secondary d-print-none" onclick="window.print()">
-    <i class="bi bi-printer me-1"></i>Print / Export PDF
-  </button>
-</div>
+<!-- Google Fonts & Custom Styling for Meridian Look -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  .meridian-container {
+    font-family: 'Inter', sans-serif;
+  }
+  .kpi-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  }
+  .icon-box {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+  }
+  .icon-box-primary { background: rgba(13, 110, 253, 0.1); color: #0d6efd; }
+  .icon-box-info { background: rgba(13, 202, 240, 0.1); color: #0dcaf0; }
+  .icon-box-success { background: rgba(25, 135, 84, 0.1); color: #198754; }
+  .icon-box-warning { background: rgba(255, 193, 7, 0.1); color: #ffc107; }
+  
+  .chart-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  }
+  .chart-card .card-header {
+    background: transparent;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    font-weight: 600;
+  }
+  .chart-container {
+    min-height: 300px;
+  }
+  
+  /* Filter Card styling */
+  .filter-card {
+    border: none;
+    border-radius: 12px;
+    background-color: #f8f9fa;
+  }
+</style>
 
-{# ── Filter ─────────────────────────────────────────────────────────────── #}
-<div class="card border-0 shadow-sm mb-3 d-print-none">
-  <div class="card-body py-3">
-    <form method="get" class="row g-2 align-items-end">
-
-      <div class="col-sm-6 col-md-2">
-        <label class="form-label small mb-1 fw-semibold">
-          <i class="bi bi-calendar-range me-1 text-secondary"></i>Dari Tanggal
-        </label>
-        <input type="date" name="date_from" class="form-control form-control-sm"
-               value="{{ filter_date_from }}" max="{{ filter_date_to }}">
-      </div>
-
-      <div class="col-sm-6 col-md-2">
-        <label class="form-label small mb-1 fw-semibold">
-          <i class="bi bi-calendar-range me-1 text-secondary"></i>Sampai Tanggal
-        </label>
-        <input type="date" name="date_to" class="form-control form-control-sm"
-               value="{{ filter_date_to }}" min="{{ filter_date_from }}">
-      </div>
-
-      <div class="col-sm-6 col-md-3">
-        <label class="form-label small mb-1 fw-semibold">
-          <i class="bi bi-building me-1 text-primary"></i>Customer
-        </label>
-        <select name="customer_id" class="form-select form-select-sm">
-          <option value="">Semua Customer</option>
-          {% for c in customers %}
-          <option value="{{ c.id }}" {{ 'selected' if filter_customer == c.id|string }}>{{ c.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="col-sm-6 col-md-3">
-        <label class="form-label small mb-1 fw-semibold">
-          <i class="bi bi-person-plus me-1 text-success"></i>Pembuat Tiket
-        </label>
-        <select name="created_by" class="form-select form-select-sm">
-          <option value="">Semua Pembuat</option>
-          {% for e in employees %}
-          <option value="{{ e.id }}" {{ 'selected' if filter_creator == e.id|string }}>{{ e.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="col-sm-6 col-md-2">
-        <label class="form-label small mb-1 fw-semibold">
-          <i class="bi bi-person-badge me-1 text-warning"></i>PIC Internal
-          <span class="text-muted fw-normal" style="font-size:.7rem">(by customer)</span>
-        </label>
-        <select name="pic_id" class="form-select form-select-sm">
-          <option value="">Semua PIC</option>
-          {% for e in employees %}
-          <option value="{{ e.id }}" {{ 'selected' if filter_pic == e.id|string }}>{{ e.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="col-sm-6 col-md-2">
-        <label class="form-label small mb-1 fw-semibold">
-          <i class="bi bi-person-check me-1 text-info"></i>Assignee
-        </label>
-        <select name="assignee_id" class="form-select form-select-sm">
-          <option value="">Semua Assignee</option>
-          {% for e in employees %}
-          <option value="{{ e.id }}" {{ 'selected' if filter_assignee == e.id|string }}>{{ e.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div class="col-auto">
-        <button type="submit" class="btn btn-sm btn-primary">
-          <i class="bi bi-funnel me-1"></i>Tampilkan
-        </button>
-        <a href="/support/reports" class="btn btn-sm btn-outline-secondary ms-1">Reset</a>
-      </div>
-
-    </form>
-
-    {# Active filter chips #}
-    {% set active_filters = [] %}
-    {% if filter_customer %}
-      {% for c in customers %}{% if filter_customer == c.id|string %}{% set _ = active_filters.append('Customer: ' ~ c.name) %}{% endif %}{% endfor %}
-    {% endif %}
-    {% if filter_creator %}
-      {% for e in employees %}{% if filter_creator == e.id|string %}{% set _ = active_filters.append('Pembuat: ' ~ e.name) %}{% endif %}{% endfor %}
-    {% endif %}
-    {% if filter_pic %}
-      {% for e in employees %}{% if filter_pic == e.id|string %}{% set _ = active_filters.append('PIC: ' ~ e.name) %}{% endif %}{% endfor %}
-    {% endif %}
-    {% if filter_assignee %}
-      {% for e in employees %}{% if filter_assignee == e.id|string %}{% set _ = active_filters.append('Assignee: ' ~ e.name) %}{% endif %}{% endfor %}
-    {% endif %}
-    {% if active_filters %}
-    <div class="mt-2 d-flex flex-wrap gap-1 align-items-center">
-      <span class="small text-muted">Filter aktif:</span>
-      {% for f in active_filters %}
-      <span class="badge bg-primary bg-opacity-10 text-primary border border-primary">{{ f }}</span>
-      {% endfor %}
+<div class="meridian-container">
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h5 class="fw-bold mb-0 text-dark"><i class="bi bi-bar-chart-line-fill text-primary me-2"></i>Laporan & Analitik</h5>
+      <div class="text-muted small mt-1">Metrik, analisis SLA, dan visualisasi kinerja SupportCore</div>
     </div>
-    {% endif %}
+    <button class="btn btn-sm btn-outline-secondary d-print-none" onclick="window.print()">
+      <i class="bi bi-printer me-1"></i>Print / Export PDF
+    </button>
   </div>
-</div>
 
-{# ── Summary Cards ───────────────────────────────────────────────────────── #}
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center">
-      <div class="card-body py-3">
-        <div class="fs-2 fw-bold text-primary">{{ total_tickets }}</div>
-        <div class="small text-muted">{{ filter_date_from }} s/d {{ filter_date_to }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center">
-      <div class="card-body py-3">
-        <div class="fs-2 fw-bold text-info">
-          {{ avg_resp if avg_resp is not none else '—' }}{% if avg_resp is not none %}<small class="fs-6">j</small>{% endif %}
+  <!-- Filter Section -->
+  <div class="card filter-card mb-4 d-print-none border-0">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-sm-6 col-md-2">
+          <label class="form-label small mb-1 fw-semibold text-secondary">
+            <i class="bi bi-calendar-range me-1"></i>Dari Tanggal
+          </label>
+          <input type="date" name="date_from" class="form-control form-control-sm"
+                 value="{{ filter_date_from }}" max="{{ filter_date_to }}">
         </div>
-        <div class="small text-muted">Rata-rata Respons</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center">
-      <div class="card-body py-3">
-        <div class="fs-2 fw-bold text-success">
-          {{ avg_res if avg_res is not none else '—' }}{% if avg_res is not none %}<small class="fs-6">j</small>{% endif %}
+
+        <div class="col-sm-6 col-md-2">
+          <label class="form-label small mb-1 fw-semibold text-secondary">
+            <i class="bi bi-calendar-range me-1"></i>Sampai Tanggal
+          </label>
+          <input type="date" name="date_to" class="form-control form-control-sm"
+                 value="{{ filter_date_to }}" min="{{ filter_date_from }}">
         </div>
-        <div class="small text-muted">Rata-rata Resolusi</div>
-      </div>
+
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label small mb-1 fw-semibold text-secondary">
+            <i class="bi bi-building me-1 text-primary"></i>Customer
+          </label>
+          <select name="customer_id" class="form-select form-select-sm">
+            <option value="">Semua Customer</option>
+            {% for c in customers %}
+            <option value="{{ c.id }}" {{ 'selected' if filter_customer == c.id|string }}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label small mb-1 fw-semibold text-secondary">
+            <i class="bi bi-person-plus me-1 text-success"></i>Pembuat Tiket
+          </label>
+          <select name="created_by" class="form-select form-select-sm">
+            <option value="">Semua Pembuat</option>
+            {% for e in employees %}
+            <option value="{{ e.id }}" {{ 'selected' if filter_creator == e.id|string }}>{{ e.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-sm-6 col-md-2">
+          <label class="form-label small mb-1 fw-semibold text-secondary">
+            <i class="bi bi-person-badge me-1 text-warning"></i>PIC Internal
+          </label>
+          <select name="pic_id" class="form-select form-select-sm">
+            <option value="">Semua PIC</option>
+            {% for e in employees %}
+            <option value="{{ e.id }}" {{ 'selected' if filter_pic == e.id|string }}>{{ e.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-sm-6 col-md-2">
+          <label class="form-label small mb-1 fw-semibold text-secondary">
+            <i class="bi bi-person-check me-1 text-info"></i>Assignee
+          </label>
+          <select name="assignee_id" class="form-select form-select-sm">
+            <option value="">Semua Assignee</option>
+            {% for e in employees %}
+            <option value="{{ e.id }}" {{ 'selected' if filter_assignee == e.id|string }}>{{ e.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-auto">
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-funnel me-1"></i>Tampilkan
+          </button>
+          <a href="/support/reports" class="btn btn-sm btn-outline-secondary ms-1">Reset</a>
+        </div>
+      </form>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center">
-      <div class="card-body py-3">
-        <div class="fs-2 fw-bold text-warning">{{ monthly|length }}</div>
-        <div class="small text-muted">Bulan Aktif</div>
+
+  <!-- KPI Metric Cards Grid -->
+  <div class="row g-3 mb-4">
+    <!-- Card 1: Total Tiket -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <div class="card kpi-card h-full">
+        <div class="card-body d-flex align-items-center justify-content-between p-3">
+          <div>
+            <span class="text-sm text-muted-foreground d-block mb-1">Total Tiket</span>
+            <div class="text-2xl fw-bold text-dark">{{ total_tickets }}</div>
+            <span class="text-xs text-muted" style="font-size: 0.72rem;">{{ filter_date_from }} s/d {{ filter_date_to }}</span>
+          </div>
+          <div class="icon-box icon-box-primary">
+            <i class="bi bi-ticket-perforated-fill"></i>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-</div>
 
-{# ── Monthly Table ───────────────────────────────────────────────────────── #}
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-transparent fw-semibold">
-    Ringkasan Tiket per Bulan — {{ filter_date_from }} s/d {{ filter_date_to }}
-    {% if active_filters %}<span class="badge bg-secondary ms-2">Filter aktif</span>{% endif %}
-  </div>
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0 align-middle">
-      <thead class="table-light">
-        <tr>
-          <th class="ps-3">Bulan</th>
-          <th class="text-center">Total</th>
-          <th class="text-center">Open/In Progress</th>
-          <th class="text-center">Closed/Resolved</th>
-          <th class="text-center">Corrective</th>
-          <th class="text-center">Preventive</th>
-          <th class="text-center">Onsite</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for mo, s in monthly.items()|sort %}
-        <tr>
-          <td class="ps-3 fw-semibold">{{ mo }}</td>
-          <td class="text-center">{{ s.total }}</td>
-          <td class="text-center"><span class="badge bg-secondary">{{ s.open }}</span></td>
-          <td class="text-center"><span class="badge bg-success">{{ s.closed }}</span></td>
-          <td class="text-center">{{ s.corrective or '—' }}</td>
-          <td class="text-center">{{ s.preventive or '—' }}</td>
-          <td class="text-center">{{ s.onsite or '—' }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">Tidak ada data untuk filter yang dipilih.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-{# ── Top Customers ───────────────────────────────────────────────────────── #}
-{% if top_customers %}
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold">Top Customer by Jumlah Tiket</div>
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0 align-middle">
-      <thead class="table-light">
-        <tr>
-          <th class="ps-3" style="width:50px">#</th>
-          <th>Customer</th>
-          <th class="text-center">Jumlah Tiket</th>
-          <th>Proporsi</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for name, cnt in top_customers %}
-        <tr>
-          <td class="ps-3 text-muted">{{ loop.index }}</td>
-          <td class="fw-semibold">{{ name }}</td>
-          <td class="text-center">{{ cnt }}</td>
-          <td style="min-width:150px">
-            {% set pct = (cnt / total_tickets * 100)|round(1) if total_tickets > 0 else 0 %}
-            <div class="d-flex align-items-center gap-2">
-              <div class="progress flex-grow-1" style="height:8px">
-                <div class="progress-bar bg-primary" style="width:{{ pct }}%"></div>
-              </div>
-              <span class="small text-muted" style="width:40px">{{ pct }}%</span>
+    <!-- Card 2: Rata-Rata Respons -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <div class="card kpi-card h-full">
+        <div class="card-body d-flex align-items-center justify-content-between p-3">
+          <div>
+            <span class="text-sm text-muted-foreground d-block mb-1">Rata-Rata Respons</span>
+            <div class="text-2xl fw-bold text-dark">
+              {{ avg_resp if avg_resp is not none else '—' }}{% if avg_resp is not none %}<span class="fs-6 fw-normal text-muted"> jam</span>{% endif %}
             </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            <span class="text-xs text-muted" style="font-size: 0.72rem;">SLA Response Time</span>
+          </div>
+          <div class="icon-box icon-box-info">
+            <i class="bi bi-lightning-charge-fill"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3: Rata-Rata Resolusi -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <div class="card kpi-card h-full">
+        <div class="card-body d-flex align-items-center justify-content-between p-3">
+          <div>
+            <span class="text-sm text-muted-foreground d-block mb-1">Rata-Rata Resolusi</span>
+            <div class="text-2xl fw-bold text-dark">
+              {{ avg_res if avg_res is not none else '—' }}{% if avg_res is not none %}<span class="fs-6 fw-normal text-muted"> jam</span>{% endif %}
+            </div>
+            <span class="text-xs text-muted" style="font-size: 0.72rem;">SLA Resolution Time</span>
+          </div>
+          <div class="icon-box icon-box-success">
+            <i class="bi bi-check-circle-fill"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 4: Bulan Aktif -->
+    <div class="col-12 col-sm-6 col-md-3">
+      <div class="card kpi-card h-full">
+        <div class="card-body d-flex align-items-center justify-content-between p-3">
+          <div>
+            <span class="text-sm text-muted-foreground d-block mb-1">Bulan Aktif</span>
+            <div class="text-2xl fw-bold text-dark">{{ monthly|length }}</div>
+            <span class="text-xs text-muted" style="font-size: 0.72rem;">Bulan tercakup filter</span>
+          </div>
+          <div class="icon-box icon-box-warning">
+            <i class="bi bi-calendar-event-fill"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Charts Grid (Meridian Style) -->
+  <div class="row g-3 mb-4">
+    <!-- Chart 1: Tren Tiket Bulanan -->
+    <div class="col-12 col-lg-8">
+      <div class="card chart-card h-full">
+        <div class="card-header py-2 d-flex align-items-center justify-content-between">
+          <span class="small text-uppercase fw-bold text-secondary">Tren Tiket Bulanan</span>
+          <span class="badge bg-soft-primary text-primary" style="font-size:0.75rem;">Volume over time</span>
+        </div>
+        <div class="card-body">
+          <div id="trendChart" class="chart-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 2: Distribusi Status Tiket -->
+    <div class="col-12 col-lg-4">
+      <div class="card chart-card h-full">
+        <div class="card-header py-2">
+          <span class="small text-uppercase fw-bold text-secondary">Distribusi Status Tiket</span>
+        </div>
+        <div class="card-body d-flex align-items-center justify-content-center">
+          <div id="statusChart" class="chart-container w-full"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 3: Top Customers (Horizontal Bar) -->
+    <div class="col-12 col-lg-6">
+      <div class="card chart-card h-full">
+        <div class="card-header py-2">
+          <span class="small text-uppercase fw-bold text-secondary">Top Customer by Jumlah Tiket</span>
+        </div>
+        <div class="card-body">
+          <div id="customerChart" class="chart-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 4: Tipe Maintenance / Support -->
+    <div class="col-12 col-lg-6">
+      <div class="card chart-card h-full">
+        <div class="card-header py-2">
+          <span class="small text-uppercase fw-bold text-secondary">Tipe Maintenance & Support</span>
+        </div>
+        <div class="card-body d-flex align-items-center justify-content-center">
+          <div id="typeChart" class="chart-container w-full"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw Data monthly summary table (Accordion or Collapsible for cleaner look) -->
+  <div class="card chart-card mb-4">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+      <span class="small text-uppercase fw-bold text-secondary">Tabel Ringkasan Bulanan</span>
+      <button class="btn btn-sm btn-link p-0 text-decoration-none small" type="button" data-bs-toggle="collapse" data-bs-target="#tableCollapse" aria-expanded="true">
+        Toggle Detail
+      </button>
+    </div>
+    <div class="collapse show" id="tableCollapse">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3">Bulan</th>
+                <th class="text-center">Total</th>
+                <th class="text-center">Open/In Progress</th>
+                <th class="text-center">Closed/Resolved</th>
+                <th class="text-center">Corrective</th>
+                <th class="text-center">Preventive</th>
+                <th class="text-center">Onsite</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for mo, s in monthly.items()|sort %}
+              <tr>
+                <td class="ps-3 fw-semibold text-dark">{{ mo }}</td>
+                <td class="text-center">{{ s.total }}</td>
+                <td class="text-center"><span class="badge bg-secondary">{{ s.open }}</span></td>
+                <td class="text-center"><span class="badge bg-success">{{ s.closed }}</span></td>
+                <td class="text-center">{{ s.corrective or '0' }}</td>
+                <td class="text-center">{{ s.preventive or '0' }}</td>
+                <td class="text-center">{{ s.onsite or '0' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="7" class="text-center text-muted py-4">Tidak ada data untuk filter yang dipilih.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-{% endif %}
+
+<!-- ApexCharts Script CDN -->
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3"></script>
+<script>
+  // Parse data generated from jinja
+  const monthlyKeys = [{% for mo, s in monthly.items()|sort %}"{{ mo }}",{% endfor %}];
+  const monthlyTotal = [{% for mo, s in monthly.items()|sort %}{{ s.total }},{% endfor %}];
+  const monthlyClosed = [{% for mo, s in monthly.items()|sort %}{{ s.closed }},{% endfor %}];
+  const monthlyOpen = [{% for mo, s in monthly.items()|sort %}{{ s.open }},{% endfor %}];
+
+  // Aggregated status calculations
+  const totalOpen = {% set ns = namespace(open=0) %}{% for mo, s in monthly.values() %}{% set ns.open = ns.open + s.open %}{% endfor %}{{ ns.open }};
+  const totalClosed = {% set ns = namespace(closed=0) %}{% for mo, s in monthly.values() %}{% set ns.closed = ns.closed + s.closed %}{% endfor %}{{ ns.closed }};
+
+  // Aggregated type calculations
+  const totalCorrective = {% set ns = namespace(c=0) %}{% for mo, s in monthly.values() %}{% set ns.c = ns.c + (s.corrective or 0) %}{% endfor %}{{ ns.c }};
+  const totalPreventive = {% set ns = namespace(p=0) %}{% for mo, s in monthly.values() %}{% set ns.p = ns.p + (s.preventive or 0) %}{% endfor %}{{ ns.p }};
+  const totalOnsite = {% set ns = namespace(o=0) %}{% for mo, s in monthly.values() %}{% set ns.o = ns.o + (s.onsite or 0) %}{% endfor %}{{ ns.o }};
+
+  // Top Customers mapping
+  const customerNames = [{% for name, cnt in top_customers %}"{{ name }}",{% endfor %}];
+  const customerCounts = [{% for name, cnt in top_customers %}{{ cnt }},{% endfor %}];
+
+  // 1. Tren Tiket Bulanan (Area Chart)
+  if(monthlyKeys.length > 0) {
+    var trendOptions = {
+      series: [
+        { name: 'Total Tiket', data: monthlyTotal },
+        { name: 'Selesai/Closed', data: monthlyClosed },
+        { name: 'Masih Open', data: monthlyOpen }
+      ],
+      chart: {
+        type: 'area',
+        height: 310,
+        toolbar: { show: false },
+        zoom: { enabled: false }
+      },
+      dataLabels: { enabled: false },
+      stroke: { curve: 'smooth', width: 2 },
+      colors: ['#0d6efd', '#198754', '#6c757d'],
+      xaxis: {
+        categories: monthlyKeys,
+        labels: { style: { colors: '#6c757d', fontSize: '11px' } }
+      },
+      yaxis: {
+        labels: { style: { colors: '#6c757d', fontSize: '11px' } }
+      },
+      fill: {
+        type: 'gradient',
+        gradient: {
+          shadeIntensity: 1,
+          opacityFrom: 0.45,
+          opacityTo: 0.05,
+          stops: [0, 100]
+        }
+      },
+      grid: { borderColor: '#f1f1f1' },
+      legend: { position: 'top', horizontalAlign: 'right' }
+    };
+    var trendChart = new ApexCharts(document.querySelector("#trendChart"), trendOptions);
+    trendChart.render();
+  } else {
+    document.querySelector("#trendChart").innerHTML = '<div class="text-center text-muted py-5 small">Tidak ada data tren</div>';
+  }
+
+  // 2. Status Donut Chart
+  if(totalOpen > 0 || totalClosed > 0) {
+    var statusOptions = {
+      series: [totalOpen, totalClosed],
+      labels: ['Open / In Progress', 'Closed / Resolved'],
+      chart: { type: 'donut', height: 280 },
+      colors: ['#0dcaf0', '#198754'],
+      legend: { position: 'bottom' },
+      dataLabels: { enabled: true, formatter: function (val, opts) { return opts.w.config.series[opts.seriesIndex] } },
+      plotOptions: {
+        pie: {
+          donut: {
+            size: '70%',
+            labels: {
+              show: true,
+              total: {
+                show: true,
+                label: 'Total Tiket',
+                formatter: function (w) {
+                  return w.globals.seriesTotals.reduce((a, b) => a + b, 0);
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+    var statusChart = new ApexCharts(document.querySelector("#statusChart"), statusOptions);
+    statusChart.render();
+  } else {
+    document.querySelector("#statusChart").innerHTML = '<div class="text-center text-muted py-5 small">Tidak ada data status</div>';
+  }
+
+  // 3. Top Customer (Horizontal Bar Chart)
+  if(customerNames.length > 0) {
+    var customerOptions = {
+      series: [{ name: 'Tiket', data: customerCounts }],
+      chart: { type: 'bar', height: 300, toolbar: { show: false } },
+      plotOptions: {
+        bar: {
+          horizontal: true,
+          barHeight: '60%',
+          borderRadius: 4
+        }
+      },
+      colors: ['#0d6efd'],
+      dataLabels: { enabled: true },
+      xaxis: {
+        categories: customerNames,
+        labels: { style: { colors: '#6c757d', fontSize: '11px' } }
+      },
+      yaxis: {
+        labels: { style: { colors: '#6c757d', fontSize: '11px' } }
+      },
+      grid: { borderColor: '#f1f1f1' }
+    };
+    var customerChart = new ApexCharts(document.querySelector("#customerChart"), customerOptions);
+    customerChart.render();
+  } else {
+    document.querySelector("#customerChart").innerHTML = '<div class="text-center text-muted py-5 small">Tidak ada data customer</div>';
+  }
+
+  // 4. Type Donut/Pie Chart
+  if(totalCorrective > 0 || totalPreventive > 0 || totalOnsite > 0) {
+    var typeOptions = {
+      series: [totalCorrective, totalPreventive, totalOnsite],
+      labels: ['Corrective', 'Preventive', 'Onsite'],
+      chart: { type: 'pie', height: 280 },
+      colors: ['#dc3545', '#198754', '#ffc107'],
+      legend: { position: 'bottom' },
+      dataLabels: { enabled: true }
+    };
+    var typeChart = new ApexCharts(document.querySelector("#typeChart"), typeOptions);
+    typeChart.render();
+  } else {
+    document.querySelector("#typeChart").innerHTML = '<div class="text-center text-muted py-5 small">Tidak ada data tipe maintenance</div>';
+  }
+</script>
 
 <style>
-@media print {
-  .d-print-none { display: none !important; }
-  .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
-}
+  @media print {
+    .d-print-none { display: none !important; }
+    .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
+  }
 </style>
 {% endblock %}
