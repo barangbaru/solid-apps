@@ -1,4 +1,4 @@
-VERSION = "2.2.61"
+VERSION = "2.2.62"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -73,4 +73,5 @@ RELEASE_NOTES = (
     "v2.2.59: Menambahkan tabel Status Kehadiran Karyawan Hari Ini (Live Attendance Wall) pada dashboard AttendanceCore untuk menampilkan informasi clock-in, clock-out, lokasi, plan, dan progress seluruh karyawan."
     "v2.2.60: Pengetatan alur presensi Telegram: Rencana kerja (#PLAN) tidak dapat diisi sebelum Clock In, laporan kemajuan (#PROGRESS) tidak dapat diisi sebelum #PLAN lengkap, dan Clock Out diblokir hingga keduanya diisi secara terpisah."
     "v2.2.61: Menambahkan informasi nama Telegram Group pengirim absensi serta kolom kalkulasi Durasi Kerja (jam) hasil selisih Clock Out dan Clock In pada tabel Live Attendance Wall."
+    "v2.2.62: Memperbaiki prioritas deteksi Telegram ID ke tabel karyawan (employees) terlebih dahulu, menambahkan auto-register fallback untuk pengguna tidak dikenal, mendukung clock-out berulang (update checkout), dan menambahkan detail nama grup pada balasan bot Telegram."
 )

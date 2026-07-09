@@ -14242,22 +14242,53 @@ def telegram_webhook():
             tg_id_variants.append(clean_username)
             tg_id_variants.append(f"@{clean_username}")
 
-        user = None
+        # 1. Check in employees table first
+        employee = None
         for variant in tg_id_variants:
-            # 1. Check in users table
-            user = db.execute('SELECT * FROM users WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
-            if user:
+            employee = db.execute('SELECT * FROM employees WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
+            if employee:
                 break
-            # 2. Check in employees table
-            emp = db.execute('SELECT * FROM employees WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
-            if emp and emp['user_id']:
-                user = db.execute('SELECT * FROM users WHERE id = ? AND is_active = 1', (emp['user_id'],)).fetchone()
+
+        user = None
+        if employee and employee['user_id']:
+            user = db.execute('SELECT * FROM users WHERE id = ? AND is_active = 1', (employee['user_id'],)).fetchone()
+
+        if not user:
+            for variant in tg_id_variants:
+                user = db.execute('SELECT * FROM users WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
                 if user:
                     break
 
+        # Fallback: if not registered in HIVE, auto-register as user & employee
         if not user:
-            reply(f"Akun Telegram Anda ({username or chat_id}) belum terdaftar di HIVE. Silakan hubungi administrator untuk mendaftarkan Username/Chat ID Anda.")
-            return 'OK', 200
+            import time
+            from werkzeug.security import generate_password_hash
+
+            fallback_username = f"tg_{from_id}" if from_id else f"tg_anon_{int(time.time())}"
+            existing_user = db.execute('SELECT * FROM users WHERE username = ?', (fallback_username,)).fetchone()
+            if existing_user:
+                user = existing_user
+            else:
+                dummy_pwd = generate_password_hash("TelegramAttendanceFallback@2026")
+                full_name = employee['name'] if employee else (username or f"Telegram User {from_id}")
+                
+                db.execute('''
+                    INSERT INTO users (username, password_hash, full_name, role, is_active, telegram_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (fallback_username, dummy_pwd, full_name, 'karyawan', 1, str(from_id) if from_id else ''))
+                db.commit()
+                user = db.execute('SELECT * FROM users WHERE username = ?', (fallback_username,)).fetchone()
+
+            if employee:
+                db.execute('UPDATE employees SET user_id = ? WHERE id = ?', (user['id'], employee['id']))
+                db.commit()
+            else:
+                emp_name = username or f"Telegram User {from_id}"
+                db.execute('''
+                    INSERT INTO employees (name, divisi, telegram_id, user_id, is_active)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (emp_name, 'Telegram Core', str(from_id) if from_id else '', user['id'], 1))
+                db.commit()
 
         uid = user['id']
         full_name = user['full_name']
@@ -14274,6 +14305,7 @@ def telegram_webhook():
                     group_title = chat_obj.get('title', '') or ''
 
             source_label = f"Telegram Group: {group_title}" if group_title else "Telegram Japri"
+            group_suffix = f" di group <b>{group_title}</b>" if group_title else " melalui <b>Japri</b>"
             
             today = datetime.now().strftime('%Y-%m-%d')
             now_time = datetime.now().strftime('%H:%M:%S')
@@ -14289,7 +14321,7 @@ def telegram_webhook():
                     status = 'late'
                 
                 # Send reply first
-                reply(f"Halo {user_mention},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
+                reply(f"Halo {user_mention},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot{group_suffix}!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
                 
                 # Then save to database
                 db.execute(
@@ -14297,8 +14329,8 @@ def telegram_webhook():
                     (uid, today, now_time, loc, source_label, status)
                 )
                 db.commit()
-            elif not today_att['clock_out']:
-                # Clock Out - requires #PLAN and #PROGRESS (min 10 characters clean text each)
+            else:
+                # User is sending location again (Clock Out / update Clock Out)
                 plan = (today_att['plan'] or '').strip()
                 progress = (today_att['progress'] or '').strip()
                 
@@ -14335,7 +14367,7 @@ def telegram_webhook():
                     )
                 else:
                     # Send success reply first
-                    reply(f"Halo {user_mention},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nPlan/Progress: LENGKAP")
+                    reply(f"Halo {user_mention},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot{group_suffix}!\nWaktu: {now_time}\nLokasi: {loc}\nPlan/Progress: LENGKAP")
                     
                     # Then save to database
                     db.execute(
@@ -14343,8 +14375,6 @@ def telegram_webhook():
                         (now_time, loc, source_label, today_att['id'])
                     )
                     db.commit()
-            else:
-                reply(f"Halo {user_mention},\nAnda sudah melakukan Clock In dan Clock Out untuk hari ini.")
         else:
             text = message.get('text', '')
             lower_text = text.lower()
