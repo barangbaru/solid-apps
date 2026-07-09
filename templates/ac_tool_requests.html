@@ -52,7 +52,7 @@
             <div class="fw-semibold small">{{ r.item_name }}</div>
             <div class="text-muted small">{{ r.item_category or 'Laptop' }}</div>
             <div class="small text-muted">
-              By: {{ r.request_channel_other if r.request_channel == 'Other' and r.request_channel_other else (r.request_channel or 'Email') }}
+              By: {% if r.requestor_name %}<strong>{{ r.requestor_name }}</strong> via {% endif %}{{ r.request_channel_other if r.request_channel == 'Other' and r.request_channel_other else (r.request_channel or 'Email') }}
             </div>
             {% if r.asset_id %}
             <a href="/aset/assets/{{ r.asset_id }}" class="badge bg-secondary text-decoration-none mt-1">Asset #{{ r.asset_id }}</a>
@@ -65,7 +65,7 @@
           <td class="small text-muted" style="min-width:170px">
             <div>Request: {{ r.request_date or (r.requested_at[:10] if r.requested_at else '-') }}</div>
             <div>Beli: {{ r.purchase_date or '-' }}</div>
-            <div>Masuk: {{ r.received_date or '-' }}</div>
+            <div>Proses IT: {{ r.received_date or '-' }}</div>
             <div>Receipt: {{ r.receipt_date or '-' }}</div>
             {% if r.completion_days is not none %}
             <span class="badge bg-light text-dark border mt-1">{{ r.completion_days }} hari</span>
@@ -150,6 +150,7 @@
                     data-rid="{{ r.id }}"
                     data-employee-id="{{ r.employee_id or '' }}"
                     data-manual-user-name="{{ r.manual_user_name|e }}"
+                    data-requestor-name="{{ r.requestor_name|e }}"
                     data-item-name="{{ r.item_name|e }}"
                     data-item-category="{{ r.item_category|e }}"
                     data-request-channel="{{ r.request_channel|e }}"
@@ -243,6 +244,10 @@
             </div>
 
             <div class="col-md-3">
+              <label class="form-label fw-semibold small">Nama Requestor</label>
+              <input name="requestor_name" id="modalRequestorName" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
               <label class="form-label fw-semibold small">Requested By</label>
               <select name="request_channel" id="modalRequestChannel" class="form-select form-select-sm">
                 {% for c in ['Email','WhatsApp','Telegram','Other'] %}
@@ -273,7 +278,7 @@
               <input name="purchase_date" id="modalPurchaseDate" type="date" class="form-control form-control-sm">
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold small">Tanggal Masuk</label>
+              <label class="form-label fw-semibold small">Tanggal Proses di IT Support</label>
               <input name="received_date" id="modalReceivedDate" type="date" class="form-control form-control-sm">
             </div>
             <div class="col-md-3">
@@ -300,32 +305,32 @@
 
             <div class="col-md-3">
               <label class="form-label fw-semibold small">CPU Type</label>
-              <input name="spec_cpu_type" id="modalSpecCpuType" class="form-control form-control-sm">
+              <input name="spec_cpu_type" id="modalSpecCpuType" list="list-cpu" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
             </div>
             <div class="col-md-2">
               <label class="form-label fw-semibold small">RAM</label>
-              <input name="spec_ram" id="modalSpecRam" class="form-control form-control-sm">
+              <input name="spec_ram" id="modalSpecRam" list="list-ram" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
             </div>
             <div class="col-md-2">
               <label class="form-label fw-semibold small">Disk</label>
-              <input name="spec_disk" id="modalSpecDisk" class="form-control form-control-sm">
+              <input name="spec_disk" id="modalSpecDisk" list="list-disk" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
             </div>
             <div class="col-md-2">
               <label class="form-label fw-semibold small">GPU</label>
-              <input name="spec_gpu" id="modalSpecGpu" class="form-control form-control-sm">
+              <input name="spec_gpu" id="modalSpecGpu" list="list-gpu" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold small">Layar</label>
-              <input name="spec_screen" id="modalSpecScreen" class="form-control form-control-sm">
+              <input name="spec_screen" id="modalSpecScreen" list="list-screen" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
             </div>
 
             <div class="col-md-3">
               <label class="form-label fw-semibold small">OS</label>
-              <input name="spec_os" id="modalSpecOs" class="form-control form-control-sm">
+              <input name="spec_os" id="modalSpecOs" list="list-os" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold small">Office</label>
-              <input name="spec_office" id="modalSpecOffice" class="form-control form-control-sm">
+              <input name="spec_office" id="modalSpecOffice" list="list-office" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
             </div>
             <div class="col-md-3">
               <label class="form-label fw-semibold small">PIC Support</label>
@@ -334,6 +339,41 @@
             <div class="col-md-3">
               <label class="form-label fw-semibold small">Ket</label>
               <input name="ket" id="modalKet" class="form-control form-control-sm">
+              <datalist id="list-cpu">
+                {% for item in masters.get('cpu', []) %}
+                <option value="{{ item }}"></option>
+                {% endfor %}
+              </datalist>
+              <datalist id="list-ram">
+                {% for item in masters.get('ram', []) %}
+                <option value="{{ item }}"></option>
+                {% endfor %}
+              </datalist>
+              <datalist id="list-disk">
+                {% for item in masters.get('disk', []) %}
+                <option value="{{ item }}"></option>
+                {% endfor %}
+              </datalist>
+              <datalist id="list-gpu">
+                {% for item in masters.get('gpu', []) %}
+                <option value="{{ item }}"></option>
+                {% endfor %}
+              </datalist>
+              <datalist id="list-screen">
+                {% for item in masters.get('screen', []) %}
+                <option value="{{ item }}"></option>
+                {% endfor %}
+              </datalist>
+              <datalist id="list-os">
+                {% for item in masters.get('os', []) %}
+                <option value="{{ item }}"></option>
+                {% endfor %}
+              </datalist>
+              <datalist id="list-office">
+                {% for item in masters.get('office', []) %}
+                <option value="{{ item }}"></option>
+                {% endfor %}
+              </datalist>
             </div>
 
             <div class="col-md-4">
@@ -399,6 +439,7 @@ document.getElementById('modalStatus').addEventListener('show.bs.modal', functio
   document.getElementById('formStatus').action = '/aset/tool-requests/' + btn.dataset.rid + '/status';
   setField('modalEmployeeId', btn.dataset.employeeId);
   setField('modalManualUserName', btn.dataset.manualUserName);
+  setField('modalRequestorName', btn.dataset.requestorName);
   setField('modalItemName', btn.dataset.itemName);
   setField('modalItemCategory', btn.dataset.itemCategory || 'Laptop');
   setField('modalRequestChannel', btn.dataset.requestChannel || 'Email');

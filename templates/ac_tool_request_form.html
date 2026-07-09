@@ -31,6 +31,10 @@
         </div>
 
         <div class="col-md-3">
+          <label class="form-label fw-semibold small">Nama Requestor</label>
+          <input name="requestor_name" class="form-control form-control-sm" placeholder="Nama pemohon">
+        </div>
+        <div class="col-md-3">
           <label class="form-label fw-semibold small">Requested By</label>
           <select name="request_channel" class="form-select form-select-sm">
             {% for c in ['Email','WhatsApp','Telegram','Other'] %}
@@ -74,7 +78,7 @@
           <input name="purchase_date" type="date" class="form-control form-control-sm">
         </div>
         <div class="col-md-3">
-          <label class="form-label fw-semibold small">Tanggal Masuk</label>
+          <label class="form-label fw-semibold small">Tanggal Proses di IT Support</label>
           <input name="received_date" type="date" class="form-control form-control-sm">
         </div>
         <div class="col-md-3">
@@ -101,19 +105,39 @@
 
         <div class="col-md-3">
           <label class="form-label fw-semibold small">CPU Type</label>
-          <input name="spec_cpu_type" class="form-control form-control-sm" placeholder="Intel Core i5-1235U">
+          <input name="spec_cpu_type" list="list-cpu" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
+          <datalist id="list-cpu">
+            {% for item in masters.get('cpu', []) %}
+            <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-2">
           <label class="form-label fw-semibold small">RAM</label>
-          <input name="spec_ram" class="form-control form-control-sm" placeholder="16 GB">
+          <input name="spec_ram" list="list-ram" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
+          <datalist id="list-ram">
+            {% for item in masters.get('ram', []) %}
+            <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-2">
           <label class="form-label fw-semibold small">Disk</label>
-          <input name="spec_disk" class="form-control form-control-sm" placeholder="512 GB SSD">
+          <input name="spec_disk" list="list-disk" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
+          <datalist id="list-disk">
+            {% for item in masters.get('disk', []) %}
+            <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold small">GPU</label>
-          <input name="spec_gpu" class="form-control form-control-sm" placeholder="Intel Iris Xe">
+          <input name="spec_gpu" list="list-gpu" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
+          <datalist id="list-gpu">
+            {% for item in masters.get('gpu', []) %}
+            <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-2">
           <label class="form-label fw-semibold small">Serial Number</label>
@@ -122,15 +146,30 @@
 
         <div class="col-md-3">
           <label class="form-label fw-semibold small">Layar</label>
-          <input name="spec_screen" class="form-control form-control-sm" placeholder="14 inch FHD">
+          <input name="spec_screen" list="list-screen" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
+          <datalist id="list-screen">
+            {% for item in masters.get('screen', []) %}
+            <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold small">OS</label>
-          <input name="spec_os" class="form-control form-control-sm" placeholder="Windows 11 Pro">
+          <input name="spec_os" list="list-os" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
+          <datalist id="list-os">
+            {% for item in masters.get('os', []) %}
+            <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold small">Office</label>
-          <input name="spec_office" class="form-control form-control-sm" placeholder="OHS / M365">
+          <input name="spec_office" list="list-office" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
+          <datalist id="list-office">
+            {% for item in masters.get('office', []) %}
+            <option value="{{ item }}"></option>
+            {% endfor %}
+          </datalist>
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold small">Ket</label>

@@ -1077,6 +1077,7 @@ CREATE TABLE IF NOT EXISTS ac_tool_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
     manual_user_name TEXT DEFAULT '',
+    requestor_name TEXT DEFAULT '',
     item_name TEXT NOT NULL,
     item_category TEXT DEFAULT 'Laptop',
     request_channel TEXT DEFAULT 'Email',
@@ -1364,6 +1365,12 @@ CREATE TABLE IF NOT EXISTS attendance_overtime (
     approved_by INTEGER,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS ac_masters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    name TEXT NOT NULL,
+    UNIQUE(category, name)
+);
 CREATE TABLE IF NOT EXISTS attendance_corrections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -1455,6 +1462,7 @@ MIGRATIONS = [
     ('ac_tool_requests',     'request_channel_other',   "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'request_date',            "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'purchase_date',           "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'requestor_name',          "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'received_date',           "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'receipt_date',            "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'pic_support',             "TEXT DEFAULT ''"),
@@ -1808,6 +1816,31 @@ def init_db():
     cnt_row = db.execute('SELECT COUNT(*) as c FROM skill_categories').fetchone()
     if not cnt_row or cnt_row['c'] == 0:
         seed_db(db)
+
+    # Seed default ac_masters data
+    try:
+        cnt_masters = db.execute('SELECT COUNT(*) as c FROM ac_masters').fetchone()
+        if not cnt_masters or cnt_masters['c'] == 0:
+            default_masters = [
+                ('cpu', 'Intel Core i3'), ('cpu', 'Intel Core i5'), ('cpu', 'Intel Core i7'), ('cpu', 'Intel Core i9'),
+                ('cpu', 'AMD Ryzen 3'), ('cpu', 'AMD Ryzen 5'), ('cpu', 'AMD Ryzen 7'), ('cpu', 'AMD Ryzen 9'),
+                ('cpu', 'Apple M1'), ('cpu', 'Apple M2'), ('cpu', 'Apple M3'),
+                ('ram', '4 GB'), ('ram', '8 GB'), ('ram', '16 GB'), ('ram', '32 GB'), ('ram', '64 GB'),
+                ('disk', '256 GB SSD'), ('disk', '512 GB SSD'), ('disk', '1 TB SSD'), ('disk', '2 TB SSD'), ('disk', '1 TB HDD'),
+                ('gpu', 'Intel Iris Xe Graphics'), ('gpu', 'NVIDIA GeForce RTX 3050'), ('gpu', 'NVIDIA GeForce RTX 4050'),
+                ('gpu', 'NVIDIA GeForce RTX 4060'), ('gpu', 'AMD Radeon Graphics'), ('gpu', 'Integrated'),
+                ('screen', '13.3"'), ('screen', '14"'), ('screen', '15.6"'), ('screen', '16"'), ('screen', '24"'), ('screen', '27"'),
+                ('os', 'Windows 10 Pro'), ('os', 'Windows 11 Pro'), ('os', 'macOS Sonoma'), ('os', 'macOS Sequoia'), ('os', 'Ubuntu 22.04 LTS'),
+                ('office', 'Microsoft Office 2019'), ('office', 'Microsoft Office 2021'), ('office', 'Microsoft 365 Business'), ('office', 'None'),
+                ('software', 'VS Code'), ('software', 'DBeaver'), ('software', 'Postman'), ('software', 'Docker Desktop'),
+                ('software', 'Slack'), ('software', 'Google Chrome'), ('software', 'Zoom'), ('software', 'FortiClient'),
+                ('software', 'GlobalProtect'), ('software', 'AnyDesk'), ('software', 'Adobe Acrobat Reader'),
+            ]
+            for category, name in default_masters:
+                db.execute('INSERT OR IGNORE INTO ac_masters(category, name) VALUES(?,?)', (category, name))
+            db.commit()
+    except Exception:
+        pass
     # Default settings
     for k, v in DEFAULT_SETTINGS.items():
         db.execute('INSERT OR IGNORE INTO app_settings(key, value) VALUES(?,?)', (k, v))
@@ -11931,6 +11964,66 @@ def _create_asset_from_tool_request(db, req):
     )
     return asset_id, True
 
+def _get_ac_masters_dict(db):
+    rows = db.execute('SELECT category, name FROM ac_masters ORDER BY name').fetchall()
+    res = {c: [] for c in ['cpu', 'ram', 'disk', 'gpu', 'screen', 'os', 'office', 'software']}
+    for r in rows:
+        if r['category'] in res:
+            res[r['category']].append(r['name'])
+    return res
+
+# ── Masters Data Spec ──────────────────────────────────────────────────────────
+@app.route('/aset/masters', methods=['GET', 'POST'])
+@login_required
+def ac_masters():
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_index'))
+    db = get_db()
+    
+    categories = {
+        'cpu': 'CPU Type',
+        'ram': 'RAM',
+        'disk': 'Storage / Disk',
+        'gpu': 'GPU',
+        'screen': 'Layar / Screen',
+        'os': 'Sistem Operasi / OS',
+        'office': 'Microsoft Office',
+        'software': 'Software / Aplikasi'
+    }
+    
+    if request.method == 'POST':
+        category = request.form.get('category', '').strip()
+        name = request.form.get('name', '').strip()
+        if category in categories and name:
+            try:
+                db.execute('INSERT INTO ac_masters(category, name) VALUES(?, ?)', (category, name))
+                db.commit()
+                flash(f'Master {categories[category]} "{name}" berhasil ditambahkan.', 'success')
+            except Exception:
+                flash(f'Master {categories[category]} "{name}" sudah ada.', 'warning')
+        else:
+            flash('Kategori dan Nama harus diisi.', 'danger')
+        return redirect(url_for('ac_masters'))
+        
+    masters_by_cat = {c: [] for c in categories}
+    rows = db.execute('SELECT * FROM ac_masters ORDER BY category, name').fetchall()
+    for r in rows:
+        if r['category'] in masters_by_cat:
+            masters_by_cat[r['category']].append(r)
+            
+    return render_template('ac_masters.html', categories=categories, masters=masters_by_cat)
+
+@app.route('/aset/masters/<int:mid>/delete', methods=['POST'])
+@login_required
+def ac_master_delete(mid):
+    if not ac_require('ac_manage_assets'): return redirect(url_for('ac_index'))
+    db = get_db()
+    m = db.execute('SELECT * FROM ac_masters WHERE id=?', (mid,)).fetchone()
+    if m:
+        db.execute('DELETE FROM ac_masters WHERE id=?', (mid,))
+        db.commit()
+        flash('Master berhasil dihapus.', 'success')
+    return redirect(url_for('ac_masters'))
+
 @app.route('/aset/')
 @login_required
 def ac_index():
@@ -12047,7 +12140,7 @@ def ac_asset_new():
         audit_log('create', 'ac_assets', aid, f"Asset baru: {label}", 'aset')
         flash('Asset berhasil ditambahkan.', 'success')
         return redirect(url_for('ac_asset_detail', aid=aid))
-    return render_template('ac_asset_form.html', asset=None, employees=employees, sw_text='')
+    return render_template('ac_asset_form.html', asset=None, employees=employees, sw_text='', masters=_get_ac_masters_dict(db))
 
 @app.route('/aset/assets/<int:aid>')
 @login_required
@@ -12182,7 +12275,7 @@ def ac_asset_edit(aid):
         flash('Asset diperbarui.', 'success')
         return redirect(url_for('ac_asset_detail', aid=aid))
     sw_text = '\n'.join(r['software_name'] for r in db.execute('SELECT software_name FROM ac_asset_software WHERE asset_id=? ORDER BY software_name', (aid,)).fetchall())
-    return render_template('ac_asset_form.html', asset=asset, employees=employees, sw_text=sw_text)
+    return render_template('ac_asset_form.html', asset=asset, employees=employees, sw_text=sw_text, masters=_get_ac_masters_dict(db))
 
 @app.route('/aset/assets/<int:aid>/end', methods=['POST'])
 @login_required
@@ -12773,7 +12866,7 @@ def ac_tool_requests():
             )
             grouped.setdefault(att['section'], []).append(att)
     employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
-    return render_template('ac_tool_requests.html', requests=reqs, employees=employees,
+    return render_template('ac_tool_requests.html', requests=reqs, employees=employees, masters=_get_ac_masters_dict(db),
                            attachments_by_request=attachments_by_request,
                            status_filter=status_filter, sort=sort)
 
@@ -12787,14 +12880,15 @@ def ac_tool_request_new():
         item_name = request.form['item_name'].strip()
         cur = db.execute(
             '''INSERT INTO ac_tool_requests
-               (employee_id,manual_user_name,item_name,item_category,request_channel,request_channel_other,
+               (employee_id,manual_user_name,requestor_name,item_name,item_category,request_channel,request_channel_other,
                 reason,admin_item_type,admin_specs,
                 admin_url,admin_price,request_date,purchase_date,received_date,receipt_date,pic_support,
                 ket,spec_cpu_type,spec_ram,spec_disk,spec_gpu,spec_screen,spec_os,spec_office,
                 asset_tag,serial_number,notes)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (request.form.get('employee_id') or None,
              request.form.get('manual_user_name','').strip(),
+             request.form.get('requestor_name','').strip(),
              item_name,
              request.form.get('item_category','Laptop').strip() or 'Laptop',
              request.form.get('request_channel','Email').strip() or 'Email',
@@ -12829,7 +12923,7 @@ def ac_tool_request_new():
             msg += f' Attachment tersimpan: {capture_saved + photo_saved}.'
         flash(msg, 'success')
         return redirect(url_for('ac_tool_requests'))
-    return render_template('ac_tool_request_form.html', employees=employees, today=date.today().isoformat())
+    return render_template('ac_tool_request_form.html', employees=employees, today=date.today().isoformat(), masters=_get_ac_masters_dict(db))
 
 @app.route('/aset/tool-requests/<int:rid>/status', methods=['POST'])
 @login_required
@@ -12846,7 +12940,7 @@ def ac_tool_request_status(rid):
     admin_price = _parse_float_value(request.form.get('admin_price'))
 
     db.execute('''UPDATE ac_tool_requests
-                  SET employee_id=?, manual_user_name=?, item_name=?, item_category=?,
+                  SET employee_id=?, manual_user_name=?, requestor_name=?, item_name=?, item_category=?,
                       request_channel=?, request_channel_other=?, reason=?,
                       status=?, notes=?, admin_item_type=?, admin_specs=?, admin_url=?, admin_price=?,
                       request_date=?, purchase_date=?, received_date=?, receipt_date=?, pic_support=?,
@@ -12856,6 +12950,7 @@ def ac_tool_request_status(rid):
                   WHERE id=?''',
                (request.form.get('employee_id') or None,
                 request.form.get('manual_user_name','').strip(),
+                request.form.get('requestor_name','').strip(),
                 request.form.get('item_name','').strip(),
                 request.form.get('item_category','Laptop').strip() or 'Laptop',
                 request.form.get('request_channel','Email').strip() or 'Email',

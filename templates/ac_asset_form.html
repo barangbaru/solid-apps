@@ -76,7 +76,7 @@
 
         <div class="col-md-4">
           <label class="form-label fw-semibold small">Sistem Operasi</label>
-          <input name="os" value="{{ asset.os if asset else '' }}" class="form-control form-control-sm" placeholder="Windows 11 Pro">
+          <input name="os" value="{{ asset.os if asset else '' }}" list="list-os" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold small">Tipe Lisensi OS</label>
@@ -93,20 +93,20 @@
 
         <div class="col-md-4">
           <label class="form-label fw-semibold small">Processor</label>
-          <input name="processor" value="{{ asset.processor if asset else '' }}" class="form-control form-control-sm" placeholder="Intel Core i5-1235U">
+          <input name="processor" value="{{ asset.processor if asset else '' }}" list="list-cpu" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold small">RAM</label>
-          <input name="ram" value="{{ asset.ram if asset else '' }}" class="form-control form-control-sm" placeholder="8 GB DDR4">
+          <input name="ram" value="{{ asset.ram if asset else '' }}" list="list-ram" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
         </div>
         <div class="col-md-4">
           <label class="form-label fw-semibold small">Storage</label>
-          <input name="disk" value="{{ asset.disk if asset else '' }}" class="form-control form-control-sm" placeholder="512 GB SSD">
+          <input name="disk" value="{{ asset.disk if asset else '' }}" list="list-disk" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
         </div>
 
         <div class="col-md-6">
           <label class="form-label fw-semibold small">Versi Office</label>
-          <input name="office_version" value="{{ asset.office_version if asset else '' }}" class="form-control form-control-sm" placeholder="Office 2021, M365…">
+          <input name="office_version" value="{{ asset.office_version if asset else '' }}" list="list-office" class="form-control form-control-sm" placeholder="Pilih atau ketik...">
         </div>
         <div class="col-md-3">
           <label class="form-label fw-semibold small">Kondisi</label>
@@ -167,6 +167,31 @@
         </form>
         {% endif %}
       </div>
+      <datalist id="list-cpu">
+        {% for item in masters.get('cpu', []) %}
+        <option value="{{ item }}"></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="list-ram">
+        {% for item in masters.get('ram', []) %}
+        <option value="{{ item }}"></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="list-disk">
+        {% for item in masters.get('disk', []) %}
+        <option value="{{ item }}"></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="list-os">
+        {% for item in masters.get('os', []) %}
+        <option value="{{ item }}"></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="list-office">
+        {% for item in masters.get('office', []) %}
+        <option value="{{ item }}"></option>
+        {% endfor %}
+      </datalist>
     </form>
   </div>
 </div>

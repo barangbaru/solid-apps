@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}AssetCore — Master Data Spec & Software{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Master Data Spec</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <div style="width:32px;height:32px;border-radius:8px;background:#6f42c1;display:flex;align-items:center;justify-content:center">
+    <i class="bi bi-database-fill text-white"></i>
+  </div>
+  <h6 class="fw-bold mb-0">Master Data Spec & Software</h6>
+</div>
+
+<div class="alert alert-light border small py-2 mb-3 d-flex align-items-center gap-2">
+  <i class="bi bi-info-circle text-primary"></i>
+  <div>
+    Daftar master spesifikasi hardware dan software yang digunakan sebagai pilihan autocomplete (combo button/datalist) pada form input.
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Nav Tabs -->
+  <div class="col-md-3">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small">Kategori Master</div>
+      <div class="list-group list-group-flush small" id="masterTabs" role="tablist">
+        {% for cat_key, cat_name in categories.items() %}
+        <button class="list-group-item list-group-item-action {{ 'active' if loop.first }}" 
+                id="tab-{{ cat_key }}" data-bs-toggle="tab" data-bs-target="#panel-{{ cat_key }}" 
+                type="button" role="tab">
+          <i class="bi bi-tag-fill me-2"></i>{{ cat_name }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Content Panels -->
+  <div class="col-md-9">
+    <div class="tab-content" id="masterTabContent">
+      {% for cat_key, cat_name in categories.items() %}
+      <div class="tab-pane fade {{ 'show active' if loop.first }}" id="panel-{{ cat_key }}" role="tabpanel">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header py-2 d-flex align-items-center justify-content-between">
+            <span class="fw-bold small">{{ cat_name }}</span>
+            <button class="btn btn-sm btn-primary py-0" data-bs-toggle="collapse" data-bs-target="#addForm-{{ cat_key }}">
+              <i class="bi bi-plus-lg me-1"></i>Tambah Baru
+            </button>
+          </div>
+          <div class="card-body">
+            <!-- Add Entry Collapse -->
+            <div class="collapse mb-3" id="addForm-{{ cat_key }}">
+              <form method="post" action="/aset/masters" class="p-2 border rounded bg-light">
+                <input type="hidden" name="category" value="{{ cat_key }}">
+                <div class="row g-2 align-items-center">
+                  <div class="col">
+                    <input name="name" class="form-control form-control-sm" placeholder="Nama / Nilai baru..." required>
+                  </div>
+                  <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-success">Simpan</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            <!-- List entries -->
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Nilai Master</th>
+                    <th style="width: 80px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for m in masters[cat_key] %}
+                  <tr>
+                    <td>{{ m.name }}</td>
+                    <td class="text-end">
+                      <form method="post" action="/aset/masters/{{ m.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus master ini?')">
+                        <button class="btn btn-sm btn-link text-danger p-0" title="Hapus"><i class="bi bi-trash"></i></button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% else %}
+                  <tr>
+                    <td colspan="2" class="text-center text-muted py-3 small">Belum ada pilihan master untuk kategori ini.</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
