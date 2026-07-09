@@ -14189,7 +14189,9 @@ def telegram_webhook():
 
     try:
         data = request.get_json()
-    except Exception:
+        print(f"[Telegram Webhook] Payload: {json.dumps(data)}")
+    except Exception as e:
+        print(f"[Telegram Webhook] Failed to parse JSON: {e}")
         return 'OK', 200
 
     if not data:
@@ -14218,11 +14220,29 @@ def telegram_webhook():
         username = from_user.get('username', '') or ''
         
         is_location = 'location' in message
+        lat = None
+        lng = None
+        loc = ""
         if is_location:
             lat = message['location']['latitude']
             lng = message['location']['longitude']
             loc = f"{lat},{lng}"
-        text = message.get('text', '')
+        
+        text = message.get('text', '') or ''
+        if text.strip().startswith('/location'):
+            is_location = True
+            # Try to parse coordinates from text if present (e.g. "/location -6.2,106.8")
+            parts = text.strip().split()
+            if len(parts) > 1:
+                coord_part = parts[1]
+                if ',' in coord_part:
+                    try:
+                        lat_str, lng_str = coord_part.split(',', 1)
+                        lat = float(lat_str.strip())
+                        lng = float(lng_str.strip())
+                        loc = f"{lat},{lng}"
+                    except Exception:
+                        pass
 
     def reply(text_msg):
         if not chat_id:
@@ -14300,16 +14320,17 @@ def telegram_webhook():
 
         uid = user['id']
         full_name = user['full_name']
-        user_mention = f"@{username}" if username else full_name
         
-        # Resolve employee/username display
+        # Resolve employee/username display with HTML escaping
+        import html
+        user_mention_escaped = f"@{html.escape(username)}" if username else html.escape(full_name)
         emp_info = ""
         if employee and employee['name']:
-            emp_info = f" ({employee['name']})"
+            emp_info = f" ({html.escape(employee['name'])})"
         elif user and user['full_name']:
-            emp_info = f" ({user['full_name']})"
+            emp_info = f" ({html.escape(user['full_name'])})"
             
-        user_display = f"{user_mention}{emp_info}"
+        user_display = f"{user_mention_escaped}{emp_info}"
 
         if is_location:
             # Get group title / name
@@ -14360,6 +14381,26 @@ def telegram_webhook():
                 )
             else:
                 # User is sending location again (Clock Out / update Clock Out)
+                # First, check 9 hours limit!
+                try:
+                    in_dt = datetime.strptime(f"{today} {today_att['clock_in']}", "%Y-%m-%d %H:%M:%S")
+                    curr_dt = datetime.now()
+                    diff = curr_dt - in_dt
+                    total_seconds = diff.total_seconds()
+                    # 9 hours is 9 * 3600 = 32400 seconds
+                    if total_seconds < 9 * 3600:
+                        needed_seconds = 9 * 3600 - total_seconds
+                        needed_hours = int(needed_seconds // 3600)
+                        needed_minutes = int((needed_seconds % 3600) // 60)
+                        
+                        reply(
+                            f"❌ {user_display}\n"
+                            f"Clock Out GAGAL! Total waktu kerja Anda baru berjalan selama {total_seconds / 3600:.2f} jam.\n"
+                            f"Anda baru dapat melakukan Clock Out setelah bekerja minimal 9 jam (kurang {needed_hours} jam {needed_minutes} menit lagi)."
+                        )
+                        return 'OK', 200
+                except Exception as ex:
+                    print(f"[Clock Out Calculation Error] {ex}")
                 plan = (today_att['plan'] or '').strip()
                 progress = (today_att['progress'] or '').strip()
                 

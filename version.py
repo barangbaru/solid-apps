@@ -1,4 +1,4 @@
-VERSION = "2.2.64"
+VERSION = "2.2.65"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -76,4 +76,5 @@ RELEASE_NOTES = (
     "v2.2.62: Memperbaiki prioritas deteksi Telegram ID ke tabel karyawan (employees) terlebih dahulu, menambahkan auto-register fallback untuk pengguna tidak dikenal, mendukung clock-out berulang (update checkout), dan menambahkan detail nama grup pada balasan bot Telegram."
     "v2.2.63: Pemutakhiran menyeluruh dokumen repositori (README.md, BLUEPRINT.md, CHANGELOG.md) untuk mensinkronisasi arsitektur PostgreSQL global dan penambahan AttendanceCore."
     "v2.2.64: Standardisasi format balasan bot Telegram (Clock In, Clock Out, PLAN, PROGRESS) menggunakan waktu lokal berformat bahasa Indonesia, penyertaan nama karyawan (jika terdaftar), serta validasi lokasi GPS."
+    "v2.2.65: Penolakan Clock Out sebelum 9 jam waktu kerja terpenuhi, penambahan logging diagnostik JSON payload webhook ke stdout, dan proteksi format pesan HTML dari karakter khusus."
 )
