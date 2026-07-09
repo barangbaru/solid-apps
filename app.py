@@ -14197,8 +14197,7 @@ def at_require(perm):
     """Pastikan user memiliki permission atau superadmin."""
     if session.get('user_role') == 'superadmin':
         return True
-    user_perms = session.get('user_permissions', [])
-    return perm in user_perms
+    return has_permission(session.get('user_role', ''), perm, get_db())
 
 # ─── AttendanceCore: Views ────────────────────────────────────────────────────
 @app.route('/attendance/')
