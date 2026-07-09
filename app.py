@@ -14155,19 +14155,41 @@ def telegram_webhook():
     if not data:
         return 'OK', 200
 
-    message = data.get('message') or data.get('edited_message')
-    if not message or 'chat' not in message:
-        return 'OK', 200
+    # Detect custom Node.js forwarder payload vs standard Telegram webhook update
+    is_custom = 'telegram_user_id' in data and 'latitude' in data
 
-    chat_id = message['chat']['id']
-    from_user = message.get('from', {})
-    from_id = from_user.get('id')
-    username = from_user.get('username', '')
+    if is_custom:
+        from_id = data.get('telegram_user_id')
+        username = data.get('username', '') or ''
+        chat_id = data.get('chat_id')
+        is_location = True
+        lat = data.get('latitude')
+        lng = data.get('longitude')
+        loc = f"{lat},{lng}"
+        text = ""
+    else:
+        message = data.get('message') or data.get('edited_message')
+        if not message or 'chat' not in message:
+            return 'OK', 200
 
-    def reply(text):
+        chat_id = message['chat']['id']
+        from_user = message.get('from', {})
+        from_id = from_user.get('id')
+        username = from_user.get('username', '') or ''
+        
+        is_location = 'location' in message
+        if is_location:
+            lat = message['location']['latitude']
+            lng = message['location']['longitude']
+            loc = f"{lat},{lng}"
+        text = message.get('text', '')
+
+    def reply(text_msg):
+        if not chat_id:
+            return
         req_lib.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
             'chat_id': chat_id,
-            'text': text,
+            'text': text_msg,
             'parse_mode': 'HTML'
         })
 
@@ -14176,8 +14198,9 @@ def telegram_webhook():
         if from_id:
             tg_id_variants.append(str(from_id))
         if username:
-            tg_id_variants.append(username)
-            tg_id_variants.append(f"@{username}")
+            clean_username = username.lstrip('@')
+            tg_id_variants.append(clean_username)
+            tg_id_variants.append(f"@{clean_username}")
 
         user = None
         for variant in tg_id_variants:
@@ -14200,10 +14223,7 @@ def telegram_webhook():
         full_name = user['full_name']
         user_mention = f"@{username}" if username else full_name
 
-        if 'location' in message:
-            lat = message['location']['latitude']
-            lng = message['location']['longitude']
-            loc = f"{lat},{lng}"
+        if is_location:
             
             today = datetime.now().strftime('%Y-%m-%d')
             now_time = datetime.now().strftime('%H:%M:%S')
