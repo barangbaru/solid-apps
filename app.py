@@ -4900,6 +4900,40 @@ def portal_settings():
     return render_template('portal_settings.html', users=users, apps=apps,
                            access_map=access_map, roles_by_app=roles_by_app)
 
+@app.route('/portal/settings/mass', methods=['POST'])
+@login_required
+def portal_settings_mass():
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal'))
+    db = get_db()
+    user_ids = request.form.getlist('user_ids')
+    app_slug = request.form.get('app_slug')
+    app_role = request.form.get('app_role', 'user')
+
+    if not user_ids or not app_slug:
+        flash('Pengguna dan Aplikasi wajib dipilih.', 'danger')
+        return redirect(url_for('portal_settings'))
+
+    try:
+        for uid in user_ids:
+            # Lewati superadmin
+            user = db.execute('SELECT role FROM users WHERE id=?', (uid,)).fetchone()
+            if user and user['role'] == 'superadmin':
+                continue
+            db.execute('''INSERT INTO user_app_access(user_id,app_slug,app_role,is_active)
+                          VALUES(?, ?, ?, 1)
+                          ON CONFLICT(user_id,app_slug) DO UPDATE SET app_role=excluded.app_role, is_active=1''',
+                       (int(uid), app_slug, app_role))
+        db.commit()
+        flash(f'Akses aplikasi "{app_slug}" dengan role "{app_role}" berhasil diberikan ke {len(user_ids)} pengguna.', 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f'Gagal menerapkan akses massal: {str(e)}', 'danger')
+
+    return redirect(url_for('portal_settings'))
+
+
 def is_portal_admin():
     """True jika user adalah superadmin atau admin (dapat akses portal management)."""
     return session.get('user_role') in ('superadmin', 'admin')
@@ -5313,26 +5347,33 @@ def portal_roles():
                     flash(f'Role "{rname}" dihapus', 'warning')
         elif action == 'save_perms':
             rname     = request.form.get('role_name', '')
-            selected  = set(request.form.getlist('permissions'))
-            app_perms = APP_PERMISSIONS.get(app_slug, {})
-            # Admin tidak boleh assign critical permissions
-            if not superadmin:
-                selected -= CRITICAL_PERMISSIONS
-            db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
-            for perm in selected:
-                if perm in app_perms or perm in ('manage_users', 'manage_roles'):
-                    db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)',
-                               (rname, perm))
             
-            # Save menu assignments
+            # 1. Save menu assignments
             db.execute('DELETE FROM role_menus WHERE role_name=?', (rname,))
             selected_menus = request.form.getlist('menus')
             for mid in selected_menus:
                 if mid.isdigit():
                     db.execute('INSERT OR IGNORE INTO role_menus(role_name,menu_id) VALUES(?,?)', (rname, int(mid)))
             
+            # 2. Derive permissions automatically from assigned menus
+            db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
+            if rname == 'superadmin':
+                for perm in ALL_PERMISSIONS:
+                    db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
+            else:
+                rows = db.execute('''
+                    SELECT DISTINCT m.required_permission FROM app_menus m
+                    JOIN role_menus rm ON m.id = rm.menu_id
+                    WHERE rm.role_name=? AND m.required_permission != ''
+                ''', (rname,)).fetchall()
+                for row in rows:
+                    perm = row['required_permission']
+                    if superadmin or perm not in CRITICAL_PERMISSIONS:
+                        db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)',
+                                   (rname, perm))
+            
             db.commit()
-            flash(f'Permission dan Menu role "{rname}" diperbarui', 'success')
+            flash(f'Menu dan Hak Akses role "{rname}" diperbarui', 'success')
         return redirect(url_for('portal_roles', app=active_app))
 
     apps_list     = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()

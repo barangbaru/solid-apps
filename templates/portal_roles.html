@@ -160,57 +160,7 @@
           <input type="hidden" name="app_slug" value="{{ active_app }}">
           <input type="hidden" name="role_name" value="{{ role.name }}">
           
-          <h6 class="fw-bold mb-3"><i class="bi bi-shield-check text-primary me-2"></i>Hak Akses (Permissions)</h6>
-          {% if not app_perms %}
-          <div class="text-muted small text-center py-3 border rounded bg-light mb-4">
-            <i class="bi bi-info-circle me-1"></i>
-            Belum ada permission terdefinisi untuk aplikasi ini.
-          </div>
-          {% else %}
-          {% set cur_perms = perms_by_role.get(role.name, []) %}
-          <div class="row g-2 mb-4">
-            {% for perm_key, perm_desc in app_perms.items() %}
-            {% set is_critical = perm_key in critical_permissions %}
-            {% set locked = is_critical and not is_superadmin %}
-            <div class="col-md-6">
-              <div class="form-check p-0">
-                <label class="d-flex align-items-start gap-2 p-2 rounded perm-item
-                              {{ 'bg-danger bg-opacity-10 border border-danger border-opacity-25' if locked else
-                                 ('bg-primary bg-opacity-10 border border-primary border-opacity-25' if perm_key in cur_perms else 'border') }}"
-                       style="{{ 'cursor:not-allowed;opacity:.7' if locked else 'cursor:pointer' }};border-radius:8px !important">
-                  <input class="form-check-input mt-1 flex-shrink-0" type="checkbox"
-                         name="permissions" value="{{ perm_key }}"
-                         {{ 'checked' if perm_key in cur_perms else '' }}
-                         {{ 'disabled' if locked else '' }}
-                         {% if not locked %}
-                         onchange="this.closest('.perm-item').classList.toggle('bg-primary',this.checked);
-                                   this.closest('.perm-item').classList.toggle('bg-opacity-10',this.checked);
-                                   this.closest('.perm-item').classList.toggle('border-primary',this.checked);
-                                   this.closest('.perm-item').classList.toggle('border-opacity-25',this.checked)"
-                         {% endif %}>
-                  <div class="flex-grow-1">
-                    <div class="fw-semibold d-flex align-items-center gap-1" style="font-size:.82rem">
-                      {{ perm_key }}
-                      {% if locked %}
-                      <span class="badge bg-danger ms-1" style="font-size:.58rem" title="Hanya Superadmin">
-                        <i class="bi bi-lock-fill"></i> Superadmin Only
-                      </span>
-                      {% elif is_critical %}
-                      <span class="badge bg-warning text-dark ms-1" style="font-size:.58rem">
-                        <i class="bi bi-shield-exclamation"></i> Critical
-                      </span>
-                      {% endif %}
-                    </div>
-                    <div class="text-muted" style="font-size:.74rem">{{ perm_desc }}</div>
-                  </div>
-                </label>
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-          {% endif %}
 
-          <hr class="my-4">
 
           {# ── DRAG & DROP MENU SECTION ── #}
           <h6 class="fw-bold mb-1"><i class="bi bi-list-nested text-primary me-2"></i>Akses Menu & Navigasi</h6>
@@ -289,14 +239,8 @@
 
           <div class="mt-3 d-flex gap-2">
             <button type="submit" class="btn btn-sm btn-primary">
-              <i class="bi bi-save me-1"></i>Simpan Hak Akses & Menu
+              <i class="bi bi-save me-1"></i>Simpan Menu & Navigasi
             </button>
-            {% if is_superadmin %}
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="toggleAll(this.form, true)">Pilih Semua Permission</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="toggleAll(this.form, false)">Hapus Semua Permission</button>
-            {% endif %}
           </div>
         </form>
       </div>
@@ -331,18 +275,7 @@ function showRole(name) {
   tabs.forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
 }
 
-function toggleAll(form, checked) {
-  form.querySelectorAll('input[type=checkbox]').forEach(cb => {
-    cb.checked = checked;
-    const item = cb.closest('.perm-item');
-    if (item) {
-      item.classList.toggle('bg-primary', checked);
-      item.classList.toggle('bg-opacity-10', checked);
-      item.classList.toggle('border-primary', checked);
-      item.classList.toggle('border-opacity-25', checked);
-    }
-  });
-}
+
 
 function populateAssignedList(roleName) {
   const container = document.getElementById("assigned-list-" + roleName);
