@@ -1,6 +1,7 @@
-VERSION = "2.2.66"
+VERSION = "2.2.67"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
+    "v2.2.67: Fix issue UndefinedColumn/UniqueViolation pada PostgreSQL saat penyimpanan menu role di portal_roles. "
     "v2.2.66: Pembenahan sistem Role & Permission menggunakan menu dan child menu dinamis dari database serta antarmuka Drag n Drop di Portal. "
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
     "peer review 5 dimensi, benchmark per grade, AI summary (Ollama), "

@@ -5329,7 +5329,7 @@ def portal_roles():
             selected_menus = request.form.getlist('menus')
             for mid in selected_menus:
                 if mid.isdigit():
-                    db.execute('INSERT INTO role_menus(role_name,menu_id) VALUES(?,?)', (rname, int(mid)))
+                    db.execute('INSERT OR IGNORE INTO role_menus(role_name,menu_id) VALUES(?,?)', (rname, int(mid)))
             
             db.commit()
             flash(f'Permission dan Menu role "{rname}" diperbarui', 'success')
