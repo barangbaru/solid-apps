@@ -14198,15 +14198,14 @@ def telegram_webhook():
     def reply(text):
         req_lib.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
             'chat_id': chat_id,
-            'text': text
+            'text': text,
+            'parse_mode': 'HTML'
         })
 
     try:
         tg_id_variants = []
         if from_id:
             tg_id_variants.append(str(from_id))
-        if chat_id:
-            tg_id_variants.append(str(chat_id))
         if username:
             tg_id_variants.append(username)
             tg_id_variants.append(f"@{username}")
@@ -14223,6 +14222,7 @@ def telegram_webhook():
 
         uid = user['id']
         full_name = user['full_name']
+        user_mention = f"@{username}" if username else full_name
 
         if 'location' in message:
             lat = message['location']['latitude']
@@ -14246,16 +14246,51 @@ def telegram_webhook():
                     (uid, today, now_time, loc, 'Telegram Bot Attendance', status)
                 )
                 db.commit()
-                reply(f"Halo {full_name},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
+                reply(f"Halo {user_mention},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
             elif not today_att['clock_out']:
-                db.execute(
-                    'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
-                    (now_time, loc, 'Telegram Bot Attendance', today_att['id'])
-                )
-                db.commit()
-                reply(f"Halo {full_name},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}")
+                # Clock Out - requires #PLAN and #PROGRESS (min 10 characters clean text each)
+                plan = (today_att['plan'] or '').strip()
+                progress = (today_att['progress'] or '').strip()
+                
+                # Check character lengths
+                import re
+                clean_plan = re.sub(r'(?i)#plan', '', plan).strip()
+                clean_progress = re.sub(r'(?i)#progress', '', progress).strip()
+                
+                plan_ok = len(clean_plan) >= 10
+                progress_ok = len(clean_progress) >= 10
+                
+                if not plan_ok or not progress_ok:
+                    status_msg = []
+                    if plan_ok:
+                        status_msg.append("✅ <b>#PLAN:</b> Terisi (≥ 10 karakter)")
+                    else:
+                        status_msg.append("❌ <b>#PLAN:</b> Belum terisi atau kurang dari 10 karakter")
+                        
+                    if progress_ok:
+                        status_msg.append("✅ <b>#PROGRESS:</b> Terisi (≥ 10 karakter)")
+                    else:
+                        status_msg.append("❌ <b>#PROGRESS:</b> Belum terisi atau kurang dari 10 karakter")
+                        
+                    reply(
+                        f"Halo {user_mention},\n\n"
+                        "⚠️ <b>Clock Out GAGAL!</b>\n"
+                        "Anda diwajibkan mengisi rencana dan kemajuan kerja (minimal 10 karakter per item) sebelum melakukan Clock Out.\n\n"
+                        "<b>Status Pengisian Hari Ini:</b>\n" + "\n".join(status_msg) + "\n\n"
+                        "Silakan kirim pesan berisi:\n"
+                        "• <code>#PLAN [isi rencana kerja minimal 10 karakter]</code>\n"
+                        "• <code>#PROGRESS [isi kemajuan kerja minimal 10 karakter]</code>\n\n"
+                        "lalu kirim lokasi Anda kembali untuk Clock Out."
+                    )
+                else:
+                    db.execute(
+                        'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
+                        (now_time, loc, 'Telegram Bot Attendance', today_att['id'])
+                    )
+                    db.commit()
+                    reply(f"Halo {user_mention},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nPlan/Progress: LENGKAP")
             else:
-                reply(f"Halo {full_name},\nAnda sudah melakukan Clock In dan Clock Out untuk hari ini.")
+                reply(f"Halo {user_mention},\nAnda sudah melakukan Clock In dan Clock Out untuk hari ini.")
         else:
             text = message.get('text', '')
             lower_text = text.lower()
@@ -14263,6 +14298,7 @@ def telegram_webhook():
             is_progress = '#progress' in lower_text
 
             if is_plan or is_progress:
+                import re
                 today = datetime.now().strftime('%Y-%m-%d')
                 today_att = db.execute(
                     'SELECT * FROM attendance WHERE user_id=? AND date=?',
@@ -14286,38 +14322,88 @@ def telegram_webhook():
                 elif is_progress:
                     progress_content = text.strip()
 
-                if not today_att:
-                    db.execute(
-                        'INSERT INTO attendance (user_id, date, status, plan, progress) VALUES (?, ?, ?, ?, ?)',
-                        (uid, today, 'present', plan_content or '', progress_content or '')
-                    )
-                    db.commit()
-                else:
-                    if plan_content and progress_content:
-                        db.execute(
-                            'UPDATE attendance SET plan=?, progress=? WHERE id=?',
-                            (plan_content, progress_content, today_att['id'])
-                        )
-                    elif plan_content:
-                        db.execute(
-                            'UPDATE attendance SET plan=? WHERE id=?',
-                            (plan_content, today_att['id'])
-                        )
-                    elif progress_content:
-                        db.execute(
-                            'UPDATE attendance SET progress=? WHERE id=?',
-                            (progress_content, today_att['id'])
-                        )
-                    db.commit()
-
+                err_msgs = []
                 msg_parts = []
-                if plan_content:
-                    msg_parts.append("Plan berhasil disimpan/diperbarui.")
-                if progress_content:
-                    msg_parts.append("Progress berhasil disimpan/diperbarui.")
-                reply(f"Halo {full_name},\n\n" + "\n".join(msg_parts))
+
+                if plan_content is not None:
+                    cleaned_plan = re.sub(r'(?i)#plan', '', plan_content).strip()
+                    if len(cleaned_plan) < 10:
+                        err_msgs.append("❌ <b>#PLAN Gagal:</b> Rencana kerja minimal harus 10 karakter (tidak termasuk tag).")
+                        plan_content = None
+                    else:
+                        plan_content = cleaned_plan
+                        msg_parts.append("✅ <b>#PLAN</b> berhasil disimpan/diperbarui.")
+
+                if progress_content is not None:
+                    cleaned_prog = re.sub(r'(?i)#progress', '', progress_content).strip()
+                    if len(cleaned_prog) < 10:
+                        err_msgs.append("❌ <b>#PROGRESS Gagal:</b> Kemajuan kerja minimal harus 10 karakter (tidak termasuk tag).")
+                        progress_content = None
+                    else:
+                        progress_content = cleaned_prog
+                        msg_parts.append("✅ <b>#PROGRESS</b> berhasil disimpan/diperbarui.")
+
+                if plan_content or progress_content:
+                    if not today_att:
+                        db.execute(
+                            'INSERT INTO attendance (user_id, date, status, plan, progress) VALUES (?, ?, ?, ?, ?)',
+                            (uid, today, 'present', plan_content or '', progress_content or '')
+                        )
+                        db.commit()
+                    else:
+                        if plan_content and progress_content:
+                            db.execute(
+                                'UPDATE attendance SET plan=?, progress=? WHERE id=?',
+                                (plan_content, progress_content, today_att['id'])
+                            )
+                        elif plan_content:
+                            db.execute(
+                                'UPDATE attendance SET plan=? WHERE id=?',
+                                (plan_content, today_att['id'])
+                            )
+                        elif progress_content:
+                            db.execute(
+                                'UPDATE attendance SET progress=? WHERE id=?',
+                                (progress_content, today_att['id'])
+                            )
+                        db.commit()
+
+                response_text = f"Halo {user_mention},\n\n"
+                if msg_parts:
+                    response_text += "\n".join(msg_parts) + "\n\n"
+                if err_msgs:
+                    response_text += "\n".join(err_msgs) + "\n\n"
+
+                # Check fresh status
+                fresh_att = db.execute(
+                    'SELECT * FROM attendance WHERE user_id=? AND date=?',
+                    (uid, today)
+                ).fetchone()
+                
+                if fresh_att:
+                    f_plan = (fresh_att['plan'] or '').strip()
+                    f_prog = (fresh_att['progress'] or '').strip()
+                    p_ok = len(f_plan) >= 10
+                    pr_ok = len(f_prog) >= 10
+                    if p_ok and pr_ok:
+                        response_text += "💡 <b>Persyaratan lengkap!</b> Anda sekarang dapat melakukan Clock Out."
+                    else:
+                        missing = []
+                        if not p_ok: missing.append("#PLAN")
+                        if not pr_ok: missing.append("#PROGRESS")
+                        response_text += f"💡 Anda masih perlu mengisi <b>{', '.join(missing)}</b> sebelum dapat melakukan Clock Out."
+                
+                reply(response_text)
             elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
-                reply(f"Halo {full_name}! Selamat datang di Telegram Attendance Bot HIVE.\n\nUntuk melakukan Clock In atau Clock Out, silakan gunakan fitur \"Send Location\" (Kirim Lokasi) di Telegram.\n\nAnda juga dapat mengirimkan rencana kerja dengan tag #PLAN dan kemajuan kerja dengan tag #PROGRESS.")
+                reply(
+                    f"Halo {user_mention}! Selamat datang di Telegram Attendance Bot HIVE.\n\n"
+                    "Untuk melakukan Clock In atau Clock Out, silakan gunakan fitur \"Send Location\" (Kirim Lokasi) di Telegram.\n\n"
+                    "⚠️ <b>Ketentuan Clock Out:</b>\n"
+                    "Anda diwajibkan mengirimkan rencana dan kemajuan kerja hari ini dengan format:\n"
+                    "• <code>#PLAN [isi rencana minimal 10 karakter]</code>\n"
+                    "• <code>#PROGRESS [isi kemajuan minimal 10 karakter]</code>\n\n"
+                    "Setelah keduanya terisi lengkap, barulah Anda dapat melakukan Clock Out (Kirim Lokasi kedua)."
+                )
             else:
                 reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out, atau kirim pesan berisi #PLAN / #PROGRESS untuk memperbarui rencana/kemajuan kerja Anda.")
     except Exception as e:

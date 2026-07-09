@@ -1,4 +1,4 @@
-VERSION = "2.2.54"
+VERSION = "2.2.55"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -65,5 +65,6 @@ RELEASE_NOTES = (
     "v2.2.51: Menambahkan validasi wajib upload bukti attachment (capture approval/rejection) saat status Request Alat Kerja dirubah ke Approved atau Rejected, baik di sisi client (browser) maupun server. "
     "v2.2.52: Menambahkan validasi wajib upload bukti serah terima perangkat (BAST/foto) saat status Request Alat Kerja dirubah ke Completed, baik di sisi client maupun server. "
     "v2.2.53: Memperbaiki error read timed out pada notifikasi Telegram AssetCore dengan mengurangi timeout dari 10s ke 5s dan mengirim notifikasi fire-and-forget secara non-blocking di background thread. "
-    "v2.2.54: Menambahkan tombol manual trigger form review evaluasi karyawan di halaman Manajemen Karyawan (kontrak & tetap), dengan modal konfirmasi periode dan pengiriman link self-assessment otomatis via email/Telegram."
+    "v2.2.54: Menambahkan tombol manual trigger form review evaluasi karyawan di halaman Manajemen Karyawan (kontrak & tetap), dengan modal konfirmasi periode dan pengiriman link self-assessment otomatis via email/Telegram. "
+    "v2.2.55: Menyempurnakan Telegram Webhook AttendanceCore agar mendukung group/private chat location tagging, validasi minimal 10 karakter untuk #PLAN dan #PROGRESS (bersih dari tag), dan memblokir Clock Out sampai plan & progress lengkap."
 )
