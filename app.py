@@ -4211,8 +4211,8 @@ def login():
                     google_oauth_enabled=(cfg.get('google_oauth_enabled') == '1' and bool(cfg.get('google_client_id') or GOOGLE_CLIENT_ID)),
                     recaptcha_enabled=recaptcha_enabled,
                     recaptcha_site_key=recaptcha_site_key)
-        user = db.execute('SELECT * FROM users WHERE username=? AND is_active=1',
-                          (username,)).fetchone()
+        user = db.execute('SELECT * FROM users WHERE (username=? OR LOWER(email)=?) AND is_active=1',
+                          (username, username.lower())).fetchone()
         if user and check_password_hash(user['password_hash'], password):
             if user['mfa_enabled'] and user['totp_secret']:
                 session['pending_mfa_user_id']   = user['id']
@@ -4897,8 +4897,11 @@ def portal_settings():
         app_specific = [r for r in all_roles if r['app_slug'] == a['slug']]
         roles_by_app[a['slug']] = global_roles + app_specific
 
+    employees = db.execute('SELECT id, name, email, divisi, user_id FROM employees WHERE is_active=1 ORDER BY name').fetchall()
+
     return render_template('portal_settings.html', users=users, apps=apps,
-                           access_map=access_map, roles_by_app=roles_by_app)
+                           access_map=access_map, roles_by_app=roles_by_app,
+                           employees=employees)
 
 @app.route('/portal/settings/mass', methods=['POST'])
 @login_required
@@ -4907,31 +4910,62 @@ def portal_settings_mass():
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     db = get_db()
-    user_ids = request.form.getlist('user_ids')
+    employee_ids = request.form.getlist('employee_ids')
     app_slug = request.form.get('app_slug')
     app_role = request.form.get('app_role', 'user')
 
-    if not user_ids or not app_slug:
-        flash('Pengguna dan Aplikasi wajib dipilih.', 'danger')
+    if not employee_ids or not app_slug:
+        flash('Karyawan dan Aplikasi wajib dipilih.', 'danger')
         return redirect(url_for('portal_settings'))
 
+    success_count = 0
     try:
-        for uid in user_ids:
-            # Lewati superadmin
-            user = db.execute('SELECT role FROM users WHERE id=?', (uid,)).fetchone()
-            if user and user['role'] == 'superadmin':
+        for eid in employee_ids:
+            emp = db.execute('SELECT id, name, email, user_id FROM employees WHERE id=?', (eid,)).fetchone()
+            if not emp or not emp['email']:
                 continue
+
+            email_lower = emp['email'].lower().strip()
+
+            user = None
+            if emp['user_id']:
+                user = db.execute('SELECT id, role FROM users WHERE id=?', (emp['user_id'],)).fetchone()
+            if not user:
+                user = db.execute('SELECT id, role FROM users WHERE LOWER(email)=? OR LOWER(username)=?', 
+                                  (email_lower, email_lower)).fetchone()
+
+            if user:
+                uid = user['id']
+                if not emp['user_id']:
+                    db.execute('UPDATE employees SET user_id=? WHERE id=?', (uid, eid))
+            else:
+                p_hash = generate_password_hash('hive2026', method='pbkdf2:sha256')
+                cur = db.execute('''
+                    INSERT INTO users (username, password_hash, full_name, role, email, is_active)
+                    VALUES (?, ?, ?, 'viewer', ?, 1)
+                ''', (emp['email'].strip(), p_hash, emp['name'], emp['email'].strip()))
+                uid = cur.lastrowid
+
+                db.execute('UPDATE employees SET user_id=? WHERE id=?', (uid, eid))
+
+            check_user = db.execute('SELECT role FROM users WHERE id=?', (uid,)).fetchone()
+            if check_user and check_user['role'] == 'superadmin':
+                continue
+
             db.execute('''INSERT INTO user_app_access(user_id,app_slug,app_role,is_active)
                           VALUES(?, ?, ?, 1)
                           ON CONFLICT(user_id,app_slug) DO UPDATE SET app_role=excluded.app_role, is_active=1''',
-                       (int(uid), app_slug, app_role))
+                       (uid, app_slug, app_role))
+            success_count += 1
+
         db.commit()
-        flash(f'Akses aplikasi "{app_slug}" dengan role "{app_role}" berhasil diberikan ke {len(user_ids)} pengguna.', 'success')
+        flash(f'Akses aplikasi "{app_slug}" dengan role "{app_role}" berhasil diberikan ke {success_count} karyawan (akun baru dibuat jika belum ada).', 'success')
     except Exception as e:
         db.rollback()
         flash(f'Gagal menerapkan akses massal: {str(e)}', 'danger')
 
     return redirect(url_for('portal_settings'))
+
 
 
 def is_portal_admin():

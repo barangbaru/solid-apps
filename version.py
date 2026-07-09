@@ -1,6 +1,7 @@
-VERSION = "2.2.68"
+VERSION = "2.2.69"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
+    "v2.2.69: Perubahan mass add akses menggunakan data karyawan (auto-create user account dengan key email dan default password hive2026, sso untuk @mmi-pt.com, login support username/email). "
     "v2.2.68: Hapus checkbox legacy permission di portal_roles (diganti auto-derive) dan tambah fitur mass add akses aplikasi di portal_settings. "
     "v2.2.67: Fix issue UndefinedColumn/UniqueViolation pada PostgreSQL saat penyimpanan menu role di portal_roles. "
     "v2.2.66: Pembenahan sistem Role & Permission menggunakan menu dan child menu dinamis dari database serta antarmuka Drag n Drop di Portal. "
