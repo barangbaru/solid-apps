@@ -1747,8 +1747,10 @@ SYSTEM_ROLE_DEFAULTS = {
               'view_evaluations','send_reminders','manage_template',
               'sc_view','sc_manage_customers','sc_manage_services','sc_manage_types','sc_manage_sla',
               'sc_manage_apps','sc_manage_contracts','sc_manage_tickets','sc_manage_presales','sc_view_reports',
-              'ac_view','ac_manage_assets','ac_manage_infra','ac_manage_licenses','ac_manage_subs','ac_manage_requests'],
-    'viewer': ['view_evaluations','sc_view','sc_view_reports','ac_view'],
+              'ac_view','ac_manage_assets','ac_manage_infra','ac_manage_licenses','ac_manage_subs','ac_manage_requests',
+              'at_view', 'at_manage'],
+    'viewer': ['view_evaluations','sc_view','sc_view_reports','ac_view', 'at_view'],
+    'user': ['at_view'],
 }
 
 def _pg_adapt_schema(schema):
@@ -1773,132 +1775,140 @@ def _pg_column_exists(db, table, col):
 
 def _seed_menus(db):
     cnt = db.execute('SELECT COUNT(*) as c FROM app_menus').fetchone()
-    if cnt and cnt['c'] > 0:
-        return
+    if not cnt or cnt['c'] == 0:
+        default_menus = [
+            # Portal
+            {"app_slug": "portal", "parent_title": None, "title": "Semua Aplikasi", "url": "/portal", "icon": "grid-3x3-gap", "required_permission": "", "sort_order": 1},
+            {"app_slug": "portal", "parent_title": None, "title": "Kelola User", "url": "/portal/users", "icon": "people", "required_permission": "manage_users", "sort_order": 2},
+            {"app_slug": "portal", "parent_title": None, "title": "Role & Permission", "url": "/portal/roles", "icon": "person-badge", "required_permission": "manage_roles", "sort_order": 3},
+            {"app_slug": "portal", "parent_title": None, "title": "Akses Aplikasi", "url": "/portal/settings", "icon": "shield-lock", "required_permission": "manage_roles", "sort_order": 4},
+            {"app_slug": "portal", "parent_title": None, "title": "Pengaturan Sistem", "url": "/portal/system-settings", "icon": "gear", "required_permission": "manage_roles", "sort_order": 5},
+            {"app_slug": "portal", "parent_title": None, "title": "Pengaturan Notifikasi", "url": "/portal/notifications", "icon": "bell-fill", "required_permission": "manage_roles", "sort_order": 6},
+            {"app_slug": "portal", "parent_title": None, "title": "Audit Trail", "url": "/portal/audit", "icon": "shield-check", "required_permission": "manage_roles", "sort_order": 7},
+            {"app_slug": "portal", "parent_title": None, "title": "Update Center", "url": "/portal/update", "icon": "arrow-up-circle", "required_permission": "manage_roles", "sort_order": 8},
+            {"app_slug": "portal", "parent_title": None, "title": "Backup Center", "url": "/portal/backup", "icon": "database-fill-gear", "required_permission": "manage_roles", "sort_order": 9},
 
-    default_menus = [
-        # Portal
-        {"app_slug": "portal", "parent_title": None, "title": "Semua Aplikasi", "url": "/portal", "icon": "grid-3x3-gap", "required_permission": "", "sort_order": 1},
-        {"app_slug": "portal", "parent_title": None, "title": "Kelola User", "url": "/portal/users", "icon": "people", "required_permission": "manage_users", "sort_order": 2},
-        {"app_slug": "portal", "parent_title": None, "title": "Role & Permission", "url": "/portal/roles", "icon": "person-badge", "required_permission": "manage_roles", "sort_order": 3},
-        {"app_slug": "portal", "parent_title": None, "title": "Akses Aplikasi", "url": "/portal/settings", "icon": "shield-lock", "required_permission": "manage_roles", "sort_order": 4},
-        {"app_slug": "portal", "parent_title": None, "title": "Pengaturan Sistem", "url": "/portal/system-settings", "icon": "gear", "required_permission": "manage_roles", "sort_order": 5},
-        {"app_slug": "portal", "parent_title": None, "title": "Pengaturan Notifikasi", "url": "/portal/notifications", "icon": "bell-fill", "required_permission": "manage_roles", "sort_order": 6},
-        {"app_slug": "portal", "parent_title": None, "title": "Audit Trail", "url": "/portal/audit", "icon": "shield-check", "required_permission": "manage_roles", "sort_order": 7},
-        {"app_slug": "portal", "parent_title": None, "title": "Update Center", "url": "/portal/update", "icon": "arrow-up-circle", "required_permission": "manage_roles", "sort_order": 8},
-        {"app_slug": "portal", "parent_title": None, "title": "Backup Center", "url": "/portal/backup", "icon": "database-fill-gear", "required_permission": "manage_roles", "sort_order": 9},
+            # TalentCore (evaluasi)
+            {"app_slug": "evaluasi", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/", "icon": "house-door", "required_permission": "", "sort_order": 1},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Karyawan", "url": "/karyawan", "icon": "people", "required_permission": "manage_employees", "sort_order": 2},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Review Evaluasi", "url": "/reviews", "icon": "clipboard2-check", "required_permission": "", "sort_order": 3},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Kinerja Task", "url": "/kinerja/tim", "icon": "graph-up-arrow", "required_permission": "", "sort_order": 4},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Analitik Divisi", "url": "/kinerja/analitik", "icon": "diagram-3", "required_permission": "", "sort_order": 5},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Performa Divisi", "url": "/kinerja/divisi", "icon": "people-fill", "required_permission": "", "sort_order": 6},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Log Reminder", "url": "/reminders", "icon": "bell", "required_permission": "send_reminders", "sort_order": 7},
+            {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Tabel Gaji", "url": "/salary", "icon": "cash-stack", "required_permission": "view_salary", "sort_order": 8},
+            
+            {"app_slug": "evaluasi", "parent_title": None, "title": "Konfigurasi", "url": "#", "icon": "", "required_permission": "", "sort_order": 2},
+            {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Template Evaluasi", "url": "/admin", "icon": "sliders", "required_permission": "manage_template", "sort_order": 1},
+            {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Manajemen Divisi", "url": "/admin/divisions", "icon": "diagram-3", "required_permission": "manage_divisions", "sort_order": 2},
+            {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Pengaturan Notifikasi", "url": "/settings", "icon": "gear", "required_permission": "manage_settings", "sort_order": 3},
 
-        # TalentCore (evaluasi)
-        {"app_slug": "evaluasi", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/", "icon": "house-door", "required_permission": "", "sort_order": 1},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Karyawan", "url": "/karyawan", "icon": "people", "required_permission": "manage_employees", "sort_order": 2},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Review Evaluasi", "url": "/reviews", "icon": "clipboard2-check", "required_permission": "", "sort_order": 3},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Kinerja Task", "url": "/kinerja/tim", "icon": "graph-up-arrow", "required_permission": "", "sort_order": 4},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Analitik Divisi", "url": "/kinerja/analitik", "icon": "diagram-3", "required_permission": "", "sort_order": 5},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Performa Divisi", "url": "/kinerja/divisi", "icon": "people-fill", "required_permission": "", "sort_order": 6},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Log Reminder", "url": "/reminders", "icon": "bell", "required_permission": "send_reminders", "sort_order": 7},
-        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Tabel Gaji", "url": "/salary", "icon": "cash-stack", "required_permission": "view_salary", "sort_order": 8},
-        
-        {"app_slug": "evaluasi", "parent_title": None, "title": "Konfigurasi", "url": "#", "icon": "", "required_permission": "", "sort_order": 2},
-        {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Template Evaluasi", "url": "/admin", "icon": "sliders", "required_permission": "manage_template", "sort_order": 1},
-        {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Manajemen Divisi", "url": "/admin/divisions", "icon": "diagram-3", "required_permission": "manage_divisions", "sort_order": 2},
-        {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Pengaturan Notifikasi", "url": "/settings", "icon": "gear", "required_permission": "manage_settings", "sort_order": 3},
+            # AssetCore (aset)
+            {"app_slug": "aset", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 1},
+            {"app_slug": "aset", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/aset/", "icon": "grid-1x2", "required_permission": "ac_view", "sort_order": 1},
+            
+            {"app_slug": "aset", "parent_title": None, "title": "Inventaris", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 2},
+            {"app_slug": "aset", "parent_title": "Inventaris", "title": "Laptop / PC", "url": "/aset/assets", "icon": "laptop", "required_permission": "ac_manage_assets", "sort_order": 1},
+            {"app_slug": "aset", "parent_title": "Inventaris", "title": "Infrastruktur", "url": "/aset/infra", "icon": "hdd-network", "required_permission": "ac_manage_infra", "sort_order": 2},
+            {"app_slug": "aset", "parent_title": "Inventaris", "title": "Maintenance", "url": "/aset/maintenance", "icon": "tools", "required_permission": "ac_manage_assets", "sort_order": 3},
+            
+            {"app_slug": "aset", "parent_title": None, "title": "Permintaan & Lisensi", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 3},
+            {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Lisensi", "url": "/aset/licenses", "icon": "key", "required_permission": "ac_manage_licenses", "sort_order": 1},
+            {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Subscription", "url": "/aset/subscriptions", "icon": "cloud-check", "required_permission": "ac_manage_subs", "sort_order": 2},
+            {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Request Software", "url": "/aset/requests", "icon": "inbox", "required_permission": "ac_manage_requests", "sort_order": 3},
+            {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Request Alat Kerja", "url": "/aset/tool-requests", "icon": "laptop", "required_permission": "ac_manage_requests", "sort_order": 4},
+            
+            {"app_slug": "aset", "parent_title": None, "title": "Pengaturan", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 4},
+            {"app_slug": "aset", "parent_title": "Pengaturan", "title": "Notifikasi", "url": "/aset/settings", "icon": "bell-fill", "required_permission": "ac_manage_assets", "sort_order": 1},
+            {"app_slug": "aset", "parent_title": "Pengaturan", "title": "Master Data Spec", "url": "/aset/masters", "icon": "database", "required_permission": "ac_manage_assets", "sort_order": 2},
 
-        # AssetCore (aset)
-        {"app_slug": "aset", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 1},
-        {"app_slug": "aset", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/aset/", "icon": "grid-1x2", "required_permission": "ac_view", "sort_order": 1},
-        
-        {"app_slug": "aset", "parent_title": None, "title": "Inventaris", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 2},
-        {"app_slug": "aset", "parent_title": "Inventaris", "title": "Laptop / PC", "url": "/aset/assets", "icon": "laptop", "required_permission": "ac_manage_assets", "sort_order": 1},
-        {"app_slug": "aset", "parent_title": "Inventaris", "title": "Infrastruktur", "url": "/aset/infra", "icon": "hdd-network", "required_permission": "ac_manage_infra", "sort_order": 2},
-        {"app_slug": "aset", "parent_title": "Inventaris", "title": "Maintenance", "url": "/aset/maintenance", "icon": "tools", "required_permission": "ac_manage_assets", "sort_order": 3},
-        
-        {"app_slug": "aset", "parent_title": None, "title": "Permintaan & Lisensi", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 3},
-        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Lisensi", "url": "/aset/licenses", "icon": "key", "required_permission": "ac_manage_licenses", "sort_order": 1},
-        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Subscription", "url": "/aset/subscriptions", "icon": "cloud-check", "required_permission": "ac_manage_subs", "sort_order": 2},
-        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Request Software", "url": "/aset/requests", "icon": "inbox", "required_permission": "ac_manage_requests", "sort_order": 3},
-        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Request Alat Kerja", "url": "/aset/tool-requests", "icon": "laptop", "required_permission": "ac_manage_requests", "sort_order": 4},
-        
-        {"app_slug": "aset", "parent_title": None, "title": "Pengaturan", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 4},
-        {"app_slug": "aset", "parent_title": "Pengaturan", "title": "Notifikasi", "url": "/aset/settings", "icon": "bell-fill", "required_permission": "ac_manage_assets", "sort_order": 1},
-        {"app_slug": "aset", "parent_title": "Pengaturan", "title": "Master Data Spec", "url": "/aset/masters", "icon": "database", "required_permission": "ac_manage_assets", "sort_order": 2},
+            # SupportCore (support)
+            {"app_slug": "support", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 1},
+            {"app_slug": "support", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/support/", "icon": "grid-1x2", "required_permission": "sc_view", "sort_order": 1},
+            
+            {"app_slug": "support", "parent_title": None, "title": "Master Data", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 2},
+            {"app_slug": "support", "parent_title": "Master Data", "title": "Customer", "url": "/support/customers", "icon": "building", "required_permission": "sc_manage_customers", "sort_order": 1},
+            {"app_slug": "support", "parent_title": "Master Data", "title": "Apps & Modul", "url": "/support/apps", "icon": "grid-3x3-gap", "required_permission": "sc_manage_apps", "sort_order": 2},
+            {"app_slug": "support", "parent_title": "Master Data", "title": "Layanan/Jasa", "url": "/support/services", "icon": "wrench-adjustable", "required_permission": "sc_manage_services", "sort_order": 3},
+            {"app_slug": "support", "parent_title": "Master Data", "title": "Tipe Support", "url": "/support/support-types", "icon": "tools", "required_permission": "sc_manage_types", "sort_order": 4},
+            {"app_slug": "support", "parent_title": "Master Data", "title": "Kategori SLA", "url": "/support/sla-categories", "icon": "speedometer2", "required_permission": "sc_manage_sla", "sort_order": 5},
+            
+            {"app_slug": "support", "parent_title": None, "title": "Operasional", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 3},
+            {"app_slug": "support", "parent_title": "Operasional", "title": "Kontrak", "url": "/support/contracts", "icon": "file-earmark-text", "required_permission": "sc_manage_contracts", "sort_order": 1},
+            {"app_slug": "support", "parent_title": "Operasional", "title": "Presales & POC", "url": "/support/presales", "icon": "person-plus", "required_permission": "sc_manage_presales", "sort_order": 2},
+            {"app_slug": "support", "parent_title": "Operasional", "title": "Tiket Support", "url": "/support/tickets", "icon": "ticket-detailed", "required_permission": "sc_manage_tickets", "sort_order": 3},
+            
+            {"app_slug": "support", "parent_title": None, "title": "Analitik", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 4},
+            {"app_slug": "support", "parent_title": "Analitik", "title": "Monitoring SLA", "url": "/support/sla-monitor", "icon": "graph-up", "required_permission": "sc_view_reports", "sort_order": 1},
+            {"app_slug": "support", "parent_title": "Analitik", "title": "Laporan", "url": "/support/reports", "icon": "bar-chart-line", "required_permission": "sc_view_reports", "sort_order": 2},
 
-        # SupportCore (support)
-        {"app_slug": "support", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 1},
-        {"app_slug": "support", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/support/", "icon": "grid-1x2", "required_permission": "sc_view", "sort_order": 1},
-        
-        {"app_slug": "support", "parent_title": None, "title": "Master Data", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 2},
-        {"app_slug": "support", "parent_title": "Master Data", "title": "Customer", "url": "/support/customers", "icon": "building", "required_permission": "sc_manage_customers", "sort_order": 1},
-        {"app_slug": "support", "parent_title": "Master Data", "title": "Apps & Modul", "url": "/support/apps", "icon": "grid-3x3-gap", "required_permission": "sc_manage_apps", "sort_order": 2},
-        {"app_slug": "support", "parent_title": "Master Data", "title": "Layanan/Jasa", "url": "/support/services", "icon": "wrench-adjustable", "required_permission": "sc_manage_services", "sort_order": 3},
-        {"app_slug": "support", "parent_title": "Master Data", "title": "Tipe Support", "url": "/support/support-types", "icon": "tools", "required_permission": "sc_manage_types", "sort_order": 4},
-        {"app_slug": "support", "parent_title": "Master Data", "title": "Kategori SLA", "url": "/support/sla-categories", "icon": "speedometer2", "required_permission": "sc_manage_sla", "sort_order": 5},
-        
-        {"app_slug": "support", "parent_title": None, "title": "Operasional", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 3},
-        {"app_slug": "support", "parent_title": "Operasional", "title": "Kontrak", "url": "/support/contracts", "icon": "file-earmark-text", "required_permission": "sc_manage_contracts", "sort_order": 1},
-        {"app_slug": "support", "parent_title": "Operasional", "title": "Presales & POC", "url": "/support/presales", "icon": "person-plus", "required_permission": "sc_manage_presales", "sort_order": 2},
-        {"app_slug": "support", "parent_title": "Operasional", "title": "Tiket Support", "url": "/support/tickets", "icon": "ticket-detailed", "required_permission": "sc_manage_tickets", "sort_order": 3},
-        
-        {"app_slug": "support", "parent_title": None, "title": "Analitik", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 4},
-        {"app_slug": "support", "parent_title": "Analitik", "title": "Monitoring SLA", "url": "/support/sla-monitor", "icon": "graph-up", "required_permission": "sc_view_reports", "sort_order": 1},
-        {"app_slug": "support", "parent_title": "Analitik", "title": "Laporan", "url": "/support/reports", "icon": "bar-chart-line", "required_permission": "sc_view_reports", "sort_order": 2},
+            # BookingCore (booking)
+            {"app_slug": "booking", "parent_title": None, "title": "Booking", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
+            {"app_slug": "booking", "parent_title": "Booking", "title": "Semua Booking", "url": "/booking/", "icon": "calendar2-check", "required_permission": "", "sort_order": 1},
+            {"app_slug": "booking", "parent_title": "Booking", "title": "Buat Booking", "url": "/booking/new", "icon": "plus-circle", "required_permission": "", "sort_order": 2},
+            {"app_slug": "booking", "parent_title": "Booking", "title": "Tambah Resource", "url": "/booking/resource/add", "icon": "building-add", "required_permission": "", "sort_order": 3},
 
-        # BookingCore (booking)
-        {"app_slug": "booking", "parent_title": None, "title": "Booking", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
-        {"app_slug": "booking", "parent_title": "Booking", "title": "Semua Booking", "url": "/booking/", "icon": "calendar2-check", "required_permission": "", "sort_order": 1},
-        {"app_slug": "booking", "parent_title": "Booking", "title": "Buat Booking", "url": "/booking/new", "icon": "plus-circle", "required_permission": "", "sort_order": 2},
-        {"app_slug": "booking", "parent_title": "Booking", "title": "Tambah Resource", "url": "/booking/resource/add", "icon": "building-add", "required_permission": "", "sort_order": 3},
+            # ProjectCore (project)
+            {"app_slug": "project", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
+            {"app_slug": "project", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/project/", "icon": "grid-1x2", "required_permission": "", "sort_order": 1},
+            {"app_slug": "project", "parent_title": "Menu Utama", "title": "Semua Proyek", "url": "/project/projects", "icon": "kanban", "required_permission": "", "sort_order": 2},
+            {"app_slug": "project", "parent_title": "Menu Utama", "title": "Tambah Proyek", "url": "/project/projects/add", "icon": "plus-circle", "required_permission": "", "sort_order": 3},
+            
+            {"app_slug": "project", "parent_title": None, "title": "Master Data", "url": "#", "icon": "", "required_permission": "", "sort_order": 2},
+            {"app_slug": "project", "parent_title": "Master Data", "title": "Customer", "url": "/support/customers", "icon": "building", "required_permission": "", "sort_order": 1},
 
-        # ProjectCore (project)
-        {"app_slug": "project", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
-        {"app_slug": "project", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/project/", "icon": "grid-1x2", "required_permission": "", "sort_order": 1},
-        {"app_slug": "project", "parent_title": "Menu Utama", "title": "Semua Proyek", "url": "/project/projects", "icon": "kanban", "required_permission": "", "sort_order": 2},
-        {"app_slug": "project", "parent_title": "Menu Utama", "title": "Tambah Proyek", "url": "/project/projects/add", "icon": "plus-circle", "required_permission": "", "sort_order": 3},
-        
-        {"app_slug": "project", "parent_title": None, "title": "Master Data", "url": "#", "icon": "", "required_permission": "", "sort_order": 2},
-        {"app_slug": "project", "parent_title": "Master Data", "title": "Customer", "url": "/support/customers", "icon": "building", "required_permission": "", "sort_order": 1},
+            # AttendanceCore (attendance)
+            {"app_slug": "attendance", "parent_title": None, "title": "Kehadiran Saya", "url": "#", "icon": "", "required_permission": "at_view", "sort_order": 1},
+            {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Presensi Harian", "url": "/attendance/", "icon": "clock", "required_permission": "at_view", "sort_order": 1},
+            {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Cuti", "url": "/attendance/leave", "icon": "calendar-event", "required_permission": "at_view", "sort_order": 2},
+            {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Lembur", "url": "/attendance/overtime", "icon": "clock-history", "required_permission": "at_view", "sort_order": 3},
+            {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Koreksi Absen", "url": "/attendance/correction", "icon": "patch-exclamation", "required_permission": "at_view", "sort_order": 4},
+            
+            {"app_slug": "attendance", "parent_title": None, "title": "Manajemen", "url": "#", "icon": "", "required_permission": "at_manage", "sort_order": 2},
+            {"app_slug": "attendance", "parent_title": "Manajemen", "title": "Approval Console", "url": "/attendance/admin/approvals", "icon": "check2-square", "required_permission": "at_manage", "sort_order": 1},
+        ]
 
-        # AttendanceCore (attendance)
-        {"app_slug": "attendance", "parent_title": None, "title": "Kehadiran Saya", "url": "#", "icon": "", "required_permission": "at_view", "sort_order": 1},
-        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Presensi Harian", "url": "/attendance/", "icon": "clock", "required_permission": "at_view", "sort_order": 1},
-        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Cuti", "url": "/attendance/leave", "icon": "calendar-event", "required_permission": "at_view", "sort_order": 2},
-        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Lembur", "url": "/attendance/overtime", "icon": "clock-history", "required_permission": "at_view", "sort_order": 3},
-        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Koreksi Absen", "url": "/attendance/correction", "icon": "patch-exclamation", "required_permission": "at_view", "sort_order": 4},
-        
-        {"app_slug": "attendance", "parent_title": None, "title": "Manajemen", "url": "#", "icon": "", "required_permission": "at_manage", "sort_order": 2},
-        {"app_slug": "attendance", "parent_title": "Manajemen", "title": "Approval Console", "url": "/attendance/admin/approvals", "icon": "check2-square", "required_permission": "at_manage", "sort_order": 1},
-    ]
-
-    parent_map = {}
-    for m in default_menus:
-        if m['parent_title'] is None:
-            cur = db.execute('''INSERT INTO app_menus (app_slug, parent_id, title, url, icon, required_permission, sort_order, is_active)
-                                VALUES (?, NULL, ?, ?, ?, ?, ?, 1)''',
-                             (m['app_slug'], m['title'], m['url'], m['icon'], m['required_permission'], m['sort_order']))
-            pid = cur.lastrowid
-            parent_map[(m['app_slug'], m['title'])] = pid
-
-    menu_id_list = []
-    for m in default_menus:
-        if m['parent_title'] is not None:
-            pid = parent_map.get((m['app_slug'], m['parent_title']))
-            if pid:
+        parent_map = {}
+        for m in default_menus:
+            if m['parent_title'] is None:
                 cur = db.execute('''INSERT INTO app_menus (app_slug, parent_id, title, url, icon, required_permission, sort_order, is_active)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)''',
-                                 (m['app_slug'], pid, m['title'], m['url'], m['icon'], m['required_permission'], m['sort_order']))
-                menu_id_list.append((cur.lastrowid, m['required_permission'], m['app_slug']))
-        else:
-            pid = parent_map.get((m['app_slug'], m['title']))
-            if pid:
-                menu_id_list.append((pid, m['required_permission'], m['app_slug']))
+                                    VALUES (?, NULL, ?, ?, ?, ?, ?, 1)''',
+                                 (m['app_slug'], m['title'], m['url'], m['icon'], m['required_permission'], m['sort_order']))
+                pid = cur.lastrowid
+                parent_map[(m['app_slug'], m['title'])] = pid
 
+        for m in default_menus:
+            if m['parent_title'] is not None:
+                pid = parent_map.get((m['app_slug'], m['parent_title']))
+                if pid:
+                    db.execute('''INSERT INTO app_menus (app_slug, parent_id, title, url, icon, required_permission, sort_order, is_active)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, 1)''',
+                                     (m['app_slug'], pid, m['title'], m['url'], m['icon'], m['required_permission'], m['sort_order']))
+
+    # Re-seed role defaults for any missing relationships (always run this to sync defaults!)
+    all_db_menus = db.execute('SELECT id, required_permission, app_slug FROM app_menus').fetchall()
+    
     for rname, rperms in SYSTEM_ROLE_DEFAULTS.items():
-        for menu_id, req_perm, app_slug in menu_id_list:
+        db.execute("INSERT OR IGNORE INTO roles (name, description, app_slug, is_system) VALUES (?, ?, '', 1)",
+                   (rname, f"System default {rname} role"))
+                   
+        for row in all_db_menus:
+            menu_id = row['id']
+            req_perm = row['required_permission']
             if rname == 'superadmin':
                 db.execute('INSERT OR IGNORE INTO role_menus (role_name, menu_id) VALUES (?, ?)', (rname, menu_id))
             else:
                 if not req_perm or req_perm in rperms:
                     db.execute('INSERT OR IGNORE INTO role_menus (role_name, menu_id) VALUES (?, ?)', (rname, menu_id))
+                    
+        # Re-derive permissions
+        if rname == 'superadmin':
+            for perm in ALL_PERMISSIONS:
+                db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
+        else:
+            for perm in rperms:
+                db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
     db.commit()
 
 
@@ -5382,15 +5392,26 @@ def portal_roles():
         elif action == 'save_perms':
             rname     = request.form.get('role_name', '')
             
-            # 1. Save menu assignments
-            db.execute('DELETE FROM role_menus WHERE role_name=?', (rname,))
+            # 1. Save menu assignments (app-scoped)
+            db.execute('''
+                DELETE FROM role_menus 
+                WHERE role_name=? AND menu_id IN (SELECT id FROM app_menus WHERE app_slug=?)
+            ''', (rname, app_slug))
+            
             selected_menus = request.form.getlist('menus')
             for mid in selected_menus:
                 if mid.isdigit():
                     db.execute('INSERT OR IGNORE INTO role_menus(role_name,menu_id) VALUES(?,?)', (rname, int(mid)))
             
-            # 2. Derive permissions automatically from assigned menus
-            db.execute('DELETE FROM role_permissions WHERE role_name=?', (rname,))
+            # 2. Derive permissions automatically from assigned menus (app-scoped)
+            app_perms = APP_PERMISSIONS.get(app_slug, {})
+            for perm in app_perms:
+                db.execute('DELETE FROM role_permissions WHERE role_name=? AND permission=?', (rname, perm))
+            
+            if app_slug == 'portal':
+                db.execute('DELETE FROM role_permissions WHERE role_name=? AND permission IN (?,?)', 
+                           (rname, 'manage_users', 'manage_roles'))
+
             if rname == 'superadmin':
                 for perm in ALL_PERMISSIONS:
                     db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)', (rname, perm))
@@ -5398,8 +5419,8 @@ def portal_roles():
                 rows = db.execute('''
                     SELECT DISTINCT m.required_permission FROM app_menus m
                     JOIN role_menus rm ON m.id = rm.menu_id
-                    WHERE rm.role_name=? AND m.required_permission != ''
-                ''', (rname,)).fetchall()
+                    WHERE rm.role_name=? AND m.required_permission != '' AND m.app_slug=?
+                ''', (rname, app_slug)).fetchall()
                 for row in rows:
                     perm = row['required_permission']
                     if superadmin or perm not in CRITICAL_PERMISSIONS:

@@ -1,6 +1,7 @@
-VERSION = "2.2.70"
+VERSION = "2.2.71"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
+    "v2.2.71: Perbaikan role saving agar app-scoped (tidak menimpa app lain) dan penambahan default at_view/at_manage ke sistem role defaults saat startup/seeding. "
     "v2.2.70: Fix at_require helper in AttendanceCore to check permissions via get_db() has_permission instead of unpopulated session['user_permissions']. "
     "v2.2.69: Perubahan mass add akses menggunakan data karyawan (auto-create user account dengan key email dan default password hive2026, sso untuk @mmi-pt.com, login support username/email). "
     "v2.2.68: Hapus checkbox legacy permission di portal_roles (diganti auto-derive) dan tambah fitur mass add akses aplikasi di portal_settings. "
