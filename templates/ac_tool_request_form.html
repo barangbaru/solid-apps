@@ -10,7 +10,7 @@
 
 <div class="card border-0 shadow-sm">
   <div class="card-body">
-    <form method="post">
+    <form method="post" enctype="multipart/form-data">
       <div class="row g-3">
         <div class="col-md-5">
           <label class="form-label fw-semibold small">Karyawan / User Pengguna</label>
@@ -28,6 +28,28 @@
         <div class="col-md-3">
           <label class="form-label fw-semibold small">Tanggal Permintaan</label>
           <input name="request_date" type="date" value="{{ today }}" class="form-control form-control-sm">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Requested By</label>
+          <select name="request_channel" class="form-select form-select-sm">
+            {% for c in ['Email','WhatsApp','Telegram','Other'] %}
+            <option>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Requested By Other</label>
+          <input name="request_channel_other" class="form-control form-control-sm" placeholder="Jika pilih Other">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Capture Request</label>
+          <input name="attach_request_capture" type="file" class="form-control form-control-sm" multiple
+                 accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.eml,.msg">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold small">Foto Unit</label>
+          <input name="attach_unit_photo" type="file" class="form-control form-control-sm" multiple accept="image/*">
         </div>
 
         <div class="col-md-7">

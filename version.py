@@ -1,4 +1,4 @@
-VERSION = "2.2.40"
+VERSION = "2.2.41"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -51,5 +51,6 @@ RELEASE_NOTES = (
     "v2.2.37: Memperbaiki error UndefinedColumn start_time/end_time di PostgreSQL dengan mengubahnya ke start_dt/end_dt, dan menyertakan JOIN users untuk memuat nama pemesan. "
     "v2.2.38: Menambahkan kategori sidebar 'Lainnya' untuk menampilkan equipment (Proyektor Portable), dan memperkuat visual/kontras TV display agar lebih enterprise-grade. "
     "v2.2.39: Implementasi fitur Request Alat Kerja (Laptop) di AssetCore dengan input admin PIC untuk tipe, spesifikasi, link pembelian online, dan estimasi harga. "
-    "v2.2.40: Perluasan form Request Alat Kerja sesuai format pembelian laptop, spek opsional CPU/RAM/disk, dan auto-create asset Laptop/PC saat request Completed dengan kompatibilitas PostgreSQL."
+    "v2.2.40: Perluasan form Request Alat Kerja sesuai format pembelian laptop, spek opsional CPU/RAM/disk, dan auto-create asset Laptop/PC saat request Completed dengan kompatibilitas PostgreSQL. "
+    "v2.2.41: Menambahkan requested-by channel pada Request Alat Kerja serta multi attachment untuk capture request dan foto unit pembelian/checking."
 )

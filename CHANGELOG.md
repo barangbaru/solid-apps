@@ -7,6 +7,15 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [2.2.41] - 2026-07-09
+### Fitur: AssetCore Request Alat Kerja
+- Tambah field `Requested By` dengan pilihan Email, WhatsApp, Telegram, dan Other.
+- Tambah multi attachment untuk capture request dari email/chat.
+- Tambah multi attachment foto unit yang sudah dibeli dan dicek.
+- Attachment tersimpan di tabel terpisah dan mengikuti mekanisme media local/S3 yang sudah ada.
+
+---
+
 ## [2.2.40] - 2026-07-09
 ### Fitur: AssetCore Request Alat Kerja
 - Form Request Alat Kerja diperluas mengikuti format pembelian laptop: tanggal permintaan, tanggal pembelian, tanggal masuk, tanggal receipt, PIC Support, ket, user, dan harga.

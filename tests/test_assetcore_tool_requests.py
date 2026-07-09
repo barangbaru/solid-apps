@@ -1,9 +1,12 @@
 def test_completed_tool_request_creates_laptop_asset(tmp_path, monkeypatch):
+    from io import BytesIO
+
     import app as hive_app
 
     db_path = tmp_path / 'assetcore_tool_requests.db'
     monkeypatch.setattr(hive_app, 'DB_TYPE', 'sqlite')
     monkeypatch.setattr(hive_app, 'DB_PATH', str(db_path))
+    monkeypatch.setattr(hive_app, 'UPLOAD_FOLDER', str(tmp_path / 'uploads'))
     hive_app.app.config.update(TESTING=True, SECRET_KEY='test-secret')
 
     with hive_app.app.app_context():
@@ -29,6 +32,8 @@ def test_completed_tool_request_creates_laptop_asset(tmp_path, monkeypatch):
         'request_date': '2026-07-09',
         'item_name': 'ASUS Vivobook Go 14 Ryzen 5 16GB 512GB',
         'item_category': 'Laptop',
+        'request_channel': 'WhatsApp',
+        'request_channel_other': '',
         'admin_price': '8000000',
         'purchase_date': '2026-07-10',
         'received_date': '2026-07-11',
@@ -51,7 +56,20 @@ def test_completed_tool_request_creates_laptop_asset(tmp_path, monkeypatch):
         'notes': 'Catatan test',
     }
 
-    resp = client.post('/aset/tool-requests/new', data=request_data, follow_redirects=False)
+    create_data = dict(request_data)
+    create_data.update({
+        'attach_request_capture': (BytesIO(b'capture'), 'capture-request.pdf'),
+        'attach_unit_photo': [
+            (BytesIO(b'photo-front'), 'unit-front.jpg'),
+            (BytesIO(b'photo-back'), 'unit-back.jpg'),
+        ],
+    })
+    resp = client.post(
+        '/aset/tool-requests/new',
+        data=create_data,
+        content_type='multipart/form-data',
+        follow_redirects=False,
+    )
     assert resp.status_code in (302, 303)
 
     with hive_app.app.app_context():
@@ -61,6 +79,14 @@ def test_completed_tool_request_creates_laptop_asset(tmp_path, monkeypatch):
         ).fetchone()
         request_id = tool_request['id']
         assert tool_request['spec_cpu_type'] == 'Ryzen 5 7520U'
+        assert tool_request['request_channel'] == 'WhatsApp'
+        attachments = db.execute(
+            'SELECT * FROM ac_tool_request_attachments WHERE request_id=? ORDER BY section, id',
+            (request_id,),
+        ).fetchall()
+        assert len(attachments) == 3
+        assert [a['section'] for a in attachments].count('request_capture') == 1
+        assert [a['section'] for a in attachments].count('unit_photo') == 2
 
     complete_data = dict(request_data)
     complete_data.update({'status': 'Completed', 'create_asset': '1'})
@@ -91,3 +117,4 @@ def test_completed_tool_request_creates_laptop_asset(tmp_path, monkeypatch):
     assert asset['disk'] == '512 GB SSD'
     assert asset['asset_tag'] == 'TEST-001'
     assert asset['serial_number'] == 'SNTEST001'
+    assert 'Requested by: WhatsApp' in asset['notes']

@@ -37,16 +37,23 @@
           <th>User</th>
           <th>Timeline</th>
           <th>Pembelian & Spek</th>
+          <th>Attachment</th>
           <th>Status</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for r in requests %}
+        {% set atts = attachments_by_request.get(r.id, {}) %}
+        {% set request_caps = atts.get('request_capture', []) %}
+        {% set unit_photos = atts.get('unit_photo', []) %}
         <tr>
           <td style="min-width:240px">
             <div class="fw-semibold small">{{ r.item_name }}</div>
             <div class="text-muted small">{{ r.item_category or 'Laptop' }}</div>
+            <div class="small text-muted">
+              By: {{ r.request_channel_other if r.request_channel == 'Other' and r.request_channel_other else (r.request_channel or 'Email') }}
+            </div>
             {% if r.asset_id %}
             <a href="/aset/assets/{{ r.asset_id }}" class="badge bg-secondary text-decoration-none mt-1">Asset #{{ r.asset_id }}</a>
             {% endif %}
@@ -86,6 +93,41 @@
               <span class="text-muted small">Menunggu data pembelian</span>
             {% endif %}
           </td>
+          <td style="min-width:230px">
+            {% if request_caps or unit_photos %}
+              {% if request_caps %}
+              <div class="small fw-semibold text-muted mb-1">Capture Request</div>
+              <div class="d-flex gap-1 flex-wrap mb-2">
+                {% for a in request_caps %}
+                <span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1">
+                  <a href="{{ a.filename }}" target="_blank" class="text-decoration-none text-dark">{{ a.original_name or 'file' }}</a>
+                  <form method="post" action="/aset/tool-requests/{{ r.id }}/attachments/{{ a.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus attachment ini?')">
+                    <button class="btn btn-link btn-sm p-0 text-danger" title="Hapus"><i class="bi bi-x"></i></button>
+                  </form>
+                </span>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if unit_photos %}
+              <div class="small fw-semibold text-muted mb-1">Foto Unit</div>
+              <div class="d-flex gap-1 flex-wrap">
+                {% for a in unit_photos %}
+                <span class="position-relative d-inline-block">
+                  <a href="{{ a.filename }}" target="_blank">
+                    <img src="{{ a.filename }}" alt="{{ a.original_name }}" class="rounded border" style="width:46px;height:34px;object-fit:cover">
+                  </a>
+                  <form method="post" action="/aset/tool-requests/{{ r.id }}/attachments/{{ a.id }}/delete"
+                        class="position-absolute top-0 end-0" onsubmit="return confirm('Hapus foto ini?')">
+                    <button class="btn btn-danger btn-sm py-0 px-1" style="font-size:.62rem;line-height:1" title="Hapus">&times;</button>
+                  </form>
+                </span>
+                {% endfor %}
+              </div>
+              {% endif %}
+            {% else %}
+              <span class="text-muted small">Belum ada attachment</span>
+            {% endif %}
+          </td>
           <td>
             <span class="badge {{ 'bg-warning text-dark' if r.status=='Pending' else ('bg-success' if r.status=='Approved' else ('bg-info' if r.status=='Completed' else 'bg-danger')) }}">
               {{ r.status }}
@@ -102,6 +144,8 @@
                     data-manual-user-name="{{ r.manual_user_name|e }}"
                     data-item-name="{{ r.item_name|e }}"
                     data-item-category="{{ r.item_category|e }}"
+                    data-request-channel="{{ r.request_channel|e }}"
+                    data-request-channel-other="{{ r.request_channel_other|e }}"
                     data-reason="{{ r.reason|e }}"
                     data-status="{{ r.status|e }}"
                     data-admin-item-type="{{ r.admin_item_type|e }}"
@@ -133,7 +177,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Belum ada request.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">Belum ada request.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -143,7 +187,7 @@
 <div class="modal fade" id="modalStatus" tabindex="-1">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
-      <form method="post" id="formStatus">
+      <form method="post" id="formStatus" enctype="multipart/form-data">
         <div class="modal-header py-2">
           <h6 class="modal-title fw-bold"><i class="bi bi-laptop me-2 text-primary"></i>Kelola Request Alat Kerja</h6>
           <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
@@ -187,6 +231,28 @@
             <div class="col-md-3">
               <label class="form-label fw-semibold small">Harga</label>
               <input type="number" step="any" name="admin_price" id="modalPrice" class="form-control form-control-sm">
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Requested By</label>
+              <select name="request_channel" id="modalRequestChannel" class="form-select form-select-sm">
+                {% for c in ['Email','WhatsApp','Telegram','Other'] %}
+                <option>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Requested By Other</label>
+              <input name="request_channel_other" id="modalRequestChannelOther" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Tambah Capture Request</label>
+              <input name="attach_request_capture" type="file" class="form-control form-control-sm" multiple
+                     accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.eml,.msg">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Tambah Foto Unit</label>
+              <input name="attach_unit_photo" type="file" class="form-control form-control-sm" multiple accept="image/*">
             </div>
 
             <div class="col-md-3">
@@ -326,6 +392,8 @@ document.getElementById('modalStatus').addEventListener('show.bs.modal', functio
   setField('modalManualUserName', btn.dataset.manualUserName);
   setField('modalItemName', btn.dataset.itemName);
   setField('modalItemCategory', btn.dataset.itemCategory || 'Laptop');
+  setField('modalRequestChannel', btn.dataset.requestChannel || 'Email');
+  setField('modalRequestChannelOther', btn.dataset.requestChannelOther);
   setField('modalReason', btn.dataset.reason);
   setField('modalSelectStatus', btn.dataset.status || 'Pending');
   setField('modalType', btn.dataset.adminItemType);

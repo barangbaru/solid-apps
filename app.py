@@ -63,15 +63,18 @@ DIVISI_LIST = list(ALL_DIVISIONS.keys())
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_IMAGE_EXT = {'jpg', 'jpeg', 'png', 'webp', 'gif'}
+ALLOWED_ATTACHMENT_EXT = ALLOWED_IMAGE_EXT | {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'eml', 'msg'}
 
-def _save_upload(file_obj, subfolder=''):
+def _save_upload_file(file_obj, subfolder='', allowed_ext=None):
     import uuid
     import shutil
+    if not file_obj or not file_obj.filename or '.' not in file_obj.filename:
+        return None
     ext = file_obj.filename.rsplit('.', 1)[-1].lower()
-    if ext not in ALLOWED_IMAGE_EXT:
+    if allowed_ext is not None and ext not in allowed_ext:
         return None
     fname = uuid.uuid4().hex + '.' + ext
-    
+
     # Check media storage type from settings
     storage_type = 'local'
     try:
@@ -80,7 +83,7 @@ def _save_upload(file_obj, subfolder=''):
         storage_type = cfg.get('media_storage_type', 'local')
     except Exception:
         pass
-        
+
     if storage_type == 's3':
         temp_path = None
         try:
@@ -89,15 +92,15 @@ def _save_upload(file_obj, subfolder=''):
             secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
             bucket = cfg.get('backup_dest_s3_bucket', '').strip()
             region = cfg.get('backup_dest_s3_region', '').strip()
-            
+
             # Only attempt S3 upload if required credentials are provided
             if access_key and secret_key and bucket:
                 s3_key = f"upload/media/{subfolder}/{fname}" if subfolder else f"upload/media/{fname}"
-                
+
                 # Temporary local save to upload
                 temp_path = os.path.join(UPLOAD_FOLDER, 'temp_' + fname)
                 file_obj.save(temp_path)
-                
+
                 import boto3
                 from botocore.config import Config
                 config = Config(
@@ -119,12 +122,12 @@ def _save_upload(file_obj, subfolder=''):
                     s3.upload_file(temp_path, bucket, s3_key, ExtraArgs={'ACL': 'public-read'})
                 except Exception:
                     s3.upload_file(temp_path, bucket, s3_key)
-                    
+
                 try:
                     os.remove(temp_path)
                 except Exception:
                     pass
-                    
+
                 return f"/media/proxy/{s3_key}"
         except Exception:
             # Fallback: if we already saved the file to temp_path, move it to local destination
@@ -136,7 +139,7 @@ def _save_upload(file_obj, subfolder=''):
                     return f'/static/uploads/{subfolder}/{fname}' if subfolder else f'/static/uploads/{fname}'
                 except Exception:
                     pass
-            
+
     # Local Storage fallback
     try:
         file_obj.seek(0)
@@ -146,6 +149,9 @@ def _save_upload(file_obj, subfolder=''):
     os.makedirs(folder, exist_ok=True)
     file_obj.save(os.path.join(folder, fname))
     return f'/static/uploads/{subfolder}/{fname}' if subfolder else f'/static/uploads/{fname}'
+
+def _save_upload(file_obj, subfolder=''):
+    return _save_upload_file(file_obj, subfolder, ALLOWED_IMAGE_EXT)
 
 def get_divisi_list(db):
     try:
@@ -1073,6 +1079,8 @@ CREATE TABLE IF NOT EXISTS ac_tool_requests (
     manual_user_name TEXT DEFAULT '',
     item_name TEXT NOT NULL,
     item_category TEXT DEFAULT 'Laptop',
+    request_channel TEXT DEFAULT 'Email',
+    request_channel_other TEXT DEFAULT '',
     reason TEXT DEFAULT '',
     status TEXT DEFAULT 'Pending',
     admin_item_type TEXT DEFAULT '',
@@ -1100,6 +1108,16 @@ CREATE TABLE IF NOT EXISTS ac_tool_requests (
     resolved_by TEXT DEFAULT '',
     notes TEXT DEFAULT '',
     updated_at TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS ac_tool_request_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id INTEGER NOT NULL REFERENCES ac_tool_requests(id) ON DELETE CASCADE,
+    section TEXT NOT NULL DEFAULT 'request_capture',
+    filename TEXT NOT NULL,
+    original_name TEXT DEFAULT '',
+    uploaded_by INTEGER,
+    uploaded_by_name TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS ac_maintenance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1433,6 +1451,8 @@ MIGRATIONS = [
     ('ac_software_requests', 'updated_at',              "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'manual_user_name',        "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'item_category',           "TEXT DEFAULT 'Laptop'"),
+    ('ac_tool_requests',     'request_channel',         "TEXT DEFAULT 'Email'"),
+    ('ac_tool_requests',     'request_channel_other',   "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'request_date',            "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'purchase_date',           "TEXT DEFAULT ''"),
     ('ac_tool_requests',     'received_date',           "TEXT DEFAULT ''"),
@@ -1964,6 +1984,7 @@ def init_db():
         ('idx_sc_tickets_reported_at',    'sc_tickets',             'reported_at'),
         ('idx_sc_assignees_ticket',       'sc_ticket_assignees',    'ticket_id'),
         ('idx_sc_attachments_ticket',     'sc_ticket_attachments',  'ticket_id'),
+        ('idx_ac_tool_req_attach_request','ac_tool_request_attachments', 'request_id'),
         ('idx_sc_ext_assignees_ticket',   'sc_ticket_external_assignees', 'ticket_id'),
         ('idx_pc_ext_assignees_task',     'pc_task_external_assignees',   'task_id'),
         ('idx_sc_presales_assignees',     'sc_presales_assignees',  'request_id'),
@@ -11769,6 +11790,45 @@ def _parse_float_value(value, default=0.0):
     except (TypeError, ValueError):
         return default
 
+AC_TOOL_ATTACHMENT_CONFIG = {
+    'request_capture': {
+        'field': 'attach_request_capture',
+        'allowed': ALLOWED_ATTACHMENT_EXT,
+    },
+    'unit_photo': {
+        'field': 'attach_unit_photo',
+        'allowed': ALLOWED_IMAGE_EXT,
+    },
+}
+
+def _tool_request_channel_label(req):
+    channel = (req['request_channel'] or '').strip()
+    other = (req['request_channel_other'] or '').strip()
+    if channel == 'Other' and other:
+        return other
+    return channel or 'Email'
+
+def _save_tool_request_attachments(db, request_id, section):
+    cfg = AC_TOOL_ATTACHMENT_CONFIG.get(section)
+    if not cfg:
+        return 0
+    saved = 0
+    for file_obj in request.files.getlist(cfg['field']):
+        if not file_obj or not file_obj.filename:
+            continue
+        url = _save_upload_file(file_obj, 'assetcore/tool_requests', cfg['allowed'])
+        if not url:
+            continue
+        db.execute(
+            '''INSERT INTO ac_tool_request_attachments
+               (request_id,section,filename,original_name,uploaded_by,uploaded_by_name)
+               VALUES(?,?,?,?,?,?)''',
+            (request_id, section, url, file_obj.filename,
+             session.get('user_id'), session.get('user_name',''))
+        )
+        saved += 1
+    return saved
+
 def _create_asset_from_tool_request(db, req):
     """Create Laptop/PC asset from a completed tool request once."""
     existing_asset_id = req['asset_id']
@@ -11788,6 +11848,9 @@ def _create_asset_from_tool_request(db, req):
         started = req['receipt_date'] or req['received_date'] or date.today().isoformat()
 
     notes = []
+    channel_label = _tool_request_channel_label(req)
+    if channel_label:
+        notes.append(f"Requested by: {channel_label}")
     if req['reason']:
         notes.append(f"Kebutuhan: {req['reason']}")
     if req['admin_specs']:
@@ -12656,8 +12719,25 @@ def ac_tool_requests():
     order = ("COALESCE(NULLIF(r.updated_at,''),r.requested_at) DESC, r.id DESC" if sort == 'updated'
              else 'r.requested_at DESC')
     reqs = db.execute(sql + ' ORDER BY ' + order, params).fetchall()
+    attachments_by_request = {}
+    req_ids = [r['id'] for r in reqs]
+    if req_ids:
+        placeholders = ','.join(['?'] * len(req_ids))
+        att_rows = db.execute(
+            f'''SELECT * FROM ac_tool_request_attachments
+                WHERE request_id IN ({placeholders})
+                ORDER BY section, id''',
+            req_ids
+        ).fetchall()
+        for att in att_rows:
+            grouped = attachments_by_request.setdefault(
+                att['request_id'],
+                {'request_capture': [], 'unit_photo': []}
+            )
+            grouped.setdefault(att['section'], []).append(att)
     employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
     return render_template('ac_tool_requests.html', requests=reqs, employees=employees,
+                           attachments_by_request=attachments_by_request,
                            status_filter=status_filter, sort=sort)
 
 @app.route('/aset/tool-requests/new', methods=['GET','POST'])
@@ -12668,17 +12748,20 @@ def ac_tool_request_new():
     employees = db.execute('SELECT id,name,divisi FROM employees WHERE is_active=1 ORDER BY divisi,name').fetchall()
     if request.method == 'POST':
         item_name = request.form['item_name'].strip()
-        db.execute(
+        cur = db.execute(
             '''INSERT INTO ac_tool_requests
-               (employee_id,manual_user_name,item_name,item_category,reason,admin_item_type,admin_specs,
+               (employee_id,manual_user_name,item_name,item_category,request_channel,request_channel_other,
+                reason,admin_item_type,admin_specs,
                 admin_url,admin_price,request_date,purchase_date,received_date,receipt_date,pic_support,
                 ket,spec_cpu_type,spec_ram,spec_disk,spec_gpu,spec_screen,spec_os,spec_office,
                 asset_tag,serial_number,notes)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (request.form.get('employee_id') or None,
              request.form.get('manual_user_name','').strip(),
              item_name,
              request.form.get('item_category','Laptop').strip() or 'Laptop',
+             request.form.get('request_channel','Email').strip() or 'Email',
+             request.form.get('request_channel_other','').strip(),
              request.form.get('reason','').strip(),
              request.form.get('admin_item_type','').strip(),
              request.form.get('admin_specs','').strip(),
@@ -12700,7 +12783,14 @@ def ac_tool_request_new():
              request.form.get('asset_tag','').strip(),
              request.form.get('serial_number','').strip(),
              request.form.get('notes','').strip()))
-        db.commit(); flash('Request alat kerja ditambahkan.', 'success')
+        rid = cur.lastrowid
+        capture_saved = _save_tool_request_attachments(db, rid, 'request_capture')
+        photo_saved = _save_tool_request_attachments(db, rid, 'unit_photo')
+        db.commit()
+        msg = 'Request alat kerja ditambahkan.'
+        if capture_saved or photo_saved:
+            msg += f' Attachment tersimpan: {capture_saved + photo_saved}.'
+        flash(msg, 'success')
         return redirect(url_for('ac_tool_requests'))
     return render_template('ac_tool_request_form.html', employees=employees, today=date.today().isoformat())
 
@@ -12719,7 +12809,8 @@ def ac_tool_request_status(rid):
     admin_price = _parse_float_value(request.form.get('admin_price'))
 
     db.execute('''UPDATE ac_tool_requests
-                  SET employee_id=?, manual_user_name=?, item_name=?, item_category=?, reason=?,
+                  SET employee_id=?, manual_user_name=?, item_name=?, item_category=?,
+                      request_channel=?, request_channel_other=?, reason=?,
                       status=?, notes=?, admin_item_type=?, admin_specs=?, admin_url=?, admin_price=?,
                       request_date=?, purchase_date=?, received_date=?, receipt_date=?, pic_support=?,
                       ket=?, spec_cpu_type=?, spec_ram=?, spec_disk=?, spec_gpu=?, spec_screen=?,
@@ -12730,6 +12821,8 @@ def ac_tool_request_status(rid):
                 request.form.get('manual_user_name','').strip(),
                 request.form.get('item_name','').strip(),
                 request.form.get('item_category','Laptop').strip() or 'Laptop',
+                request.form.get('request_channel','Email').strip() or 'Email',
+                request.form.get('request_channel_other','').strip(),
                 request.form.get('reason','').strip(),
                 new_status, request.form.get('notes','').strip(), admin_item_type, admin_specs, admin_url, admin_price,
                 request.form.get('request_date','').strip(),
@@ -12748,6 +12841,8 @@ def ac_tool_request_status(rid):
                 request.form.get('asset_tag','').strip(),
                 request.form.get('serial_number','').strip(),
                 resolved_at, session.get('user_name',''), rid))
+    capture_saved = _save_tool_request_attachments(db, rid, 'request_capture')
+    photo_saved = _save_tool_request_attachments(db, rid, 'unit_photo')
 
     asset_id = None
     asset_created = False
@@ -12759,11 +12854,43 @@ def ac_tool_request_status(rid):
     db.commit()
     if asset_created:
         audit_log('create', 'ac_assets', asset_id, f"Asset dari request alat kerja #{rid}", 'aset')
-        flash(f'Status request alat kerja diubah ke {new_status}. Asset Laptop/PC berhasil dibuat.', 'success')
+        msg = f'Status request alat kerja diubah ke {new_status}. Asset Laptop/PC berhasil dibuat.'
+        if capture_saved or photo_saved:
+            msg += f' Attachment baru tersimpan: {capture_saved + photo_saved}.'
+        flash(msg, 'success')
     elif new_status == 'Completed' and request.form.get('create_asset') == '1' and not asset_id:
-        flash(f'Status request alat kerja diubah ke {new_status}. Asset tidak dibuat karena kategori bukan Laptop/PC.', 'warning')
+        msg = f'Status request alat kerja diubah ke {new_status}. Asset tidak dibuat karena kategori bukan Laptop/PC.'
+        if capture_saved or photo_saved:
+            msg += f' Attachment baru tersimpan: {capture_saved + photo_saved}.'
+        flash(msg, 'warning')
     else:
-        flash(f'Status request alat kerja diubah ke {new_status}.', 'success')
+        msg = f'Status request alat kerja diubah ke {new_status}.'
+        if capture_saved or photo_saved:
+            msg += f' Attachment baru tersimpan: {capture_saved + photo_saved}.'
+        flash(msg, 'success')
+    return redirect(url_for('ac_tool_requests'))
+
+@app.route('/aset/tool-requests/<int:rid>/attachments/<int:att_id>/delete', methods=['POST'])
+@login_required
+def ac_tool_request_attachment_delete(rid, att_id):
+    if not ac_require('ac_manage_requests'): return redirect(url_for('ac_tool_requests'))
+    db = get_db()
+    att = db.execute(
+        'SELECT * FROM ac_tool_request_attachments WHERE id=? AND request_id=?',
+        (att_id, rid)
+    ).fetchone()
+    if att:
+        filename = att['filename'] or ''
+        if filename.startswith('/static/uploads/'):
+            try:
+                local_path = os.path.join(os.path.dirname(__file__), filename.lstrip('/'))
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+            except Exception:
+                pass
+        db.execute('DELETE FROM ac_tool_request_attachments WHERE id=?', (att_id,))
+        db.commit()
+        flash('Attachment request dihapus.', 'success')
     return redirect(url_for('ac_tool_requests'))
 
 @app.route('/aset/tool-requests/<int:rid>/delete', methods=['POST'])
