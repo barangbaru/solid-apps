@@ -55,9 +55,7 @@ GOOGLE_USERINFO_URL  = 'https://www.googleapis.com/oauth2/v3/userinfo'
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-_default_db = os.path.join(os.path.dirname(__file__), 'evaluasi.db')
-DB_PATH = os.environ.get('DATABASE_PATH', _default_db)
-DB_TYPE = os.environ.get('DB_TYPE', 'sqlite').lower()
+DB_TYPE = 'postgresql'
 DIVISI_LIST = list(ALL_DIVISIONS.keys())
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
@@ -162,9 +160,7 @@ def get_divisi_list(db):
 
 
 def _is_db_integrity_error(exc):
-    """True untuk unique/constraint violation dari SQLite maupun psycopg2."""
-    if isinstance(exc, sqlite3.IntegrityError):
-        return True
+    """True untuk unique/constraint violation dari psycopg2."""
     try:
         import psycopg2
         return isinstance(exc, psycopg2.IntegrityError)
@@ -415,26 +411,16 @@ def _pg_connect():
 
 def _get_raw_db():
     """Buat koneksi DB baru (untuk background tasks / scheduler di luar request context)."""
-    if DB_TYPE == 'postgresql':
-        conn = _pg_connect()
-        conn.autocommit = False
-        return _DBWrapper(conn, is_pg=True)
-    raw = sqlite3.connect(DB_PATH)
-    raw.row_factory = sqlite3.Row
-    return _DBWrapper(raw, is_pg=False)
+    conn = _pg_connect()
+    conn.autocommit = False
+    return _DBWrapper(conn, is_pg=True)
 
 
 def get_db():
     if 'db' not in g:
-        if DB_TYPE == 'postgresql':
-            conn = _pg_connect()
-            conn.autocommit = False
-            g.db = _DBWrapper(conn, is_pg=True)
-        else:
-            raw = sqlite3.connect(DB_PATH)
-            raw.row_factory = sqlite3.Row
-            raw.execute('PRAGMA foreign_keys = ON')
-            g.db = _DBWrapper(raw, is_pg=False)
+        conn = _pg_connect()
+        conn.autocommit = False
+        g.db = _DBWrapper(conn, is_pg=True)
     return g.db
 
 @app.teardown_appcontext
@@ -1767,50 +1753,39 @@ def _pg_column_exists(db, table, col):
 
 
 def init_db():
-    if DB_TYPE == 'postgresql':
-        conn = _pg_connect()
-        conn.autocommit = False
-        db = _DBWrapper(conn, is_pg=True)
-    else:
-        raw = sqlite3.connect(DB_PATH)
-        raw.row_factory = sqlite3.Row
-        db = _DBWrapper(raw, is_pg=False)
+    conn = _pg_connect()
+    conn.autocommit = False
+    db = _DBWrapper(conn, is_pg=True)
 
-    schema_sql = _pg_adapt_schema(SCHEMA) if DB_TYPE == 'postgresql' else SCHEMA
+    schema_sql = _pg_adapt_schema(SCHEMA)
     db.executescript(schema_sql)
     db.commit()
 
     # Migrations
     import re as _re
     _valid_ident = _re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
-    # ALTER column types — PostgreSQL only (SQLite DDL already correct)
-    if DB_TYPE == 'postgresql':
-        for table, col, new_type, default_val in COLUMN_TYPE_MIGRATIONS:
-            if not _valid_ident.match(table) or not _valid_ident.match(col):
-                raise ValueError(f"Invalid identifier in type migration: {table!r}.{col!r}")
-            row = db.execute(
-                "SELECT data_type FROM information_schema.columns "
-                "WHERE table_name=%s AND column_name=%s", (table, col)
-            ).fetchone()
-            if row and row[0].lower() not in ('text', 'character varying'):
-                db.execute(
-                    f'ALTER TABLE {table} ALTER COLUMN {col} '
-                    f'TYPE {new_type} USING COALESCE({col}::text, {default_val})'
-                )
-        db.commit()
+    # ALTER column types — PostgreSQL only
+    for table, col, new_type, default_val in COLUMN_TYPE_MIGRATIONS:
+        if not _valid_ident.match(table) or not _valid_ident.match(col):
+            raise ValueError(f"Invalid identifier in type migration: {table!r}.{col!r}")
+        row = db.execute(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_name=%s AND column_name=%s", (table, col)
+        ).fetchone()
+        if row and row[0].lower() not in ('text', 'character varying'):
+            db.execute(
+                f'ALTER TABLE {table} ALTER COLUMN {col} '
+                f'TYPE {new_type} USING COALESCE({col}::text, {default_val})'
+            )
+    db.commit()
     for table, col, col_def in MIGRATIONS:
         if not _valid_ident.match(table) or not _valid_ident.match(col):
             raise ValueError(f"Invalid identifier in migration: table={table!r}, col={col!r}")
-        if DB_TYPE == 'postgresql':
-            # Konversi tipe kolom SQLite → PostgreSQL jika perlu
-            col_def_pg = col_def.replace('INTEGER', 'INTEGER').replace(
-                "datetime('now','localtime')", 'NOW()')
-            if not _pg_column_exists(db, table, col):
-                db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {col_def_pg}')
-        else:
-            existing = [r[1] for r in db._conn.execute(f'PRAGMA table_info({table})').fetchall()]
-            if col not in existing:
-                db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {col_def}')
+        # Konversi tipe kolom SQLite → PostgreSQL jika perlu
+        col_def_pg = col_def.replace('INTEGER', 'INTEGER').replace(
+            "datetime('now','localtime')", 'NOW()')
+        if not _pg_column_exists(db, table, col):
+            db.execute(f'ALTER TABLE {table} ADD COLUMN {col} {col_def_pg}')
     db.commit()
     # Seed evaluation data
     cnt_row = db.execute('SELECT COUNT(*) as c FROM skill_categories').fetchone()
@@ -9792,15 +9767,9 @@ def err_500(e):
     # (misal setelah psycopg2 error), sehingga tidak bisa digunakan untuk INSERT.
     _logged = False
     try:
-        if DB_TYPE == 'postgresql':
-            _econn = _pg_connect()
-            _econn.autocommit = False
-            _edb = _DBWrapper(_econn, is_pg=True)
-        else:
-            import sqlite3 as _sq3
-            _raw = _sq3.connect(DB_PATH)
-            _raw.row_factory = _sq3.Row
-            _edb = _DBWrapper(_raw, is_pg=False)
+        _econn = _pg_connect()
+        _econn.autocommit = False
+        _edb = _DBWrapper(_econn, is_pg=True)
         _edb.execute('''INSERT INTO audit_errors(app_slug,user_id,username,url,method,error_code,error_type,error_msg,traceback,ip)
                         VALUES(?,?,?,?,?,?,?,?,?,?)''',
                      (session.get('active_app','portal'), session.get('user_id'), session.get('user_name',''),

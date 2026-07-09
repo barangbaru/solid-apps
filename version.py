@@ -1,4 +1,4 @@
-VERSION = "2.2.56"
+VERSION = "2.2.57"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -67,5 +67,6 @@ RELEASE_NOTES = (
     "v2.2.53: Memperbaiki error read timed out pada notifikasi Telegram AssetCore dengan mengurangi timeout dari 10s ke 5s dan mengirim notifikasi fire-and-forget secara non-blocking di background thread. "
     "v2.2.54: Menambahkan tombol manual trigger form review evaluasi karyawan di halaman Manajemen Karyawan (kontrak & tetap), dengan modal konfirmasi periode dan pengiriman link self-assessment otomatis via email/Telegram. "
     "v2.2.55: Menyempurnakan Telegram Webhook AttendanceCore agar mendukung group/private chat location tagging, validasi minimal 10 karakter untuk #PLAN dan #PROGRESS (bersih dari tag), dan memblokir Clock Out sampai plan & progress lengkap. "
-    "v2.2.56: Memperbaiki deteksi user Telegram dengan mengecek tabel users dan employees, serta memindahkan respons bot ke Telegram agar dikirim terlebih dahulu sebelum proses tulis database (commit)."
+    "v2.2.56: Memperbaiki deteksi user Telegram dengan mengecek tabel users dan employees, serta memindahkan respons bot ke Telegram agar dikirim terlebih dahulu sebelum proses tulis database (commit). "
+    "v2.2.57: Menghapus total dukungan database SQLite dan mematikan fallback local database SQLite, memaksa penggunaan database PostgreSQL secara penuh (global default)."
 )
