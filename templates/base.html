@@ -11,6 +11,13 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    (function () {
+      if (localStorage.getItem("sidebar-minimized") === "1" && window.innerWidth >= 992) {
+        document.documentElement.classList.add("sidebar-minimized");
+      }
+    })();
+  </script>
   <style>
     :root {
       --sidebar-w: 260px;
@@ -247,7 +254,7 @@
       background-color: var(--sidebar-accent) !important;
     }
     #sidebar-toggle {
-      display: none;
+      display: block;
       background: none;
       border: none;
       font-size: 1.3rem;
@@ -340,6 +347,48 @@
       inset: 0;
       background: rgba(0,0,0,.45);
       z-index: 1039;
+    }
+
+    /* ── Sidebar Minimized state on Desktop ── */
+    @media (min-width: 992px) {
+      /* Smooth transition for sidebar width and content shift */
+      #sidebar {
+        transition: transform .25s ease, width .25s ease;
+      }
+      #main-wrap {
+        transition: margin-left .25s ease;
+      }
+      
+      html.sidebar-minimized {
+        --sidebar-w: 70px;
+      }
+      html.sidebar-minimized .sidebar-brand .brand-text,
+      html.sidebar-minimized .sidebar-brand .brand-sub,
+      html.sidebar-minimized .sidebar-section,
+      html.sidebar-minimized .sidebar-nav a span:not(.nav-icon),
+      html.sidebar-minimized .sidebar-nav .badge-dot,
+      html.sidebar-minimized .sidebar-nav .has-sub > a::after,
+      html.sidebar-minimized .sidebar-sub,
+      html.sidebar-minimized .sidebar-user .user-info,
+      html.sidebar-minimized .sidebar-footer div,
+      html.sidebar-minimized #sidebar > div[style*="padding"] {
+        display: none !important;
+      }
+      html.sidebar-minimized .sidebar-brand {
+        justify-content: center;
+        padding: 1.4rem 0.5rem 1.2rem;
+      }
+      html.sidebar-minimized .sidebar-nav a {
+        justify-content: center;
+        padding: .6rem 0;
+      }
+      html.sidebar-minimized .sidebar-user {
+        justify-content: center;
+        padding: .5rem 0;
+      }
+      html.sidebar-minimized .sidebar-footer {
+        padding: 1rem 0.5rem .8rem;
+      }
     }
 
     @media (max-width: 991px) {
@@ -959,12 +1008,19 @@
   }
 
   function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
-    document.getElementById('sidebar-backdrop').classList.toggle('open');
+    if (window.innerWidth >= 992) {
+      document.documentElement.classList.toggle('sidebar-minimized');
+      localStorage.setItem('sidebar-minimized', document.documentElement.classList.contains('sidebar-minimized') ? '1' : '0');
+    } else {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebar-backdrop').classList.toggle('open');
+    }
   }
   function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('sidebar-backdrop').classList.remove('open');
+    if (window.innerWidth < 992) {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebar-backdrop').classList.remove('open');
+    }
   }
   // Submenu toggle
   document.querySelectorAll('.sidebar-nav .has-sub > a').forEach(function(el) {

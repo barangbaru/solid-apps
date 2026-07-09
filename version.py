@@ -1,4 +1,4 @@
-VERSION = "2.2.48"
+VERSION = "2.2.49"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -26,7 +26,7 @@ RELEASE_NOTES = (
     "v2.2.12: Menambahkan integrasi Telegram Bot untuk melakukan absensi (Clock In / Clock Out) dengan mengirimkan lokasi (Send Location). "
     "v2.2.13: Peningkatan ketahanan Webhook Telegram (case-insensitive username, edited_message) and integrasi perbaikan/error-handling pencatatan lokasi di Web UI. "
     "v2.2.14: Memperbaiki pencocokan identitas user Telegram di Webhook saat mengirim lokasi di dalam grup dengan memetakan user.id (sender) alih-alih chat.id (group ID). "
-    "v2.2.15: Mewajibkan strict Geolocation GPS pada Clock In dan Clock Out Web Attendance Core (tanpa fallback koordinat kosong) and menghapus input catatan. "
+    "v2.2.15: Mewajibkan strict Geolocation GPS pada Clock In dan Clock Out Web Attendance Core (tanialah koordinat kosong) and menghapus input catatan. "
     "v2.2.16: Integrasi PLAN and PROGRESS dari Telegram Bot ke modul Presensi Harian (AttendanceCore) dengan tampilan UI detail modal. "
     "v2.2.17: Menghapus secara permanen record registrasi aplikasi obsolete (HelpdeskCore) dari database superapp_apps saat inisialisasi aplikasi. "
     "v2.2.18: Memperbaiki konversi datetime SQLite ke PostgreSQL untuk query AssetCore and penanganan duplicate username agar kompatibel dengan psycopg2. "
@@ -59,5 +59,6 @@ RELEASE_NOTES = (
     "v2.2.45: Redesain halaman Laporan & Analitik SupportCore dengan visualisasi modern ala Meridian (KPI Cards dan interactive charts dengan ApexCharts). "
     "v2.2.46: Memperbaiki ValueError tool_request_id is not in list pada daftar asset dengan menambahkan query tool_request_id di route ac_assets. "
     "v2.2.47: Memperbaiki ValueError loop unpacking too many values to unpack (expected 2) pada data serialisasi templates/sc_reports.html. "
-    "v2.2.48: Peningkatan dan redesain layout/tema HIVE secara global ke gaya Meridian (Stisla V3) menggunakan font Inter, light-sidebar premium dengan aksen ungu, serta card & input modern."
+    "v2.2.48: Peningkatan dan redesain layout/tema HIVE secara global ke gaya Meridian (Stisla V3) menggunakan font Inter, light-sidebar premium dengan aksen ungu, serta card & input modern. "
+    "v2.2.49: Menambahkan toggle minimize/maximize sidebar menu pada tampilan desktop menggunakan HTML5 localStorage persistence."
 )
