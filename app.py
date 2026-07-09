@@ -12081,7 +12081,8 @@ def ac_assets():
     sql = """SELECT a.*, e.name as emp_name, e.divisi,
              CASE WHEN a.employee_id IS NOT NULL THEN 'linked'
                   WHEN a.manual_employee_name!='' THEN 'unlinked'
-                  ELSE 'no_user' END as link_status
+                  ELSE 'no_user' END as link_status,
+             (SELECT id FROM ac_tool_requests WHERE asset_id=a.id LIMIT 1) as tool_request_id
              FROM ac_assets a LEFT JOIN employees e ON a.employee_id=e.id WHERE 1=1"""
     params = []
     if q:
