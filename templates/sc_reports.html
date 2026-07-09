@@ -323,13 +323,13 @@
   const monthlyOpen = [{% for mo, s in monthly.items()|sort %}{{ s.open }},{% endfor %}];
 
   // Aggregated status calculations
-  const totalOpen = {% set ns = namespace(open=0) %}{% for mo, s in monthly.values() %}{% set ns.open = ns.open + s.open %}{% endfor %}{{ ns.open }};
-  const totalClosed = {% set ns = namespace(closed=0) %}{% for mo, s in monthly.values() %}{% set ns.closed = ns.closed + s.closed %}{% endfor %}{{ ns.closed }};
+  const totalOpen = {% set ns = namespace(open=0) %}{% for s in monthly.values() %}{% set ns.open = ns.open + s.open %}{% endfor %}{{ ns.open }};
+  const totalClosed = {% set ns = namespace(closed=0) %}{% for s in monthly.values() %}{% set ns.closed = ns.closed + s.closed %}{% endfor %}{{ ns.closed }};
 
   // Aggregated type calculations
-  const totalCorrective = {% set ns = namespace(c=0) %}{% for mo, s in monthly.values() %}{% set ns.c = ns.c + (s.corrective or 0) %}{% endfor %}{{ ns.c }};
-  const totalPreventive = {% set ns = namespace(p=0) %}{% for mo, s in monthly.values() %}{% set ns.p = ns.p + (s.preventive or 0) %}{% endfor %}{{ ns.p }};
-  const totalOnsite = {% set ns = namespace(o=0) %}{% for mo, s in monthly.values() %}{% set ns.o = ns.o + (s.onsite or 0) %}{% endfor %}{{ ns.o }};
+  const totalCorrective = {% set ns = namespace(c=0) %}{% for s in monthly.values() %}{% set ns.c = ns.c + (s.corrective or 0) %}{% endfor %}{{ ns.c }};
+  const totalPreventive = {% set ns = namespace(p=0) %}{% for s in monthly.values() %}{% set ns.p = ns.p + (s.preventive or 0) %}{% endfor %}{{ ns.p }};
+  const totalOnsite = {% set ns = namespace(o=0) %}{% for s in monthly.values() %}{% set ns.o = ns.o + (s.onsite or 0) %}{% endfor %}{{ ns.o }};
 
   // Top Customers mapping
   const customerNames = [{% for name, cnt in top_customers %}"{{ name }}",{% endfor %}];
