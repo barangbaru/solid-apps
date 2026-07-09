@@ -13922,15 +13922,45 @@ def at_index():
     ).fetchall()
     
     # Kueri semua kehadiran user hari ini
-    all_today_att = db.execute('''
+    rows = db.execute('''
         SELECT u.id as user_id, u.full_name as employee_name, 
-               a.clock_in, a.clock_out, a.location_in, a.location_out, a.status, a.plan, a.progress
+               a.clock_in, a.clock_out, a.location_in, a.location_out, a.status, a.plan, a.progress,
+               a.notes_in, a.notes_out
         FROM users u
         LEFT JOIN attendance a ON a.user_id = u.id AND a.date = ?
         WHERE u.is_active = 1
         ORDER BY CASE WHEN a.clock_in IS NULL THEN 1 ELSE 0 END, a.clock_in ASC, u.full_name ASC
     ''', (today,)).fetchall()
     
+    all_today_att = []
+    for row in rows:
+        r = dict(row)
+        # Hitung Durasi Kerja (Hours)
+        if r['clock_in'] and r['clock_out']:
+            try:
+                t1 = datetime.strptime(r['clock_in'], '%H:%M:%S')
+                t2 = datetime.strptime(r['clock_out'], '%H:%M:%S')
+                diff = t2 - t1
+                hours = diff.total_seconds() / 3600.0
+                r['work_hours'] = f"{hours:.2f} jam"
+            except Exception:
+                r['work_hours'] = '-'
+        else:
+            r['work_hours'] = '-'
+            
+        # Group Name / Sumber Absensi
+        source_in = r['notes_in'] or ''
+        group_name = "-"
+        if "Telegram Group:" in source_in:
+            group_name = source_in.replace("Telegram Group:", "").strip()
+        elif "Telegram Japri" in source_in:
+            group_name = "Japri"
+        elif "Web" in source_in or "Web Attendance" in source_in:
+            group_name = "Web Portal"
+            
+        r['group_name'] = group_name
+        all_today_att.append(r)
+        
     return render_template('at_index.html', today_att=today_att, history=history, today=today, all_today_att=all_today_att)
 
 @app.route('/attendance/clock', methods=['POST'])
@@ -14234,6 +14264,16 @@ def telegram_webhook():
         user_mention = f"@{username}" if username else full_name
 
         if is_location:
+            # Get group title / name
+            group_title = ""
+            if is_custom:
+                group_title = data.get('chat_title', '') or ''
+            else:
+                chat_obj = message.get('chat', {})
+                if chat_obj.get('type') in ('group', 'supergroup'):
+                    group_title = chat_obj.get('title', '') or ''
+
+            source_label = f"Telegram Group: {group_title}" if group_title else "Telegram Japri"
             
             today = datetime.now().strftime('%Y-%m-%d')
             now_time = datetime.now().strftime('%H:%M:%S')
@@ -14254,7 +14294,7 @@ def telegram_webhook():
                 # Then save to database
                 db.execute(
                     'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
-                    (uid, today, now_time, loc, 'Telegram Bot Attendance', status)
+                    (uid, today, now_time, loc, source_label, status)
                 )
                 db.commit()
             elif not today_att['clock_out']:
@@ -14300,7 +14340,7 @@ def telegram_webhook():
                     # Then save to database
                     db.execute(
                         'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
-                        (now_time, loc, 'Telegram Bot Attendance', today_att['id'])
+                        (now_time, loc, source_label, today_att['id'])
                     )
                     db.commit()
             else:

@@ -114,6 +114,8 @@
           <th>Nama Karyawan</th>
           <th>Clock In</th>
           <th>Clock Out</th>
+          <th>Durasi Kerja</th>
+          <th>Grup / Sumber</th>
           <th>Plan & Progress</th>
           <th>Status</th>
         </tr>
@@ -140,6 +142,20 @@
               {% if r.location_out %}
                 <span class="text-muted d-block" style="font-size: .72rem">📍 {{ r.location_out }}</span>
               {% endif %}
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="fw-semibold text-dark small">
+            {{ r.work_hours }}
+          </td>
+          <td>
+            {% if r.group_name != '-' and r.group_name != 'Japri' and r.group_name != 'Web Portal' %}
+              <span class="badge bg-light text-primary border border-primary-subtle" style="font-size: .75rem"><i class="bi bi-chat-dots me-1"></i>{{ r.group_name }}</span>
+            {% elif r.group_name == 'Japri' %}
+              <span class="badge bg-light text-info border border-info-subtle" style="font-size: .75rem"><i class="bi bi-person me-1"></i>{{ r.group_name }}</span>
+            {% elif r.group_name == 'Web Portal' %}
+              <span class="badge bg-light text-secondary border border-secondary-subtle" style="font-size: .75rem"><i class="bi bi-laptop me-1"></i>{{ r.group_name }}</span>
             {% else %}
               <span class="text-muted">—</span>
             {% endif %}
