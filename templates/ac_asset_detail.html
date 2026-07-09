@@ -3,6 +3,13 @@
 {% block page_title %}<span class="breadcrumb-page">Detail Asset</span>{% endblock %}
 
 {% block content %}
+{% if tool_request %}
+<div class="alert alert-info py-2 px-3 mb-3 small d-flex align-items-center justify-content-between border-0 shadow-sm" style="border-radius: 8px;">
+  <span><i class="bi bi-info-circle me-1"></i> Asset ini dibuat otomatis dari <strong>Request Alat Kerja #{{ tool_request.id }}</strong> ({{ tool_request.item_name }}).</span>
+  <a href="/aset/tool-requests?status=Completed" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.78rem;">Lihat Request</a>
+</div>
+{% endif %}
+
 <div class="d-flex align-items-center justify-content-between mb-3">
   <div class="d-flex align-items-center gap-2 flex-wrap">
     <a href="/aset/assets" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>

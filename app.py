@@ -12066,8 +12066,9 @@ def ac_asset_detail(aid):
         '''SELECT h.*, e.name as emp_name, e.divisi
            FROM ac_asset_history h LEFT JOIN employees e ON h.employee_id=e.id
            WHERE h.asset_id=? ORDER BY h.ended_at DESC, h.id DESC''', (aid,)).fetchall()
+    tool_request = db.execute('SELECT id, item_name, status FROM ac_tool_requests WHERE asset_id=?', (aid,)).fetchone()
     return render_template('ac_asset_detail.html', asset=asset, softwares=softwares,
-                           employees=employees, history=history)
+                           employees=employees, history=history, tool_request=tool_request)
 
 @app.route('/aset/assets/<int:aid>/link', methods=['POST'])
 @login_required

@@ -80,6 +80,13 @@
           <td>
             <div class="fw-semibold small {{ 'text-decoration-line-through' if is_end }}">{{ a.brand }} {{ a.device_type }}</div>
             {% if a.serial_number %}<div class="text-muted" style="font-size:.73rem">S/N: {{ a.serial_number }}</div>{% endif %}
+            {% if a.tool_request_id %}
+            <div class="mt-1">
+              <a href="/aset/tool-requests?status=Completed" class="badge bg-info text-dark text-decoration-none" style="font-size:.65rem" title="Dibuat dari Request Alat Kerja #{{ a.tool_request_id }}">
+                <i class="bi bi-file-earmark-text"></i> Request #{{ a.tool_request_id }}
+              </a>
+            </div>
+            {% endif %}
           </td>
           <td class="small">
             {% if is_end %}

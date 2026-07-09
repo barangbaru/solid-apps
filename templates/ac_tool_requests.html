@@ -47,7 +47,7 @@
         {% set atts = attachments_by_request.get(r.id, {}) %}
         {% set request_caps = atts.get('request_capture', []) %}
         {% set unit_photos = atts.get('unit_photo', []) %}
-        <tr>
+        <tr {% if r.status == 'Completed' %}class="table-light text-muted" style="opacity: 0.75;"{% endif %}>
           <td style="min-width:240px">
             <div class="fw-semibold small">{{ r.item_name }}</div>
             <div class="text-muted small">{{ r.item_category or 'Laptop' }}</div>
@@ -137,6 +137,14 @@
             {% endif %}
           </td>
           <td class="text-nowrap">
+            {% if r.status == 'Completed' %}
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" disabled title="Request ini sudah Completed dan tidak dapat dirubah">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" disabled title="Request ini sudah Completed dan tidak dapat dirubah">
+              <i class="bi bi-trash"></i>
+            </button>
+            {% else %}
             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1"
                     data-bs-toggle="modal" data-bs-target="#modalStatus"
                     data-rid="{{ r.id }}"
@@ -174,6 +182,7 @@
             <form method="post" action="/aset/tool-requests/{{ r.id }}/delete" class="d-inline" onsubmit="return confirm('Hapus request ini?')">
               <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% else %}
