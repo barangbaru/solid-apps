@@ -1,4 +1,4 @@
-VERSION = "2.2.52"
+VERSION = "2.2.53"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -63,5 +63,6 @@ RELEASE_NOTES = (
     "v2.2.49: Menambahkan toggle minimize/maximize sidebar menu pada tampilan desktop menggunakan HTML5 localStorage persistence. "
     "v2.2.50: Menyembunyikan seluruh teks link menu sidebar saat diminimize (menampilkan ikon saja), menghapus user dropdown dari sidebar, dan menyatukannya ke dropdown user di header atas. "
     "v2.2.51: Menambahkan validasi wajib upload bukti attachment (capture approval/rejection) saat status Request Alat Kerja dirubah ke Approved atau Rejected, baik di sisi client (browser) maupun server. "
-    "v2.2.52: Menambahkan validasi wajib upload bukti serah terima perangkat (BAST/foto) saat status Request Alat Kerja dirubah ke Completed, baik di sisi client maupun server."
+    "v2.2.52: Menambahkan validasi wajib upload bukti serah terima perangkat (BAST/foto) saat status Request Alat Kerja dirubah ke Completed, baik di sisi client maupun server. "
+    "v2.2.53: Memperbaiki error read timed out pada notifikasi Telegram AssetCore dengan mengurangi timeout dari 10s ke 5s dan mengirim notifikasi fire-and-forget secara non-blocking di background thread."
 )

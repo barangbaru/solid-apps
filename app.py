@@ -2897,13 +2897,23 @@ def send_telegram(bot_token, chat_id, message, _log_subject='', _app_slug=None):
         r = req_lib.post(
             f'https://api.telegram.org/bot{bot_token}/sendMessage',
             json={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
-            timeout=10)
+            timeout=5)
         r.raise_for_status()
         audit_notif('telegram', chat_id, _log_subject or message[:60], message, True, app_slug=_app_slug)
         return True, None
     except Exception as e:
         audit_notif('telegram', chat_id, _log_subject or message[:60], message, False, str(e), app_slug=_app_slug)
         return False, str(e)
+
+def send_telegram_bg(bot_token, chat_id, message, _log_subject='', _app_slug=None):
+    """Kirim notifikasi Telegram di background thread (fire-and-forget).
+    Tidak memblokir request handler — timeout / kegagalan dicatat di audit_notifications.
+    """
+    import threading
+    def _send():
+        send_telegram(bot_token, chat_id, message, _log_subject=_log_subject, _app_slug=_app_slug)
+    t = threading.Thread(target=_send, daemon=True)
+    t.start()
 
 def _real_ip():
     """Ambil IP asli client — baca X-Forwarded-For / X-Real-IP dari reverse proxy."""
@@ -3277,7 +3287,7 @@ def _notify_asset_change(db, asset, event, old_user, new_user, reason):
 
         if bot_token and ac_tg_ids:
             for chat_id in ac_tg_ids:
-                send_telegram(bot_token, chat_id, tg_msg, _log_subject=subj, _app_slug='aset')
+                send_telegram_bg(bot_token, chat_id, tg_msg, _log_subject=subj, _app_slug='aset')
 
         if wa_enabled and wa_url and ac_phones:
             for phone in ac_phones:
@@ -6184,7 +6194,7 @@ def _sc_notify_ticket(db, ticket_id, event='created'):
         msg = f"{header}\n\n*{t['ticket_no']}* — {t['subject']}\nCustomer: {t['customer_name']}\nTipe: {t['type_name']}\nStatus: {t['status']}"
         if t['assignee_name']:
             msg += f"\nAssignee: {t['assignee_name']}"
-        send_telegram(bot_token['value'], t['telegram_group_id'], msg)
+        send_telegram_bg(bot_token['value'], t['telegram_group_id'], msg)
     except Exception:
         pass
 
