@@ -13921,7 +13921,17 @@ def at_index():
         (uid,)
     ).fetchall()
     
-    return render_template('at_index.html', today_att=today_att, history=history, today=today)
+    # Kueri semua kehadiran user hari ini
+    all_today_att = db.execute('''
+        SELECT u.id as user_id, u.full_name as employee_name, 
+               a.clock_in, a.clock_out, a.location_in, a.location_out, a.status, a.plan, a.progress
+        FROM users u
+        LEFT JOIN attendance a ON a.user_id = u.id AND a.date = ?
+        WHERE u.is_active = 1
+        ORDER BY CASE WHEN a.clock_in IS NULL THEN 1 ELSE 0 END, a.clock_in ASC, u.full_name ASC
+    ''', (today,)).fetchall()
+    
+    return render_template('at_index.html', today_att=today_att, history=history, today=today, all_today_att=all_today_att)
 
 @app.route('/attendance/clock', methods=['POST'])
 @login_required

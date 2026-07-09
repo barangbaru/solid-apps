@@ -70,4 +70,5 @@ RELEASE_NOTES = (
     "v2.2.56: Memperbaiki deteksi user Telegram dengan mengecek tabel users dan employees, serta memindahkan respons bot ke Telegram agar dikirim terlebih dahulu sebelum proses tulis database (commit). "
     "v2.2.57: Menghapus total dukungan database SQLite dan mematikan fallback local database SQLite, memaksa penggunaan database PostgreSQL secara penuh (global default)."
     "v2.2.58: Menambahkan dukungan kompatibilitas terhadap custom JSON payload yang dikirimkan oleh Node.js helper bot (Telegraf location forwarder)."
+    "v2.2.59: Menambahkan tabel Status Kehadiran Karyawan Hari Ini (Live Attendance Wall) pada dashboard AttendanceCore untuk menampilkan informasi clock-in, clock-out, lokasi, plan, dan progress seluruh karyawan."
 )
