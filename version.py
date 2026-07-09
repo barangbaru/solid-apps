@@ -1,4 +1,4 @@
-VERSION = "2.2.55"
+VERSION = "2.2.56"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -48,7 +48,7 @@ RELEASE_NOTES = (
     "v2.2.34: Memperbaiki bug input is_active yang terlewat saat proses penambahan resource baru di BookingCore. "
     "v2.2.35: Implementasi Media Library Selector untuk memilih media terunggah (local/S3), folder penyimpanan bookingcore khusus, dan fitur hapus resource secara permanen. "
     "v2.2.36: Implementasi Public Booking Dashboard (/booking/public) tanpa otentikasi login, dengan visualisasi TV Monitor modern, live clock, auto-refresh, dan S3 media public bypass untuk file resource. "
-    "v2.2.37: Memperbaiki error UndefinedColumn start_time/end_time di PostgreSQL dengan mengubahnya ke start_dt/end_dt, dan menyertakan JOIN users untuk memuat nama pemesan. "
+    "v2.2.37: Memperbaiki error UndefinedColumn start_time/end_time di PostgreSQL dengan mengubahnya ke start_dt/end_dt, dan menyertakan JOIN JOIN users untuk memuat nama pemesan. "
     "v2.2.38: Menambahkan kategori sidebar 'Lainnya' untuk menampilkan equipment (Proyektor Portable), dan memperkuat visual/kontras TV display agar lebih enterprise-grade. "
     "v2.2.39: Implementasi fitur Request Alat Kerja (Laptop) di AssetCore dengan input admin PIC untuk tipe, spesifikasi, link pembelian online, dan estimasi harga. "
     "v2.2.40: Perluasan form Request Alat Kerja sesuai format pembelian laptop, spek opsional CPU/RAM/disk, dan auto-create asset Laptop/PC saat request Completed dengan kompatibilitas PostgreSQL. "
@@ -66,5 +66,6 @@ RELEASE_NOTES = (
     "v2.2.52: Menambahkan validasi wajib upload bukti serah terima perangkat (BAST/foto) saat status Request Alat Kerja dirubah ke Completed, baik di sisi client maupun server. "
     "v2.2.53: Memperbaiki error read timed out pada notifikasi Telegram AssetCore dengan mengurangi timeout dari 10s ke 5s dan mengirim notifikasi fire-and-forget secara non-blocking di background thread. "
     "v2.2.54: Menambahkan tombol manual trigger form review evaluasi karyawan di halaman Manajemen Karyawan (kontrak & tetap), dengan modal konfirmasi periode dan pengiriman link self-assessment otomatis via email/Telegram. "
-    "v2.2.55: Menyempurnakan Telegram Webhook AttendanceCore agar mendukung group/private chat location tagging, validasi minimal 10 karakter untuk #PLAN dan #PROGRESS (bersih dari tag), dan memblokir Clock Out sampai plan & progress lengkap."
+    "v2.2.55: Menyempurnakan Telegram Webhook AttendanceCore agar mendukung group/private chat location tagging, validasi minimal 10 karakter untuk #PLAN dan #PROGRESS (bersih dari tag), dan memblokir Clock Out sampai plan & progress lengkap. "
+    "v2.2.56: Memperbaiki deteksi user Telegram dengan mengecek tabel users dan employees, serta memindahkan respons bot ke Telegram agar dikirim terlebih dahulu sebelum proses tulis database (commit)."
 )

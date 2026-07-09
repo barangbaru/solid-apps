@@ -14212,9 +14212,16 @@ def telegram_webhook():
 
         user = None
         for variant in tg_id_variants:
+            # 1. Check in users table
             user = db.execute('SELECT * FROM users WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
             if user:
                 break
+            # 2. Check in employees table
+            emp = db.execute('SELECT * FROM employees WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
+            if emp and emp['user_id']:
+                user = db.execute('SELECT * FROM users WHERE id = ? AND is_active = 1', (emp['user_id'],)).fetchone()
+                if user:
+                    break
 
         if not user:
             reply(f"Akun Telegram Anda ({username or chat_id}) belum terdaftar di HIVE. Silakan hubungi administrator untuk mendaftarkan Username/Chat ID Anda.")
@@ -14241,12 +14248,16 @@ def telegram_webhook():
                 status = 'present'
                 if now_time > '09:00:00':
                     status = 'late'
+                
+                # Send reply first
+                reply(f"Halo {user_mention},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
+                
+                # Then save to database
                 db.execute(
                     'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
                     (uid, today, now_time, loc, 'Telegram Bot Attendance', status)
                 )
                 db.commit()
-                reply(f"Halo {user_mention},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
             elif not today_att['clock_out']:
                 # Clock Out - requires #PLAN and #PROGRESS (min 10 characters clean text each)
                 plan = (today_att['plan'] or '').strip()
@@ -14271,7 +14282,8 @@ def telegram_webhook():
                         status_msg.append("✅ <b>#PROGRESS:</b> Terisi (≥ 10 karakter)")
                     else:
                         status_msg.append("❌ <b>#PROGRESS:</b> Belum terisi atau kurang dari 10 karakter")
-                        
+                    
+                    # Send failure reply
                     reply(
                         f"Halo {user_mention},\n\n"
                         "⚠️ <b>Clock Out GAGAL!</b>\n"
@@ -14283,12 +14295,15 @@ def telegram_webhook():
                         "lalu kirim lokasi Anda kembali untuk Clock Out."
                     )
                 else:
+                    # Send success reply first
+                    reply(f"Halo {user_mention},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nPlan/Progress: LENGKAP")
+                    
+                    # Then save to database
                     db.execute(
                         'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
                         (now_time, loc, 'Telegram Bot Attendance', today_att['id'])
                     )
                     db.commit()
-                    reply(f"Halo {user_mention},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot!\nWaktu: {now_time}\nLokasi: {loc}\nPlan/Progress: LENGKAP")
             else:
                 reply(f"Halo {user_mention},\nAnda sudah melakukan Clock In dan Clock Out untuk hari ini.")
         else:
@@ -14343,13 +14358,41 @@ def telegram_webhook():
                         progress_content = cleaned_prog
                         msg_parts.append("✅ <b>#PROGRESS</b> berhasil disimpan/diperbarui.")
 
+                # Construct response text BEFORE saving, to compute final status
+                response_text = f"Halo {user_mention},\n\n"
+                if msg_parts:
+                    response_text += "\n".join(msg_parts) + "\n\n"
+                if err_msgs:
+                    response_text += "\n".join(err_msgs) + "\n\n"
+
+                # Check fresh status simulation
+                current_plan = (today_att['plan'] or '').strip() if today_att else ''
+                current_prog = (today_att['progress'] or '').strip() if today_att else ''
+                
+                final_plan = plan_content if plan_content is not None else current_plan
+                final_prog = progress_content if progress_content is not None else current_prog
+                
+                p_ok = len(final_plan) >= 10
+                pr_ok = len(final_prog) >= 10
+                
+                if p_ok and pr_ok:
+                    response_text += "💡 <b>Persyaratan lengkap!</b> Anda sekarang dapat melakukan Clock Out."
+                else:
+                    missing = []
+                    if not p_ok: missing.append("#PLAN")
+                    if not pr_ok: missing.append("#PROGRESS")
+                    response_text += f"💡 Anda masih perlu mengisi <b>{', '.join(missing)}</b> sebelum dapat melakukan Clock Out."
+
+                # Send reply first
+                reply(response_text)
+
+                # Then save to database
                 if plan_content or progress_content:
                     if not today_att:
                         db.execute(
                             'INSERT INTO attendance (user_id, date, status, plan, progress) VALUES (?, ?, ?, ?, ?)',
                             (uid, today, 'present', plan_content or '', progress_content or '')
                         )
-                        db.commit()
                     else:
                         if plan_content and progress_content:
                             db.execute(
@@ -14366,34 +14409,7 @@ def telegram_webhook():
                                 'UPDATE attendance SET progress=? WHERE id=?',
                                 (progress_content, today_att['id'])
                             )
-                        db.commit()
-
-                response_text = f"Halo {user_mention},\n\n"
-                if msg_parts:
-                    response_text += "\n".join(msg_parts) + "\n\n"
-                if err_msgs:
-                    response_text += "\n".join(err_msgs) + "\n\n"
-
-                # Check fresh status
-                fresh_att = db.execute(
-                    'SELECT * FROM attendance WHERE user_id=? AND date=?',
-                    (uid, today)
-                ).fetchone()
-                
-                if fresh_att:
-                    f_plan = (fresh_att['plan'] or '').strip()
-                    f_prog = (fresh_att['progress'] or '').strip()
-                    p_ok = len(f_plan) >= 10
-                    pr_ok = len(f_prog) >= 10
-                    if p_ok and pr_ok:
-                        response_text += "💡 <b>Persyaratan lengkap!</b> Anda sekarang dapat melakukan Clock Out."
-                    else:
-                        missing = []
-                        if not p_ok: missing.append("#PLAN")
-                        if not pr_ok: missing.append("#PROGRESS")
-                        response_text += f"💡 Anda masih perlu mengisi <b>{', '.join(missing)}</b> sebelum dapat melakukan Clock Out."
-                
-                reply(response_text)
+                    db.commit()
             elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
                 reply(
                     f"Halo {user_mention}! Selamat datang di Telegram Attendance Bot HIVE.\n\n"
