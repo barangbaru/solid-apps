@@ -14233,6 +14233,14 @@ def telegram_webhook():
             'parse_mode': 'HTML'
         })
 
+    def format_indo_datetime(dt):
+        months = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+        day = dt.strftime('%d')
+        month = months[dt.month]
+        year = dt.strftime('%Y')
+        time_str = dt.strftime('%H:%M')
+        return f"{day} {month} {year} {time_str} WIB"
+
     try:
         tg_id_variants = []
         if from_id:
@@ -14293,6 +14301,15 @@ def telegram_webhook():
         uid = user['id']
         full_name = user['full_name']
         user_mention = f"@{username}" if username else full_name
+        
+        # Resolve employee/username display
+        emp_info = ""
+        if employee and employee['name']:
+            emp_info = f" ({employee['name']})"
+        elif user and user['full_name']:
+            emp_info = f" ({user['full_name']})"
+            
+        user_display = f"{user_mention}{emp_info}"
 
         if is_location:
             # Get group title / name
@@ -14305,7 +14322,6 @@ def telegram_webhook():
                     group_title = chat_obj.get('title', '') or ''
 
             source_label = f"Telegram Group: {group_title}" if group_title else "Telegram Japri"
-            group_suffix = f" di group <b>{group_title}</b>" if group_title else " melalui <b>Japri</b>"
             
             today = datetime.now().strftime('%Y-%m-%d')
             now_time = datetime.now().strftime('%H:%M:%S')
@@ -14315,20 +14331,33 @@ def telegram_webhook():
                 (uid, today)
             ).fetchone()
             
+            # Check GPS location validity
+            if not lat or not lng:
+                reply(
+                    f"❌ {user_display}\n"
+                    "Lokasi GPS tidak valid. Harap gunakan fitur Kirim Lokasi pada Telegram."
+                )
+                return 'OK', 200
+
             if not today_att:
                 status = 'present'
                 if now_time > '09:00:00':
                     status = 'late'
                 
-                # Send reply first
-                reply(f"Halo {user_mention},\n\nBerhasil Clock In (Masuk) melalui Telegram Bot{group_suffix}!\nWaktu: {now_time}\nLokasi: {loc}\nStatus: {status.upper()}")
-                
-                # Then save to database
+                # Save to database
                 db.execute(
                     'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
                     (uid, today, now_time, loc, source_label, status)
                 )
                 db.commit()
+
+                # Send reply
+                now_dt = datetime.now()
+                time_str = format_indo_datetime(now_dt)
+                reply(
+                    f"✅ {user_display}\n"
+                    f"Tagging berhasil dicatat pada {time_str}"
+                )
             else:
                 # User is sending location again (Clock Out / update Clock Out)
                 plan = (today_att['plan'] or '').strip()
@@ -14356,25 +14385,25 @@ def telegram_webhook():
                     
                     # Send failure reply
                     reply(
-                        f"Halo {user_mention},\n\n"
-                        "⚠️ <b>Clock Out GAGAL!</b>\n"
-                        "Anda diwajibkan mengisi rencana dan kemajuan kerja (minimal 10 karakter per item) sebelum melakukan Clock Out.\n\n"
-                        "<b>Status Pengisian Hari Ini:</b>\n" + "\n".join(status_msg) + "\n\n"
-                        "Silakan kirim pesan berisi:\n"
-                        "• <code>#PLAN [isi rencana kerja minimal 10 karakter]</code>\n"
-                        "• <code>#PROGRESS [isi kemajuan kerja minimal 10 karakter]</code>\n\n"
-                        "lalu kirim lokasi Anda kembali untuk Clock Out."
+                        f"❌ {user_display}\n"
+                        "Clock Out GAGAL! Anda wajib mengisi #PLAN dan #PROGRESS (minimal 10 karakter per item) sebelum melakukan Clock Out.\n\n"
+                        "<b>Status Pengisian Hari Ini:</b>\n" + "\n".join(status_msg)
                     )
                 else:
-                    # Send success reply first
-                    reply(f"Halo {user_mention},\n\nBerhasil Clock Out (Pulang) melalui Telegram Bot{group_suffix}!\nWaktu: {now_time}\nLokasi: {loc}\nPlan/Progress: LENGKAP")
-                    
-                    # Then save to database
+                    # Save to database
                     db.execute(
                         'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
                         (now_time, loc, source_label, today_att['id'])
                     )
                     db.commit()
+
+                    # Send success reply
+                    now_dt = datetime.now()
+                    time_str = format_indo_datetime(now_dt)
+                    reply(
+                        f"✅ {user_display}\n"
+                        f"Tagging berhasil dicatat pada {time_str}"
+                    )
         else:
             text = message.get('text', '')
             lower_text = text.lower()
@@ -14383,11 +14412,11 @@ def telegram_webhook():
 
             if is_plan and is_progress:
                 reply(
-                    f"Halo {user_mention},\n\n"
-                    "⚠️ <b>Gagal!</b> Rencana kerja (#PLAN) dan kemajuan kerja (#PROGRESS) harus dikirimkan dalam pesan terpisah secara berurutan:\n\n"
+                    f"❌ {user_display}\n"
+                    "Gagal! Rencana kerja (#PLAN) dan kemajuan kerja (#PROGRESS) harus dikirimkan dalam pesan terpisah secara berurutan:\n\n"
                     "1. Lakukan Clock In (Kirim Lokasi)\n"
-                    "2. Kirim rencana kerja: <code>#PLAN [isi rencana minimal 10 karakter]</code>\n"
-                    "3. Kirim kemajuan kerja: <code>#PROGRESS [isi kemajuan minimal 10 karakter]</code>\n"
+                    "2. Kirim rencana kerja: #PLAN [isi rencana]\n"
+                    "3. Kirim kemajuan kerja: #PROGRESS [isi laporan]\n"
                     "4. Lakukan Clock Out (Kirim Lokasi)"
                 )
                 return 'OK', 200
@@ -14405,25 +14434,18 @@ def telegram_webhook():
                 if is_plan:
                     if not is_clocked_in:
                         reply(
-                            f"Halo {user_mention},\n\n"
-                            "⚠️ <b>Gagal mencatat PLAN!</b>\n"
-                            "Anda wajib melakukan Clock In (Kirim Lokasi) terlebih dahulu sebelum dapat mengirimkan rencana kerja (#PLAN)."
+                            f"❌ {user_display}\n"
+                            "Gagal mencatat PLAN! Anda wajib melakukan Clock In (Kirim Lokasi) terlebih dahulu."
                         )
                         return 'OK', 200
 
                     cleaned_plan = re.sub(r'(?i)#plan', '', text).strip()
                     if len(cleaned_plan) < 10:
                         reply(
-                            f"Halo {user_mention},\n\n"
-                            "❌ <b>#PLAN Gagal:</b> Rencana kerja minimal harus 10 karakter (tidak termasuk tag)."
+                            f"❌ {user_display}\n"
+                            "PLAN Gagal: Rencana kerja minimal harus 10 karakter (tidak termasuk tag)."
                         )
                     else:
-                        # Reply success first
-                        reply(
-                            f"Halo {user_mention},\n\n"
-                            "✅ <b>#PLAN</b> berhasil disimpan/diperbarui.\n\n"
-                            "Selanjutnya, silakan kirimkan kemajuan kerja Anda dengan format <code>#PROGRESS [isi laporan]</code> sebelum melakukan Clock Out."
-                        )
                         # Save to database
                         db.execute(
                             'UPDATE attendance SET plan=? WHERE id=?',
@@ -14431,12 +14453,19 @@ def telegram_webhook():
                         )
                         db.commit()
 
+                        # Reply success
+                        now_dt = datetime.now()
+                        time_str = format_indo_datetime(now_dt)
+                        reply(
+                            f"✅ {user_display}\n"
+                            f"PLAN berhasil dicatat pada {time_str}"
+                        )
+
                 elif is_progress:
                     if not is_clocked_in:
                         reply(
-                            f"Halo {user_mention},\n\n"
-                            "⚠️ <b>Gagal mencatat PROGRESS!</b>\n"
-                            "Anda wajib melakukan Clock In (Kirim Lokasi) dan mengirimkan #PLAN terlebih dahulu."
+                            f"❌ {user_display}\n"
+                            "Gagal mencatat PROGRESS! Anda wajib melakukan Clock In (Kirim Lokasi) terlebih dahulu."
                         )
                         return 'OK', 200
 
@@ -14445,31 +14474,32 @@ def telegram_webhook():
                     clean_db_plan = re.sub(r'(?i)#plan', '', db_plan).strip()
                     if len(clean_db_plan) < 10:
                         reply(
-                            f"Halo {user_mention},\n\n"
-                            "⚠️ <b>Gagal mencatat PROGRESS!</b>\n"
-                            "Anda wajib mengirimkan rencana kerja (#PLAN) minimal 10 karakter terlebih dahulu sebelum melaporkan progress kerja (#PROGRESS)."
+                            f"❌ {user_display}\n"
+                            "Gagal mencatat PROGRESS! Anda wajib mengisi #PLAN (minimal 10 karakter) terlebih dahulu."
                         )
                         return 'OK', 200
 
                     cleaned_prog = re.sub(r'(?i)#progress', '', text).strip()
                     if len(cleaned_prog) < 10:
                         reply(
-                            f"Halo {user_mention},\n\n"
-                            "❌ <b>#PROGRESS Gagal:</b> Kemajuan kerja minimal harus 10 karakter (tidak termasuk tag)."
+                            f"❌ {user_display}\n"
+                            "PROGRESS Gagal: Kemajuan kerja minimal harus 10 karakter (tidak termasuk tag)."
                         )
                     else:
-                        # Reply success first
-                        reply(
-                            f"Halo {user_mention},\n\n"
-                            "✅ <b>#PROGRESS</b> berhasil disimpan/diperbarui.\n\n"
-                            "💡 <b>Persyaratan lengkap!</b> Anda sekarang dapat melakukan Clock Out (Kirim Lokasi)."
-                        )
                         # Save to database
                         db.execute(
                             'UPDATE attendance SET progress=? WHERE id=?',
                             (cleaned_prog, today_att['id'])
                         )
                         db.commit()
+
+                        # Reply success
+                        now_dt = datetime.now()
+                        time_str = format_indo_datetime(now_dt)
+                        reply(
+                            f"✅ {user_display}\n"
+                            f"PROGRESS berhasil dicatat pada {time_str}"
+                        )
 
             elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
                 reply(
