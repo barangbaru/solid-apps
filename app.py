@@ -2246,6 +2246,26 @@ def has_permission(role_name, permission, db=None):
         return True
     if db is None:
         return False
+    from flask import session
+    try:
+        if 'user_id' in session:
+            app_slug = None
+            for slug, perms in APP_PERMISSIONS.items():
+                if permission in perms:
+                    app_slug = slug
+                    break
+            if app_slug:
+                row = db.execute(
+                    'SELECT app_role FROM user_app_access WHERE user_id=? AND app_slug=? AND is_active=1',
+                    (session['user_id'], app_slug)
+                ).fetchone()
+                if row:
+                    role_name = row['app_role']
+    except Exception:
+        pass
+
+    if role_name == 'superadmin':
+        return True
     return permission in get_role_permissions(db, role_name)
 
 def permission_required(perm):
@@ -2528,6 +2548,22 @@ def inject_globals():
             pending     = get_pending_review_count(db, session['user_id'], session.get('user_role', ''))
             divisi_list = get_divisi_list(db)
             user_perms  = get_role_permissions(db, session.get('user_role', ''))
+            try:
+                app_access_rows = db.execute(
+                    'SELECT app_slug, app_role FROM user_app_access WHERE user_id=? AND is_active=1',
+                    (session['user_id'],)
+                ).fetchall()
+                for row in app_access_rows:
+                    slug = row['app_slug']
+                    role = row['app_role']
+                    if role == 'superadmin':
+                        user_perms.update(ALL_PERMISSIONS.keys())
+                    else:
+                        app_allowed_perms = APP_PERMISSIONS.get(slug, {})
+                        role_perms = get_role_permissions(db, role)
+                        user_perms.update(p for p in role_perms if p in app_allowed_perms)
+            except Exception:
+                pass
             if session.get('user_role') == 'superadmin':
                 user_perms = set(ALL_PERMISSIONS.keys())
             portal_apps = db.execute(
