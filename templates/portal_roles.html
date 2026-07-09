@@ -3,10 +3,46 @@
 {% block page_title %}<span class="breadcrumb-page">Role & Permission</span>{% endblock %}
 
 {% block content %}
+<style>
+  .draggable-menu-item {
+    transition: all 0.2s ease;
+    user-select: none;
+    border: 1px solid #e2e8f0 !important;
+  }
+  .draggable-menu-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+    border-color: #cbd5e1 !important;
+  }
+  .draggable-menu-item:active {
+    cursor: grabbing;
+  }
+  .dragging {
+    opacity: 0.4;
+    border: 1px dashed #6f42c1 !important;
+  }
+  .dropzone-menu {
+    transition: all 0.25s ease;
+    border: 2px dashed #cbd5e1 !important;
+    border-radius: 12px !important;
+  }
+  .dropzone-menu.border-primary {
+    border-color: #6f42c1 !important;
+    background-color: rgba(111, 66, 193, 0.03) !important;
+  }
+  .assigned-menu-item {
+    animation: fadeIn 0.2s ease-in-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h5 class="fw-bold mb-0"><i class="bi bi-person-badge text-primary me-2"></i>Role & Permission</h5>
-    <div class="text-muted small mt-1">Kelola role dan hak akses per aplikasi</div>
+    <div class="text-muted small mt-1">Kelola role, hak akses, dan struktur menu dinamis per aplikasi</div>
   </div>
 </div>
 
@@ -25,7 +61,7 @@
 
 <div class="row g-3">
   {# ── Kolom kiri: daftar role ── #}
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header py-2 fw-bold d-flex justify-content-between align-items-center">
         <span><i class="bi bi-list-ul me-1"></i>Daftar Role</span>
@@ -81,8 +117,8 @@
     </div>
   </div>
 
-  {# ── Kolom kanan: permission editor ── #}
-  <div class="col-md-8">
+  {# ── Kolom kanan: permission & menu editor ── #}
+  <div class="col-md-9">
     {% if not roles %}
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center text-muted py-5">
@@ -117,19 +153,22 @@
         </form>
         {% endif %}
       </div>
+      
       <div class="card-body">
-        {% if not app_perms %}
-        <div class="text-muted small text-center py-3">
-          <i class="bi bi-info-circle me-1"></i>
-          Belum ada permission terdefinisi untuk aplikasi ini.
-        </div>
-        {% else %}
-        <form method="post">
+        <form method="post" onsubmit="return prepareFormSubmit(this, '{{ role.name }}')">
           <input type="hidden" name="action" value="save_perms">
           <input type="hidden" name="app_slug" value="{{ active_app }}">
           <input type="hidden" name="role_name" value="{{ role.name }}">
+          
+          <h6 class="fw-bold mb-3"><i class="bi bi-shield-check text-primary me-2"></i>Hak Akses (Permissions)</h6>
+          {% if not app_perms %}
+          <div class="text-muted small text-center py-3 border rounded bg-light mb-4">
+            <i class="bi bi-info-circle me-1"></i>
+            Belum ada permission terdefinisi untuk aplikasi ini.
+          </div>
+          {% else %}
           {% set cur_perms = perms_by_role.get(role.name, []) %}
-          <div class="row g-2">
+          <div class="row g-2 mb-4">
             {% for perm_key, perm_desc in app_perms.items() %}
             {% set is_critical = perm_key in critical_permissions %}
             {% set locked = is_critical and not is_superadmin %}
@@ -169,19 +208,97 @@
             </div>
             {% endfor %}
           </div>
+          {% endif %}
+
+          <hr class="my-4">
+
+          {# ── DRAG & DROP MENU SECTION ── #}
+          <h6 class="fw-bold mb-1"><i class="bi bi-list-nested text-primary me-2"></i>Akses Menu & Navigasi</h6>
+          <p class="text-muted small mb-3">Tarik menu dari panel kiri dan lepas (drop) ke panel kanan untuk mengatur menu yang bisa dilihat oleh role ini.</p>
+          
+          <div class="row g-3 mb-4">
+            <!-- Tersedia -->
+            <div class="col-md-6">
+              <div class="p-3 bg-light rounded border border-dashed h-100">
+                <div class="fw-semibold small text-muted mb-2"><i class="bi bi-plus-circle me-1"></i>Semua Menu Tersedia</div>
+                <div class="available-menus-list" style="max-height: 400px; overflow-y: auto;">
+                  {% for parent in app_menu_tree %}
+                    <div class="menu-group mb-3" data-parent-id="{{ parent.id }}">
+                      <div class="p-2 rounded border bg-white d-flex justify-content-between align-items-center mb-1 draggable-menu-item" 
+                           draggable="true" 
+                           data-id="{{ parent.id }}"
+                           data-title="{{ parent.title }}"
+                           data-icon="{{ parent.icon }}"
+                           data-is-parent="true"
+                           style="cursor: grab;">
+                        <div>
+                          <i class="bi bi-{{ parent.icon or 'folder' }} me-2 text-primary"></i>
+                          <span class="fw-semibold text-dark" style="font-size:.85rem">{{ parent.title }}</span>
+                        </div>
+                        <span class="badge bg-secondary" style="font-size:.65rem">Header</span>
+                      </div>
+                      
+                      {% if parent.children %}
+                        <div class="ms-3 ps-2 border-start">
+                          {% for child in parent.children %}
+                            <div class="p-2 rounded border bg-white d-flex justify-content-between align-items-center mb-1 draggable-menu-item" 
+                                 draggable="true" 
+                                 data-id="{{ child.id }}"
+                                 data-title="{{ child.title }}"
+                                 data-icon="{{ child.icon }}"
+                                 data-parent-id="{{ parent.id }}"
+                                 style="cursor: grab;">
+                              <div>
+                                <i class="bi bi-{{ child.icon or 'circle' }} me-2 text-muted"></i>
+                                <span class="text-secondary" style="font-size:.8rem">{{ child.title }}</span>
+                                <small class="text-muted ms-2" style="font-size:.7rem">({{ child.url }})</small>
+                              </div>
+                              <i class="bi bi-grip-vertical text-muted"></i>
+                            </div>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Ditugaskan -->
+            <div class="col-md-6">
+              <div class="p-3 bg-light rounded border border-dashed dropzone-menu h-100" 
+                   id="dropzone-{{ role.name }}"
+                   style="min-height: 250px;"
+                   data-role="{{ role.name }}">
+                <div class="fw-semibold small text-muted mb-2 d-flex justify-content-between align-items-center">
+                  <span><i class="bi bi-check-circle me-1 text-success"></i>Menu Aktif untuk Role</span>
+                  <button type="button" class="btn btn-xs btn-outline-danger" style="font-size: .7rem;" onclick="clearRoleMenus('{{ role.name }}')">Reset</button>
+                </div>
+                
+                <div class="assigned-list py-2" id="assigned-list-{{ role.name }}">
+                  <!-- Dynamic render via JS -->
+                </div>
+                
+                <div class="text-muted small text-center py-5 empty-placeholder" id="placeholder-{{ role.name }}">
+                  <i class="bi bi-arrow-down-up" style="font-size: 1.8rem; opacity: .4;"></i>
+                  <div class="mt-2">Drag menu dari kolom kiri dan drop di sini.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-3 d-flex gap-2">
             <button type="submit" class="btn btn-sm btn-primary">
-              <i class="bi bi-save me-1"></i>Simpan Permission
+              <i class="bi bi-save me-1"></i>Simpan Hak Akses & Menu
             </button>
             {% if is_superadmin %}
             <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="toggleAll(this.form, true)">Pilih Semua</button>
+                    onclick="toggleAll(this.form, true)">Pilih Semua Permission</button>
             <button type="button" class="btn btn-sm btn-outline-secondary"
-                    onclick="toggleAll(this.form, false)">Hapus Semua</button>
+                    onclick="toggleAll(this.form, false)">Hapus Semua Permission</button>
             {% endif %}
           </div>
         </form>
-        {% endif %}
       </div>
     </div>
     {% endfor %}
@@ -191,6 +308,23 @@
 <script>
 const panels = document.querySelectorAll('.role-panel');
 const tabs   = document.querySelectorAll('[id^="tab-"]');
+
+// Database assigned menus per role dari Flask
+const assignedMenus = {
+  {% for rname, mids in assigned_menus_by_role.items() %}
+    "{{ rname }}": {{ mids | list | tojson }},
+  {% endfor %}
+};
+
+// Data menu lengkap untuk pencarian nama & icon
+const allMenus = {
+  {% for parent in app_menu_tree %}
+    "{{ parent.id }}": { title: "{{ parent.title | e }}", icon: "{{ parent.icon }}", url: "{{ parent.url }}", parent_id: null },
+    {% for child in parent.children %}
+      "{{ child.id }}": { title: "{{ child.title | e }}", icon: "{{ child.icon }}", url: "{{ child.url }}", parent_id: "{{ parent.id }}" },
+    {% endfor %}
+  {% endfor %}
+};
 
 function showRole(name) {
   panels.forEach(p => p.style.display = p.id === 'role-' + name ? '' : 'none');
@@ -210,9 +344,149 @@ function toggleAll(form, checked) {
   });
 }
 
-// Aktifkan tab pertama
-{% if roles %}
-showRole('{{ roles[0].name }}');
-{% endif %}
+function populateAssignedList(roleName) {
+  const container = document.getElementById("assigned-list-" + roleName);
+  const placeholder = document.getElementById("placeholder-" + roleName);
+  if (!container) return;
+  container.innerHTML = "";
+  
+  const menuIds = assignedMenus[roleName] || [];
+  if (menuIds.length === 0) {
+    placeholder.style.display = "block";
+    return;
+  }
+  placeholder.style.display = "none";
+  
+  menuIds.forEach(mid => {
+    const menu = allMenus[mid];
+    if (!menu) return;
+    
+    const div = document.createElement("div");
+    div.className = "p-2 rounded border bg-white d-flex justify-content-between align-items-center mb-1 assigned-menu-item";
+    div.style.fontSize = ".82rem";
+    div.dataset.id = mid;
+    div.innerHTML = `
+      <div>
+        <i class="bi bi-${menu.icon || (menu.parent_id ? 'circle' : 'folder')} me-2 ${menu.parent_id ? 'text-muted' : 'text-primary'}"></i>
+        <span class="${menu.parent_id ? 'text-secondary' : 'fw-semibold text-dark'}">${menu.title}</span>
+        ${menu.parent_id ? '' : ' <span class="badge bg-light text-primary border" style="font-size:.6rem">Header</span>'}
+      </div>
+      <button type="button" class="btn btn-xs text-danger p-0 border-0 bg-transparent" onclick="removeMenuFromRole('${roleName}', '${mid}')">
+        <i class="bi bi-x-circle"></i>
+      </button>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function addMenuToRole(roleName, menuId) {
+  if (!assignedMenus[roleName]) {
+    assignedMenus[roleName] = [];
+  }
+  
+  const mid = parseInt(menuId);
+  // Cek duplikasi
+  if (assignedMenus[roleName].includes(mid)) {
+    return;
+  }
+  
+  // Jika menu yang ditambahkan adalah child, otomatis tambahkan parent menu
+  const menu = allMenus[menuId];
+  if (menu && menu.parent_id) {
+    const parentId = parseInt(menu.parent_id);
+    if (!assignedMenus[roleName].includes(parentId)) {
+      assignedMenus[roleName].push(parentId);
+    }
+  }
+  
+  assignedMenus[roleName].push(mid);
+  populateAssignedList(roleName);
+}
+
+function removeMenuFromRole(roleName, menuId) {
+  const mid = parseInt(menuId);
+  if (assignedMenus[roleName]) {
+    assignedMenus[roleName] = assignedMenus[roleName].filter(id => id !== mid);
+    
+    // Jika parent menu dihapus, hapus juga seluruh child menunya
+    const menu = allMenus[menuId];
+    if (menu && !menu.parent_id) {
+      Object.keys(allMenus).forEach(childId => {
+        if (allMenus[childId].parent_id === menuId) {
+          assignedMenus[roleName] = assignedMenus[roleName].filter(id => id !== parseInt(childId));
+        }
+      });
+    }
+    
+    populateAssignedList(roleName);
+  }
+}
+
+function clearRoleMenus(roleName) {
+  if (confirm("Kosongkan semua menu untuk role " + roleName + "?")) {
+    assignedMenus[roleName] = [];
+    populateAssignedList(roleName);
+  }
+}
+
+function prepareFormSubmit(form, roleName) {
+  form.querySelectorAll("input[name='menus']").forEach(el => el.remove());
+  
+  const menuIds = assignedMenus[roleName] || [];
+  menuIds.forEach(mid => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "menus";
+    input.value = mid;
+    form.appendChild(input);
+  });
+  return true;
+}
+
+// Inisialisasi Drag & Drop
+document.addEventListener("DOMContentLoaded", () => {
+  // Aktifkan tab pertama
+  {% if roles %}
+  showRole('{{ roles[0].name }}');
+  {% endif %}
+
+  Object.keys(assignedMenus).forEach(roleName => {
+    populateAssignedList(roleName);
+  });
+  
+  const draggables = document.querySelectorAll(".draggable-menu-item");
+  draggables.forEach(drv => {
+    drv.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", drv.dataset.id);
+      drv.classList.add("dragging");
+    });
+    drv.addEventListener("dragend", () => {
+      drv.classList.remove("dragging");
+    });
+  });
+
+  const dropzones = document.querySelectorAll(".dropzone-menu");
+  dropzones.forEach(dz => {
+    const roleName = dz.dataset.role;
+    
+    dz.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dz.classList.add("border-primary");
+    });
+    
+    dz.addEventListener("dragleave", () => {
+      dz.classList.remove("border-primary");
+    });
+    
+    dz.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dz.classList.remove("border-primary");
+      const menuId = e.dataTransfer.getData("text/plain");
+      if (menuId && allMenus[menuId]) {
+        addMenuToRole(roleName, menuId);
+      }
+    });
+  });
+});
 </script>
 {% endblock %}

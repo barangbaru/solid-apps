@@ -661,6 +661,25 @@ CREATE TABLE IF NOT EXISTS user_app_access (
     UNIQUE(user_id, app_slug),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS app_menus (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_slug TEXT NOT NULL,
+    parent_id INTEGER,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    icon TEXT DEFAULT 'circle',
+    required_permission TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    FOREIGN KEY(parent_id) REFERENCES app_menus(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS role_menus (
+    role_name TEXT NOT NULL,
+    menu_id INTEGER NOT NULL,
+    PRIMARY KEY (role_name, menu_id),
+    FOREIGN KEY(menu_id) REFERENCES app_menus(id) ON DELETE CASCADE
+);
+
 
 -- ─── SupportCore: Ticket History & Multi-Assignee ────────────────────────────
 CREATE TABLE IF NOT EXISTS sc_ticket_attachments (
@@ -1752,6 +1771,137 @@ def _pg_column_exists(db, table, col):
     return row is not None
 
 
+def _seed_menus(db):
+    cnt = db.execute('SELECT COUNT(*) as c FROM app_menus').fetchone()
+    if cnt and cnt['c'] > 0:
+        return
+
+    default_menus = [
+        # Portal
+        {"app_slug": "portal", "parent_title": None, "title": "Semua Aplikasi", "url": "/portal", "icon": "grid-3x3-gap", "required_permission": "", "sort_order": 1},
+        {"app_slug": "portal", "parent_title": None, "title": "Kelola User", "url": "/portal/users", "icon": "people", "required_permission": "manage_users", "sort_order": 2},
+        {"app_slug": "portal", "parent_title": None, "title": "Role & Permission", "url": "/portal/roles", "icon": "person-badge", "required_permission": "manage_roles", "sort_order": 3},
+        {"app_slug": "portal", "parent_title": None, "title": "Akses Aplikasi", "url": "/portal/settings", "icon": "shield-lock", "required_permission": "manage_roles", "sort_order": 4},
+        {"app_slug": "portal", "parent_title": None, "title": "Pengaturan Sistem", "url": "/portal/system-settings", "icon": "gear", "required_permission": "manage_roles", "sort_order": 5},
+        {"app_slug": "portal", "parent_title": None, "title": "Pengaturan Notifikasi", "url": "/portal/notifications", "icon": "bell-fill", "required_permission": "manage_roles", "sort_order": 6},
+        {"app_slug": "portal", "parent_title": None, "title": "Audit Trail", "url": "/portal/audit", "icon": "shield-check", "required_permission": "manage_roles", "sort_order": 7},
+        {"app_slug": "portal", "parent_title": None, "title": "Update Center", "url": "/portal/update", "icon": "arrow-up-circle", "required_permission": "manage_roles", "sort_order": 8},
+        {"app_slug": "portal", "parent_title": None, "title": "Backup Center", "url": "/portal/backup", "icon": "database-fill-gear", "required_permission": "manage_roles", "sort_order": 9},
+
+        # TalentCore (evaluasi)
+        {"app_slug": "evaluasi", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/", "icon": "house-door", "required_permission": "", "sort_order": 1},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Karyawan", "url": "/karyawan", "icon": "people", "required_permission": "manage_employees", "sort_order": 2},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Review Evaluasi", "url": "/reviews", "icon": "clipboard2-check", "required_permission": "", "sort_order": 3},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Kinerja Task", "url": "/kinerja/tim", "icon": "graph-up-arrow", "required_permission": "", "sort_order": 4},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Analitik Divisi", "url": "/kinerja/analitik", "icon": "diagram-3", "required_permission": "", "sort_order": 5},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Performa Divisi", "url": "/kinerja/divisi", "icon": "people-fill", "required_permission": "", "sort_order": 6},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Log Reminder", "url": "/reminders", "icon": "bell", "required_permission": "send_reminders", "sort_order": 7},
+        {"app_slug": "evaluasi", "parent_title": "Menu Utama", "title": "Tabel Gaji", "url": "/salary", "icon": "cash-stack", "required_permission": "view_salary", "sort_order": 8},
+        
+        {"app_slug": "evaluasi", "parent_title": None, "title": "Konfigurasi", "url": "#", "icon": "", "required_permission": "", "sort_order": 2},
+        {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Template Evaluasi", "url": "/admin", "icon": "sliders", "required_permission": "manage_template", "sort_order": 1},
+        {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Manajemen Divisi", "url": "/admin/divisions", "icon": "diagram-3", "required_permission": "manage_divisions", "sort_order": 2},
+        {"app_slug": "evaluasi", "parent_title": "Konfigurasi", "title": "Pengaturan Notifikasi", "url": "/settings", "icon": "gear", "required_permission": "manage_settings", "sort_order": 3},
+
+        # AssetCore (aset)
+        {"app_slug": "aset", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 1},
+        {"app_slug": "aset", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/aset/", "icon": "grid-1x2", "required_permission": "ac_view", "sort_order": 1},
+        
+        {"app_slug": "aset", "parent_title": None, "title": "Inventaris", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 2},
+        {"app_slug": "aset", "parent_title": "Inventaris", "title": "Laptop / PC", "url": "/aset/assets", "icon": "laptop", "required_permission": "ac_manage_assets", "sort_order": 1},
+        {"app_slug": "aset", "parent_title": "Inventaris", "title": "Infrastruktur", "url": "/aset/infra", "icon": "hdd-network", "required_permission": "ac_manage_infra", "sort_order": 2},
+        {"app_slug": "aset", "parent_title": "Inventaris", "title": "Maintenance", "url": "/aset/maintenance", "icon": "tools", "required_permission": "ac_manage_assets", "sort_order": 3},
+        
+        {"app_slug": "aset", "parent_title": None, "title": "Permintaan & Lisensi", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 3},
+        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Lisensi", "url": "/aset/licenses", "icon": "key", "required_permission": "ac_manage_licenses", "sort_order": 1},
+        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Subscription", "url": "/aset/subscriptions", "icon": "cloud-check", "required_permission": "ac_manage_subs", "sort_order": 2},
+        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Request Software", "url": "/aset/requests", "icon": "inbox", "required_permission": "ac_manage_requests", "sort_order": 3},
+        {"app_slug": "aset", "parent_title": "Permintaan & Lisensi", "title": "Request Alat Kerja", "url": "/aset/tool-requests", "icon": "laptop", "required_permission": "ac_manage_requests", "sort_order": 4},
+        
+        {"app_slug": "aset", "parent_title": None, "title": "Pengaturan", "url": "#", "icon": "", "required_permission": "ac_view", "sort_order": 4},
+        {"app_slug": "aset", "parent_title": "Pengaturan", "title": "Notifikasi", "url": "/aset/settings", "icon": "bell-fill", "required_permission": "ac_manage_assets", "sort_order": 1},
+        {"app_slug": "aset", "parent_title": "Pengaturan", "title": "Master Data Spec", "url": "/aset/masters", "icon": "database", "required_permission": "ac_manage_assets", "sort_order": 2},
+
+        # SupportCore (support)
+        {"app_slug": "support", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 1},
+        {"app_slug": "support", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/support/", "icon": "grid-1x2", "required_permission": "sc_view", "sort_order": 1},
+        
+        {"app_slug": "support", "parent_title": None, "title": "Master Data", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 2},
+        {"app_slug": "support", "parent_title": "Master Data", "title": "Customer", "url": "/support/customers", "icon": "building", "required_permission": "sc_manage_customers", "sort_order": 1},
+        {"app_slug": "support", "parent_title": "Master Data", "title": "Apps & Modul", "url": "/support/apps", "icon": "grid-3x3-gap", "required_permission": "sc_manage_apps", "sort_order": 2},
+        {"app_slug": "support", "parent_title": "Master Data", "title": "Layanan/Jasa", "url": "/support/services", "icon": "wrench-adjustable", "required_permission": "sc_manage_services", "sort_order": 3},
+        {"app_slug": "support", "parent_title": "Master Data", "title": "Tipe Support", "url": "/support/support-types", "icon": "tools", "required_permission": "sc_manage_types", "sort_order": 4},
+        {"app_slug": "support", "parent_title": "Master Data", "title": "Kategori SLA", "url": "/support/sla-categories", "icon": "speedometer2", "required_permission": "sc_manage_sla", "sort_order": 5},
+        
+        {"app_slug": "support", "parent_title": None, "title": "Operasional", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 3},
+        {"app_slug": "support", "parent_title": "Operasional", "title": "Kontrak", "url": "/support/contracts", "icon": "file-earmark-text", "required_permission": "sc_manage_contracts", "sort_order": 1},
+        {"app_slug": "support", "parent_title": "Operasional", "title": "Presales & POC", "url": "/support/presales", "icon": "person-plus", "required_permission": "sc_manage_presales", "sort_order": 2},
+        {"app_slug": "support", "parent_title": "Operasional", "title": "Tiket Support", "url": "/support/tickets", "icon": "ticket-detailed", "required_permission": "sc_manage_tickets", "sort_order": 3},
+        
+        {"app_slug": "support", "parent_title": None, "title": "Analitik", "url": "#", "icon": "", "required_permission": "sc_view", "sort_order": 4},
+        {"app_slug": "support", "parent_title": "Analitik", "title": "Monitoring SLA", "url": "/support/sla-monitor", "icon": "graph-up", "required_permission": "sc_view_reports", "sort_order": 1},
+        {"app_slug": "support", "parent_title": "Analitik", "title": "Laporan", "url": "/support/reports", "icon": "bar-chart-line", "required_permission": "sc_view_reports", "sort_order": 2},
+
+        # BookingCore (booking)
+        {"app_slug": "booking", "parent_title": None, "title": "Booking", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
+        {"app_slug": "booking", "parent_title": "Booking", "title": "Semua Booking", "url": "/booking/", "icon": "calendar2-check", "required_permission": "", "sort_order": 1},
+        {"app_slug": "booking", "parent_title": "Booking", "title": "Buat Booking", "url": "/booking/new", "icon": "plus-circle", "required_permission": "", "sort_order": 2},
+        {"app_slug": "booking", "parent_title": "Booking", "title": "Tambah Resource", "url": "/booking/resource/add", "icon": "building-add", "required_permission": "", "sort_order": 3},
+
+        # ProjectCore (project)
+        {"app_slug": "project", "parent_title": None, "title": "Menu Utama", "url": "#", "icon": "", "required_permission": "", "sort_order": 1},
+        {"app_slug": "project", "parent_title": "Menu Utama", "title": "Dashboard", "url": "/project/", "icon": "grid-1x2", "required_permission": "", "sort_order": 1},
+        {"app_slug": "project", "parent_title": "Menu Utama", "title": "Semua Proyek", "url": "/project/projects", "icon": "kanban", "required_permission": "", "sort_order": 2},
+        {"app_slug": "project", "parent_title": "Menu Utama", "title": "Tambah Proyek", "url": "/project/projects/add", "icon": "plus-circle", "required_permission": "", "sort_order": 3},
+        
+        {"app_slug": "project", "parent_title": None, "title": "Master Data", "url": "#", "icon": "", "required_permission": "", "sort_order": 2},
+        {"app_slug": "project", "parent_title": "Master Data", "title": "Customer", "url": "/support/customers", "icon": "building", "required_permission": "", "sort_order": 1},
+
+        # AttendanceCore (attendance)
+        {"app_slug": "attendance", "parent_title": None, "title": "Kehadiran Saya", "url": "#", "icon": "", "required_permission": "at_view", "sort_order": 1},
+        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Presensi Harian", "url": "/attendance/", "icon": "clock", "required_permission": "at_view", "sort_order": 1},
+        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Cuti", "url": "/attendance/leave", "icon": "calendar-event", "required_permission": "at_view", "sort_order": 2},
+        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Lembur", "url": "/attendance/overtime", "icon": "clock-history", "required_permission": "at_view", "sort_order": 3},
+        {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Koreksi Absen", "url": "/attendance/correction", "icon": "patch-exclamation", "required_permission": "at_view", "sort_order": 4},
+        
+        {"app_slug": "attendance", "parent_title": None, "title": "Manajemen", "url": "#", "icon": "", "required_permission": "at_manage", "sort_order": 2},
+        {"app_slug": "attendance", "parent_title": "Manajemen", "title": "Approval Console", "url": "/attendance/admin/approvals", "icon": "check2-square", "required_permission": "at_manage", "sort_order": 1},
+    ]
+
+    parent_map = {}
+    for m in default_menus:
+        if m['parent_title'] is None:
+            cur = db.execute('''INSERT INTO app_menus (app_slug, parent_id, title, url, icon, required_permission, sort_order, is_active)
+                                VALUES (?, NULL, ?, ?, ?, ?, ?, 1)''',
+                             (m['app_slug'], m['title'], m['url'], m['icon'], m['required_permission'], m['sort_order']))
+            pid = cur.lastrowid
+            parent_map[(m['app_slug'], m['title'])] = pid
+
+    menu_id_list = []
+    for m in default_menus:
+        if m['parent_title'] is not None:
+            pid = parent_map.get((m['app_slug'], m['parent_title']))
+            if pid:
+                cur = db.execute('''INSERT INTO app_menus (app_slug, parent_id, title, url, icon, required_permission, sort_order, is_active)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)''',
+                                 (m['app_slug'], pid, m['title'], m['url'], m['icon'], m['required_permission'], m['sort_order']))
+                menu_id_list.append((cur.lastrowid, m['required_permission'], m['app_slug']))
+        else:
+            pid = parent_map.get((m['app_slug'], m['title']))
+            if pid:
+                menu_id_list.append((pid, m['required_permission'], m['app_slug']))
+
+    for rname, rperms in SYSTEM_ROLE_DEFAULTS.items():
+        for menu_id, req_perm, app_slug in menu_id_list:
+            if rname == 'superadmin':
+                db.execute('INSERT OR IGNORE INTO role_menus (role_name, menu_id) VALUES (?, ?)', (rname, menu_id))
+            else:
+                if not req_perm or req_perm in rperms:
+                    db.execute('INSERT OR IGNORE INTO role_menus (role_name, menu_id) VALUES (?, ?)', (rname, menu_id))
+    db.commit()
+
+
 def init_db():
     conn = _pg_connect()
     conn.autocommit = False
@@ -1760,6 +1910,9 @@ def init_db():
     schema_sql = _pg_adapt_schema(SCHEMA)
     db.executescript(schema_sql)
     db.commit()
+
+    _seed_menus(db)
+
 
     # Migrations
     import re as _re
@@ -2584,12 +2737,57 @@ def inject_globals():
                 _chatbot_on = get_settings(db).get('chatbot_enabled','0') == '1'
             except Exception:
                 _chatbot_on = False
+            
+            # Fetch hierarchical menus for user role
+            user_menus = []
+            try:
+                current_app = session.get('active_app') or 'portal'
+                active_role = session.get('user_role', '')
+                if current_app != 'portal':
+                    app_access_rows = db.execute(
+                        'SELECT app_slug, app_role FROM user_app_access WHERE user_id=? AND is_active=1',
+                        (session['user_id'],)
+                    ).fetchall()
+                    for row in app_access_rows:
+                        if row['app_slug'] == current_app:
+                            active_role = row['app_role']
+                            break
+                
+                if active_role == 'superadmin' or session.get('user_role') == 'superadmin':
+                    menu_rows = db.execute(
+                        'SELECT * FROM app_menus WHERE app_slug=? AND is_active=1 ORDER BY sort_order, id',
+                        (current_app,)
+                    ).fetchall()
+                else:
+                    menu_rows = db.execute(
+                        '''SELECT m.* FROM app_menus m
+                           JOIN role_menus rm ON m.id = rm.menu_id
+                           WHERE m.app_slug=? AND rm.role_name=? AND m.is_active=1
+                           ORDER BY m.sort_order, m.id''',
+                        (current_app, active_role)
+                    ).fetchall()
+                
+                parents = []
+                children_by_parent = {}
+                for row in menu_rows:
+                    m = dict(row)
+                    if m['parent_id'] is None:
+                        parents.append(m)
+                    else:
+                        children_by_parent.setdefault(m['parent_id'], []).append(m)
+                for p in parents:
+                    p['children'] = children_by_parent.get(p['id'], [])
+                user_menus = parents
+            except Exception:
+                pass
         except Exception:
             bk_resources = []
             _chatbot_on = False
+            user_menus = []
     else:
         bk_resources = []
         _chatbot_on = False
+        user_menus = []
     return {
         'current_user': {
             'id':       session.get('user_id'),
@@ -2606,6 +2804,7 @@ def inject_globals():
         'ALL_PERMISSIONS': ALL_PERMISSIONS,
         'portal_apps':      portal_apps,
         'bk_resources':     bk_resources,
+        'user_menus':       user_menus,
         'current_app_slug':    session.get('active_app') or 'portal',
         'app_version':         VERSION,
         'app_release_date':    RELEASE_DATE,
@@ -5124,8 +5323,16 @@ def portal_roles():
                 if perm in app_perms or perm in ('manage_users', 'manage_roles'):
                     db.execute('INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)',
                                (rname, perm))
+            
+            # Save menu assignments
+            db.execute('DELETE FROM role_menus WHERE role_name=?', (rname,))
+            selected_menus = request.form.getlist('menus')
+            for mid in selected_menus:
+                if mid.isdigit():
+                    db.execute('INSERT INTO role_menus(role_name,menu_id) VALUES(?,?)', (rname, int(mid)))
+            
             db.commit()
-            flash(f'Permission role "{rname}" diperbarui', 'success')
+            flash(f'Permission dan Menu role "{rname}" diperbarui', 'success')
         return redirect(url_for('portal_roles', app=active_app))
 
     apps_list     = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
@@ -5133,9 +5340,29 @@ def portal_roles():
                                (active_app,)).fetchall()
     perms_by_role = {r['name']: get_role_permissions(db, r['name']) for r in roles}
     app_perms     = APP_PERMISSIONS.get(active_app, {})
+    
+    # Load menus of active app hierarchically
+    all_app_menus = db.execute('SELECT * FROM app_menus WHERE app_slug=? ORDER BY sort_order, id', (active_app,)).fetchall()
+    app_menu_tree = []
+    children_by_parent = {}
+    for row in all_app_menus:
+        m = dict(row)
+        if m['parent_id'] is None:
+            app_menu_tree.append(m)
+        else:
+            children_by_parent.setdefault(m['parent_id'], []).append(m)
+    for p in app_menu_tree:
+        p['children'] = children_by_parent.get(p['id'], [])
+
+    assigned_menus_by_role = {}
+    for role in roles:
+        rows = db.execute('SELECT menu_id FROM role_menus WHERE role_name=?', (role['name'],)).fetchall()
+        assigned_menus_by_role[role['name']] = {r['menu_id'] for r in rows}
+
     return render_template('portal_roles.html', roles=roles, perms_by_role=perms_by_role,
                            app_perms=app_perms, apps_list=apps_list, active_app=active_app,
-                           critical_permissions=CRITICAL_PERMISSIONS, is_superadmin=superadmin)
+                           critical_permissions=CRITICAL_PERMISSIONS, is_superadmin=superadmin,
+                           app_menu_tree=app_menu_tree, assigned_menus_by_role=assigned_menus_by_role)
 
 PORTAL_SYSTEM_KEYS = [
     'app_url',

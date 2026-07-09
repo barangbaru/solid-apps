@@ -417,423 +417,119 @@
     </div>
   </a>
 
-  {% if current_app_slug == 'portal' %}
-  {# ── Portal sidebar ── #}
-  <div class="sidebar-section">Portal</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/portal" class="{{ 'active' if request.path == '/portal' }}">
-        <i class="bi bi-grid-3x3-gap nav-icon"></i> Semua Aplikasi
-      </a>
-    </li>
-    {% if current_user.role in ('superadmin', 'admin') %}
-    <li>
-      <a href="/portal/users" class="{{ 'active' if '/portal/users' in request.path }}">
-        <i class="bi bi-people nav-icon"></i> Kelola User
-      </a>
-    </li>
-    <li>
-      <a href="/portal/roles" class="{{ 'active' if '/portal/roles' in request.path }}">
-        <i class="bi bi-person-badge nav-icon"></i> Role & Permission
-      </a>
-    </li>
-    <li>
-      <a href="/portal/settings" class="{{ 'active' if request.path == '/portal/settings' }}">
-        <i class="bi bi-shield-lock nav-icon"></i> Akses Aplikasi
-      </a>
-    </li>
-    <li>
-      <a href="/portal/system-settings" class="{{ 'active' if '/portal/system-settings' in request.path }}">
-        <i class="bi bi-gear nav-icon"></i> Pengaturan Sistem
-      </a>
-    </li>
-    <li>
-      <a href="/portal/notifications" class="{{ 'active' if '/portal/notifications' in request.path }}">
-        <i class="bi bi-bell-fill nav-icon"></i> Pengaturan Notifikasi
-      </a>
-    </li>
-    <li>
-      <a href="/portal/audit" class="{{ 'active' if '/portal/audit' in request.path }}">
-        <i class="bi bi-shield-check nav-icon"></i> Audit Trail
-      </a>
-    </li>
-    <li>
-      <a href="/portal/update" class="{{ 'active' if '/portal/update' in request.path }} d-flex align-items-center justify-content-between">
-        <span><i class="bi bi-arrow-up-circle nav-icon"></i> Update Center</span>
-        {% if update_badge %}
-        <span class="badge bg-danger" style="font-size:.6rem">NEW</span>
-        {% endif %}
-      </a>
-    </li>
-    <li>
-      <a href="/portal/backup" class="{{ 'active' if '/portal/backup' in request.path }}">
-        <i class="bi bi-database-fill-gear nav-icon"></i> Backup Center
-      </a>
-    </li>
-    {% if chatbot_enabled %}
-    <li>
-      <a href="/chatbot" class="{{ 'active' if '/chatbot' in request.path }}">
-        <i class="bi bi-robot nav-icon"></i> AI Assistant
-      </a>
-    </li>
-    {% endif %}
-    {% endif %}
-  </ul>
-
-  {% elif current_app_slug == 'support' %}
-  {# ── App sidebar: SupportCore ── #}
-  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
-    <div style="width:6px;height:6px;border-radius:50%;background:#0d9488;flex-shrink:0"></div>
-    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
-      SupportCore
-    </span>
-  </div>
-  <div class="sidebar-section">Menu Utama</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/support/" class="{{ 'active' if request.path == '/support/' }}">
-        <i class="bi bi-grid-1x2 nav-icon"></i> Dashboard
-      </a>
-    </li>
-  </ul>
-  <div class="sidebar-section">Master Data</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/support/customers" class="{{ 'active' if '/support/customers' in request.path }}">
-        <i class="bi bi-building nav-icon"></i> Customer
-      </a>
-    </li>
-    <li>
-      <a href="/support/apps" class="{{ 'active' if '/support/apps' in request.path or '/support/modules' in request.path }}">
-        <i class="bi bi-grid-3x3-gap nav-icon"></i> Apps & Modul
-      </a>
-    </li>
-    <li>
-      <a href="/support/services" class="{{ 'active' if '/support/services' in request.path }}">
-        <i class="bi bi-wrench-adjustable nav-icon"></i> Layanan/Jasa
-      </a>
-    </li>
-    <li>
-      <a href="/support/support-types" class="{{ 'active' if '/support/support-types' in request.path }}">
-        <i class="bi bi-tools nav-icon"></i> Tipe Support
-      </a>
-    </li>
-    <li>
-      <a href="/support/sla-categories" class="{{ 'active' if '/support/sla-categories' in request.path }}">
-        <i class="bi bi-speedometer2 nav-icon"></i> Kategori SLA
-      </a>
-    </li>
-  </ul>
-  <div class="sidebar-section">Operasional</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/support/contracts" class="{{ 'active' if '/support/contracts' in request.path }}">
-        <i class="bi bi-file-earmark-text nav-icon"></i> Kontrak
-      </a>
-    </li>
-    <li>
-      <a href="/support/presales" class="{{ 'active' if '/support/presales' in request.path }}">
-        <i class="bi bi-person-plus nav-icon"></i> Presales & POC
-      </a>
-    </li>
-    <li>
-      <a href="/support/tickets" class="{{ 'active' if '/support/tickets' in request.path }}">
-        <i class="bi bi-ticket-detailed nav-icon"></i> Tiket Support
-      </a>
-    </li>
-  </ul>
-  <div class="sidebar-section">Analitik</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/support/sla-monitor" class="{{ 'active' if '/support/sla-monitor' in request.path }}">
-        <i class="bi bi-graph-up nav-icon"></i> Monitoring SLA
-      </a>
-    </li>
-    <li>
-      <a href="/support/reports" class="{{ 'active' if '/support/reports' in request.path }}">
-        <i class="bi bi-bar-chart-line nav-icon"></i> Laporan
-      </a>
-    </li>
-  </ul>
-
-  {% elif current_app_slug == 'booking' %}
-  {# ── App sidebar: BookingCore ── #}
-  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
-    <div style="width:6px;height:6px;border-radius:50%;background:#d97706;flex-shrink:0"></div>
-    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
-      BookingCore
-    </span>
-  </div>
-  <div class="sidebar-section">Booking</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/booking/" class="{{ 'active' if request.path in ['/booking/','/booking'] and not request.args.get('resource') }}">
-        <i class="bi bi-calendar2-check nav-icon"></i> Semua Booking
-      </a>
-    </li>
-    <li>
-      <a href="/booking/new" class="{{ 'active' if '/booking/new' in request.path }}">
-        <i class="bi bi-plus-circle nav-icon"></i> Buat Booking
-      </a>
-    </li>
-    <li>
-      <a href="/booking/resource/add" class="{{ 'active' if '/booking/resource/add' in request.path }}">
-        <i class="bi bi-building-add nav-icon"></i> Tambah Resource
-      </a>
-    </li>
-  </ul>
-  {% set room_resources = bk_resources | selectattr('type', 'equalto', 'room') | list %}
-  {% set vehicle_resources = bk_resources | selectattr('type', 'equalto', 'vehicle') | list %}
-  {% set other_resources = bk_resources | rejectattr('type', 'equalto', 'room') | rejectattr('type', 'equalto', 'vehicle') | list %}
-  {% if room_resources %}
-  <div class="sidebar-section">Ruangan</div>
-  <ul class="sidebar-nav">
-    {% for r in room_resources %}
-    <li>
-      <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
-        <i class="bi bi-{{ r.icon }} nav-icon"></i> {{ r.name }}
-      </a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if vehicle_resources %}
-  <div class="sidebar-section">Kendaraan</div>
-  <ul class="sidebar-nav">
-    {% for r in vehicle_resources %}
-    <li>
-      <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
-        <i class="bi bi-{{ r.icon }} nav-icon"></i> {{ r.name }}
-      </a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if other_resources %}
-  <div class="sidebar-section">Lainnya</div>
-  <ul class="sidebar-nav">
-    {% for r in other_resources %}
-    <li>
-      <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
-        <i class="bi bi-{{ r.icon or 'box' }} nav-icon"></i> {{ r.name }}
-      </a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-
-  {% elif current_app_slug == 'aset' %}
-  {# ── App sidebar: AssetCore ── #}
-  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
-    <div style="width:6px;height:6px;border-radius:50%;background:#6f42c1;flex-shrink:0"></div>
-    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
-      AssetCore
-    </span>
-  </div>
-  <div class="sidebar-section">Menu Utama</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/aset/" class="{{ 'active' if request.path == '/aset/' }}">
-        <i class="bi bi-grid-1x2 nav-icon"></i> Dashboard
-      </a>
-    </li>
-  </ul>
-  <div class="sidebar-section">Inventaris</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/aset/assets" class="{{ 'active' if '/aset/assets' in request.path }}">
-        <i class="bi bi-laptop nav-icon"></i> Laptop / PC
-      </a>
-    </li>
-    <li>
-      <a href="/aset/infra" class="{{ 'active' if '/aset/infra' in request.path }}">
-        <i class="bi bi-hdd-network nav-icon"></i> Infrastruktur
-      </a>
-    </li>
-    <li>
-      <a href="/aset/maintenance" class="{{ 'active' if '/aset/maintenance' in request.path }}">
-        <i class="bi bi-tools nav-icon"></i> Maintenance
-      </a>
-    </li>
-  </ul>
-  <div class="sidebar-section">Permintaan & Lisensi</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/aset/licenses" class="{{ 'active' if '/aset/licenses' in request.path }}">
-        <i class="bi bi-key nav-icon"></i> Lisensi
-      </a>
-    </li>
-    <li>
-      <a href="/aset/subscriptions" class="{{ 'active' if '/aset/subscriptions' in request.path }}">
-        <i class="bi bi-cloud-check nav-icon"></i> Subscription
-      </a>
-    </li>
-    <li>
-      <a href="/aset/requests" class="{{ 'active' if '/aset/requests' in request.path }}">
-        <i class="bi bi-inbox nav-icon"></i> Request Software
-      </a>
-    </li>
-    <li>
-      <a href="/aset/tool-requests" class="{{ 'active' if '/aset/tool-requests' in request.path }}">
-        <i class="bi bi-laptop nav-icon"></i> Request Alat Kerja
-      </a>
-    </li>
-  </ul>
-  <div class="sidebar-section">Pengaturan</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/aset/settings" class="{{ 'active' if '/aset/settings' in request.path }}">
-        <i class="bi bi-bell-fill nav-icon"></i> Notifikasi
-      </a>
-    </li>
-    <li>
-      <a href="/aset/masters" class="{{ 'active' if '/aset/masters' in request.path }}">
-        <i class="bi bi-database nav-icon"></i> Master Data Spec
-      </a>
-    </li>
-  </ul>
-
-  {% elif current_app_slug == 'project' %}
-  {# ── App sidebar: ProjectCore ── #}
-  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
-    <div style="width:6px;height:6px;border-radius:50%;background:#0ea5e9;flex-shrink:0"></div>
-    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">ProjectCore</span>
-  </div>
-  <div class="sidebar-section">Menu Utama</div>
-  <ul class="sidebar-nav">
-    <li><a href="/project/" class="{{ 'active' if request.path in ['/project/','/project'] }}"><i class="bi bi-grid-1x2 nav-icon"></i> Dashboard</a></li>
-    <li><a href="/project/projects" class="{{ 'active' if '/project/projects' in request.path }}"><i class="bi bi-kanban nav-icon"></i> Semua Proyek</a></li>
-    <li><a href="/project/projects/add" class="{{ 'active' if request.path == '/project/projects/add' }}"><i class="bi bi-plus-circle nav-icon"></i> Tambah Proyek</a></li>
-  </ul>
-  <div class="sidebar-section">Master Data</div>
-  <ul class="sidebar-nav">
-    <li><a href="/support/customers"><i class="bi bi-building nav-icon"></i> Customer</a></li>
-  </ul>
-
-  {% elif current_app_slug == 'attendance' %}
-  {# ── App sidebar: AttendanceCore ── #}
-  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
-    <div style="width:6px;height:6px;border-radius:50%;background:#8b5cf6;flex-shrink:0"></div>
-    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
-      AttendanceCore
-    </span>
-  </div>
-  <div class="sidebar-section">Kehadiran Saya</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/attendance/" class="{{ 'active' if request.path == '/attendance/' }}">
-        <i class="bi bi-clock nav-icon"></i> Presensi Harian
-      </a>
-    </li>
-    <li>
-      <a href="/attendance/leave" class="{{ 'active' if '/attendance/leave' in request.path }}">
-        <i class="bi bi-calendar-event nav-icon"></i> Pengajuan Cuti
-      </a>
-    </li>
-    <li>
-      <a href="/attendance/overtime" class="{{ 'active' if '/attendance/overtime' in request.path }}">
-        <i class="bi bi-clock-history nav-icon"></i> Pengajuan Lembur
-      </a>
-    </li>
-    <li>
-      <a href="/attendance/correction" class="{{ 'active' if '/attendance/correction' in request.path }}">
-        <i class="bi bi-patch-exclamation nav-icon"></i> Koreksi Absen
-      </a>
-    </li>
-  </ul>
-  {% if 'at_manage' in user_perms or session.user_role == 'superadmin' %}
-  <div class="sidebar-section">Manajemen</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/attendance/admin/approvals" class="{{ 'active' if '/attendance/admin/approvals' in request.path }}">
-        <i class="bi bi-check2-square nav-icon"></i> Approval Console
-      </a>
-    </li>
-  </ul>
-  {% endif %}
-
+  {% if current_app_slug != 'portal' %}
+    {% set active_app_obj = portal_apps | selectattr('slug', 'equalto', current_app_slug) | first %}
+    <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
+      <div style="width:6px;height:6px;border-radius:50%;background:{{ active_app_obj.color if active_app_obj else '#6f42c1' }};flex-shrink:0"></div>
+      <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
+        {{ active_app_obj.name if active_app_obj else current_app_slug }}
+      </span>
+    </div>
   {% else %}
-  {# ── App sidebar: TalentCore ── #}
-  <!-- Current app indicator -->
-  <div style="padding:.6rem 1rem .2rem;display:flex;align-items:center;gap:.5rem">
-    <div style="width:6px;height:6px;border-radius:50%;background:#4da8da;flex-shrink:0"></div>
-    <span style="font-size:.72rem;color:rgba(255,255,255,.5);font-weight:600;letter-spacing:.04em;text-transform:uppercase">
-      TalentCore
-    </span>
-  </div>
-
-  <div class="sidebar-section">Menu Utama</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/" class="{{ 'active' if request.path == '/' }}">
-        <i class="bi bi-house-door nav-icon"></i> Dashboard
-      </a>
-    </li>
-    <li>
-      <a href="/karyawan" class="{{ 'active' if '/karyawan' in request.path or '/contracts' in request.path }}">
-        <i class="bi bi-people nav-icon"></i> Karyawan
-      </a>
-    </li>
-    <li>
-      <a href="/reviews" class="{{ 'active' if '/reviews' in request.path or '/eval/' in request.path and '/review' in request.path }}">
-        <i class="bi bi-clipboard2-check nav-icon"></i> Review Evaluasi
-        {% if pending_reviews > 0 %}
-        <span class="badge-dot">{{ pending_reviews }}</span>
-        {% endif %}
-      </a>
-    </li>
-    <li>
-      <a href="/kinerja/tim" class="{{ 'active' if request.path == '/kinerja/tim' }}">
-        <i class="bi bi-graph-up-arrow nav-icon"></i> Kinerja Task
-      </a>
-    </li>
-    <li>
-      <a href="/kinerja/analitik" class="{{ 'active' if '/kinerja/analitik' in request.path }}">
-        <i class="bi bi-diagram-3 nav-icon"></i> Analitik Divisi
-      </a>
-    </li>
-    <li>
-      <a href="/kinerja/divisi" class="{{ 'active' if '/kinerja/divisi' in request.path }}">
-        <i class="bi bi-people-fill nav-icon"></i> Performa Divisi
-      </a>
-    </li>
-    <li>
-      <a href="/reminders" class="{{ 'active' if '/reminders' in request.path }}">
-        <i class="bi bi-bell nav-icon"></i> Log Reminder
-      </a>
-    </li>
-    {% if 'view_salary' in user_perms %}
-    <li>
-      <a href="/salary" class="{{ 'active' if '/salary' in request.path }}">
-        <i class="bi bi-cash-stack nav-icon"></i> Tabel Gaji
-      </a>
-    </li>
-    {% endif %}
-  </ul>
-
-  <div class="sidebar-section">Konfigurasi</div>
-  <ul class="sidebar-nav">
-    <li>
-      <a href="/admin" class="{{ 'active' if '/admin' in request.path and '/divisions' not in request.path and '/roles' not in request.path }}">
-        <i class="bi bi-sliders nav-icon"></i> Template Evaluasi
-      </a>
-    </li>
-    {% if 'manage_divisions' in user_perms %}
-    <li>
-      <a href="/admin/divisions" class="{{ 'active' if '/divisions' in request.path }}">
-        <i class="bi bi-diagram-3 nav-icon"></i> Manajemen Divisi
-      </a>
-    </li>
-    {% endif %}
-    {% if 'manage_settings' in user_perms %}
-    <li>
-      <a href="/settings" class="{{ 'active' if '/settings' in request.path }}">
-        <i class="bi bi-gear nav-icon"></i> Pengaturan Notifikasi
-      </a>
-    </li>
-    {% endif %}
-  </ul>
+    <div class="sidebar-section">Portal</div>
   {% endif %}
+
+  <ul class="sidebar-nav">
+    {% for menu in user_menus %}
+      {% if menu.children %}
+        {# Header menu atau menu dengan submenu #}
+        {% if menu.url == '#' or not menu.url %}
+          <div class="sidebar-section">{{ menu.title }}</div>
+          {% for child in menu.children %}
+            <li>
+              <a href="{{ child.url }}" class="{{ 'active' if child.url == request.path or (child.url != '/' and child.url in request.path) }}">
+                {% if child.icon %}
+                  <i class="bi bi-{{ child.icon }} nav-icon"></i>
+                {% else %}
+                  <i class="bi bi-circle nav-icon"></i>
+                {% endif %}
+                {{ child.title }}
+                
+                {% if child.url == '/reviews' and pending_reviews and pending_reviews > 0 %}
+                  <span class="badge-dot">{{ pending_reviews }}</span>
+                {% elif child.url == '/portal/update' and update_badge %}
+                  <span class="badge bg-danger" style="font-size:.6rem">NEW</span>
+                {% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        {% else %}
+          {# Collapsible atau nested submenus #}
+          <li class="has-sub">
+            <a href="#">
+              {% if menu.icon %}
+                <i class="bi bi-{{ menu.icon }} nav-icon"></i>
+              {% endif %}
+              {{ menu.title }}
+            </a>
+            <ul class="sidebar-sub">
+              {% for child in menu.children %}
+                <li>
+                  <a href="{{ child.url }}" class="{{ 'active' if child.url == request.path or (child.url != '/' and child.url in request.path) }}">
+                    {{ child.title }}
+                  </a>
+                </li>
+              {% endfor %}
+            </ul>
+          </li>
+        {% endif %}
+      {% else %}
+        {# Item menu tunggal #}
+        <li>
+          <a href="{{ menu.url }}" class="{{ 'active' if menu.url == request.path or (menu.url != '/' and menu.url in request.path) }}">
+            {% if menu.icon %}
+              <i class="bi bi-{{ menu.icon }} nav-icon"></i>
+            {% endif %}
+            {{ menu.title }}
+            
+            {% if menu.url == '/reviews' and pending_reviews and pending_reviews > 0 %}
+              <span class="badge-dot">{{ pending_reviews }}</span>
+            {% elif menu.url == '/portal/update' and update_badge %}
+              <span class="badge bg-danger" style="font-size:.6rem">NEW</span>
+            {% endif %}
+          </a>
+        </li>
+      {% endif %}
+    {% endfor %}
+    
+    {# Rendering dinamis untuk dynamic resources BookingCore #}
+    {% if current_app_slug == 'booking' %}
+      {% set room_resources = bk_resources | selectattr('type', 'equalto', 'room') | list %}
+      {% set vehicle_resources = bk_resources | selectattr('type', 'equalto', 'vehicle') | list %}
+      {% set other_resources = bk_resources | rejectattr('type', 'equalto', 'room') | rejectattr('type', 'equalto', 'vehicle') | list %}
+      {% if room_resources %}
+        <div class="sidebar-section">Ruangan</div>
+        {% for r in room_resources %}
+          <li>
+            <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
+              <i class="bi bi-{{ r.icon }} nav-icon"></i> {{ r.name }}
+            </a>
+          </li>
+        {% endfor %}
+      {% endif %}
+      {% if vehicle_resources %}
+        <div class="sidebar-section">Kendaraan</div>
+        {% for r in vehicle_resources %}
+          <li>
+            <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
+              <i class="bi bi-{{ r.icon }} nav-icon"></i> {{ r.name }}
+            </a>
+          </li>
+        {% endfor %}
+      {% endif %}
+      {% if other_resources %}
+        <div class="sidebar-section">Lainnya</div>
+        {% for r in other_resources %}
+          <li>
+            <a href="/booking/resource/{{ r.id }}" class="{{ 'active' if request.path == '/booking/resource/' ~ r.id|string }}">
+              <i class="bi bi-{{ r.icon or 'box' }} nav-icon"></i> {{ r.name }}
+            </a>
+          </li>
+        {% endfor %}
+      {% endif %}
+    {% endif %}
+  </ul>
+
 
   <!-- User footer -->
   <div class="sidebar-footer">
