@@ -1,4 +1,4 @@
-VERSION = "2.2.58"
+VERSION = "2.2.60"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -71,4 +71,5 @@ RELEASE_NOTES = (
     "v2.2.57: Menghapus total dukungan database SQLite dan mematikan fallback local database SQLite, memaksa penggunaan database PostgreSQL secara penuh (global default)."
     "v2.2.58: Menambahkan dukungan kompatibilitas terhadap custom JSON payload yang dikirimkan oleh Node.js helper bot (Telegraf location forwarder)."
     "v2.2.59: Menambahkan tabel Status Kehadiran Karyawan Hari Ini (Live Attendance Wall) pada dashboard AttendanceCore untuk menampilkan informasi clock-in, clock-out, lokasi, plan, dan progress seluruh karyawan."
+    "v2.2.60: Pengetatan alur presensi Telegram: Rencana kerja (#PLAN) tidak dapat diisi sebelum Clock In, laporan kemajuan (#PROGRESS) tidak dapat diisi sebelum #PLAN lengkap, dan Clock Out diblokir hingga keduanya diisi secara terpisah."
 )

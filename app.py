@@ -14311,6 +14311,17 @@ def telegram_webhook():
             is_plan = '#plan' in lower_text
             is_progress = '#progress' in lower_text
 
+            if is_plan and is_progress:
+                reply(
+                    f"Halo {user_mention},\n\n"
+                    "⚠️ <b>Gagal!</b> Rencana kerja (#PLAN) dan kemajuan kerja (#PROGRESS) harus dikirimkan dalam pesan terpisah secara berurutan:\n\n"
+                    "1. Lakukan Clock In (Kirim Lokasi)\n"
+                    "2. Kirim rencana kerja: <code>#PLAN [isi rencana minimal 10 karakter]</code>\n"
+                    "3. Kirim kemajuan kerja: <code>#PROGRESS [isi kemajuan minimal 10 karakter]</code>\n"
+                    "4. Lakukan Clock Out (Kirim Lokasi)"
+                )
+                return 'OK', 200
+
             if is_plan or is_progress:
                 import re
                 today = datetime.now().strftime('%Y-%m-%d')
@@ -14319,105 +14330,85 @@ def telegram_webhook():
                     (uid, today)
                 ).fetchone()
 
-                plan_content = None
-                progress_content = None
+                is_clocked_in = today_att is not None and bool(today_att['clock_in'])
 
-                if is_plan and is_progress:
-                    idx_plan = lower_text.find('#plan')
-                    idx_prog = lower_text.find('#progress')
-                    if idx_plan < idx_prog:
-                        plan_content = text[idx_plan:idx_prog].strip()
-                        progress_content = text[idx_prog:].strip()
-                    else:
-                        progress_content = text[idx_prog:idx_plan].strip()
-                        plan_content = text[idx_plan:].strip()
-                elif is_plan:
-                    plan_content = text.strip()
-                elif is_progress:
-                    progress_content = text.strip()
+                if is_plan:
+                    if not is_clocked_in:
+                        reply(
+                            f"Halo {user_mention},\n\n"
+                            "⚠️ <b>Gagal mencatat PLAN!</b>\n"
+                            "Anda wajib melakukan Clock In (Kirim Lokasi) terlebih dahulu sebelum dapat mengirimkan rencana kerja (#PLAN)."
+                        )
+                        return 'OK', 200
 
-                err_msgs = []
-                msg_parts = []
-
-                if plan_content is not None:
-                    cleaned_plan = re.sub(r'(?i)#plan', '', plan_content).strip()
+                    cleaned_plan = re.sub(r'(?i)#plan', '', text).strip()
                     if len(cleaned_plan) < 10:
-                        err_msgs.append("❌ <b>#PLAN Gagal:</b> Rencana kerja minimal harus 10 karakter (tidak termasuk tag).")
-                        plan_content = None
-                    else:
-                        plan_content = cleaned_plan
-                        msg_parts.append("✅ <b>#PLAN</b> berhasil disimpan/diperbarui.")
-
-                if progress_content is not None:
-                    cleaned_prog = re.sub(r'(?i)#progress', '', progress_content).strip()
-                    if len(cleaned_prog) < 10:
-                        err_msgs.append("❌ <b>#PROGRESS Gagal:</b> Kemajuan kerja minimal harus 10 karakter (tidak termasuk tag).")
-                        progress_content = None
-                    else:
-                        progress_content = cleaned_prog
-                        msg_parts.append("✅ <b>#PROGRESS</b> berhasil disimpan/diperbarui.")
-
-                # Construct response text BEFORE saving, to compute final status
-                response_text = f"Halo {user_mention},\n\n"
-                if msg_parts:
-                    response_text += "\n".join(msg_parts) + "\n\n"
-                if err_msgs:
-                    response_text += "\n".join(err_msgs) + "\n\n"
-
-                # Check fresh status simulation
-                current_plan = (today_att['plan'] or '').strip() if today_att else ''
-                current_prog = (today_att['progress'] or '').strip() if today_att else ''
-                
-                final_plan = plan_content if plan_content is not None else current_plan
-                final_prog = progress_content if progress_content is not None else current_prog
-                
-                p_ok = len(final_plan) >= 10
-                pr_ok = len(final_prog) >= 10
-                
-                if p_ok and pr_ok:
-                    response_text += "💡 <b>Persyaratan lengkap!</b> Anda sekarang dapat melakukan Clock Out."
-                else:
-                    missing = []
-                    if not p_ok: missing.append("#PLAN")
-                    if not pr_ok: missing.append("#PROGRESS")
-                    response_text += f"💡 Anda masih perlu mengisi <b>{', '.join(missing)}</b> sebelum dapat melakukan Clock Out."
-
-                # Send reply first
-                reply(response_text)
-
-                # Then save to database
-                if plan_content or progress_content:
-                    if not today_att:
-                        db.execute(
-                            'INSERT INTO attendance (user_id, date, status, plan, progress) VALUES (?, ?, ?, ?, ?)',
-                            (uid, today, 'present', plan_content or '', progress_content or '')
+                        reply(
+                            f"Halo {user_mention},\n\n"
+                            "❌ <b>#PLAN Gagal:</b> Rencana kerja minimal harus 10 karakter (tidak termasuk tag)."
                         )
                     else:
-                        if plan_content and progress_content:
-                            db.execute(
-                                'UPDATE attendance SET plan=?, progress=? WHERE id=?',
-                                (plan_content, progress_content, today_att['id'])
-                            )
-                        elif plan_content:
-                            db.execute(
-                                'UPDATE attendance SET plan=? WHERE id=?',
-                                (plan_content, today_att['id'])
-                            )
-                        elif progress_content:
-                            db.execute(
-                                'UPDATE attendance SET progress=? WHERE id=?',
-                                (progress_content, today_att['id'])
-                            )
-                    db.commit()
+                        # Reply success first
+                        reply(
+                            f"Halo {user_mention},\n\n"
+                            "✅ <b>#PLAN</b> berhasil disimpan/diperbarui.\n\n"
+                            "Selanjutnya, silakan kirimkan kemajuan kerja Anda dengan format <code>#PROGRESS [isi laporan]</code> sebelum melakukan Clock Out."
+                        )
+                        # Save to database
+                        db.execute(
+                            'UPDATE attendance SET plan=? WHERE id=?',
+                            (cleaned_plan, today_att['id'])
+                        )
+                        db.commit()
+
+                elif is_progress:
+                    if not is_clocked_in:
+                        reply(
+                            f"Halo {user_mention},\n\n"
+                            "⚠️ <b>Gagal mencatat PROGRESS!</b>\n"
+                            "Anda wajib melakukan Clock In (Kirim Lokasi) dan mengirimkan #PLAN terlebih dahulu."
+                        )
+                        return 'OK', 200
+
+                    # Check if #PLAN is already filled with at least 10 characters
+                    db_plan = (today_att['plan'] or '').strip()
+                    clean_db_plan = re.sub(r'(?i)#plan', '', db_plan).strip()
+                    if len(clean_db_plan) < 10:
+                        reply(
+                            f"Halo {user_mention},\n\n"
+                            "⚠️ <b>Gagal mencatat PROGRESS!</b>\n"
+                            "Anda wajib mengirimkan rencana kerja (#PLAN) minimal 10 karakter terlebih dahulu sebelum melaporkan progress kerja (#PROGRESS)."
+                        )
+                        return 'OK', 200
+
+                    cleaned_prog = re.sub(r'(?i)#progress', '', text).strip()
+                    if len(cleaned_prog) < 10:
+                        reply(
+                            f"Halo {user_mention},\n\n"
+                            "❌ <b>#PROGRESS Gagal:</b> Kemajuan kerja minimal harus 10 karakter (tidak termasuk tag)."
+                        )
+                    else:
+                        # Reply success first
+                        reply(
+                            f"Halo {user_mention},\n\n"
+                            "✅ <b>#PROGRESS</b> berhasil disimpan/diperbarui.\n\n"
+                            "💡 <b>Persyaratan lengkap!</b> Anda sekarang dapat melakukan Clock Out (Kirim Lokasi)."
+                        )
+                        # Save to database
+                        db.execute(
+                            'UPDATE attendance SET progress=? WHERE id=?',
+                            (cleaned_prog, today_att['id'])
+                        )
+                        db.commit()
+
             elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
                 reply(
                     f"Halo {user_mention}! Selamat datang di Telegram Attendance Bot HIVE.\n\n"
-                    "Untuk melakukan Clock In atau Clock Out, silakan gunakan fitur \"Send Location\" (Kirim Lokasi) di Telegram.\n\n"
-                    "⚠️ <b>Ketentuan Clock Out:</b>\n"
-                    "Anda diwajibkan mengirimkan rencana dan kemajuan kerja hari ini dengan format:\n"
-                    "• <code>#PLAN [isi rencana minimal 10 karakter]</code>\n"
-                    "• <code>#PROGRESS [isi kemajuan minimal 10 karakter]</code>\n\n"
-                    "Setelah keduanya terisi lengkap, barulah Anda dapat melakukan Clock Out (Kirim Lokasi kedua)."
+                    "⚠️ <b>Alur Absensi Harian:</b>\n"
+                    "1. <b>Clock In:</b> Kirim Lokasi Anda (Send Location)\n"
+                    "2. <b>Rencana Kerja:</b> Kirim pesan <code>#PLAN [isi rencana minimal 10 karakter]</code>\n"
+                    "3. <b>Laporan Kemajuan:</b> Kirim pesan <code>#PROGRESS [isi laporan minimal 10 karakter]</code> (Hanya bisa dikirim setelah #PLAN sukses)\n"
+                    "4. <b>Clock Out:</b> Kirim Lokasi Anda kembali"
                 )
             else:
                 reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out, atau kirim pesan berisi #PLAN / #PROGRESS untuk memperbarui rencana/kemajuan kerja Anda.")
