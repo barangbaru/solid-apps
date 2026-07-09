@@ -11868,6 +11868,10 @@ AC_TOOL_ATTACHMENT_CONFIG = {
         'field': 'attach_unit_photo',
         'allowed': ALLOWED_IMAGE_EXT,
     },
+    'approval_proof': {
+        'field': 'attach_approval_proof',
+        'allowed': ALLOWED_ATTACHMENT_EXT,
+    },
 }
 
 def _tool_request_channel_label(req):
@@ -12935,6 +12939,18 @@ def ac_tool_request_status(rid):
     new_status = request.form.get('status')
     resolved_at = _dt.now().strftime('%Y-%m-%d %H:%M:%S') if new_status in ('Approved','Rejected','Completed') else ''
 
+    # Mandatory attachment proof for Approved / Rejected
+    if new_status in ('Approved', 'Rejected'):
+        proof_files = [f for f in request.files.getlist('attach_approval_proof')
+                       if f and f.filename]
+        if not proof_files:
+            flash(
+                f'Status "{new_status}" memerlukan bukti attachment (capture approval/rejection). '
+                'Harap upload setidaknya satu file sebagai bukti.',
+                'danger'
+            )
+            return redirect(url_for('ac_tool_requests'))
+
     admin_item_type = request.form.get('admin_item_type', '').strip()
     admin_specs = request.form.get('admin_specs', '').strip()
     admin_url = request.form.get('admin_url', '').strip()
@@ -12976,6 +12992,7 @@ def ac_tool_request_status(rid):
                 resolved_at, session.get('user_name',''), rid))
     capture_saved = _save_tool_request_attachments(db, rid, 'request_capture')
     photo_saved = _save_tool_request_attachments(db, rid, 'unit_photo')
+    approval_saved = _save_tool_request_attachments(db, rid, 'approval_proof')
 
     asset_id = None
     asset_created = False
@@ -12988,18 +13005,21 @@ def ac_tool_request_status(rid):
     if asset_created:
         audit_log('create', 'ac_assets', asset_id, f"Asset dari request alat kerja #{rid}", 'aset')
         msg = f'Status request alat kerja diubah ke {new_status}. Asset Laptop/PC berhasil dibuat.'
-        if capture_saved or photo_saved:
-            msg += f' Attachment baru tersimpan: {capture_saved + photo_saved}.'
+        total_att = capture_saved + photo_saved + approval_saved
+        if total_att:
+            msg += f' Attachment baru tersimpan: {total_att}.'
         flash(msg, 'success')
     elif new_status == 'Completed' and request.form.get('create_asset') == '1' and not asset_id:
         msg = f'Status request alat kerja diubah ke {new_status}. Asset tidak dibuat karena kategori bukan Laptop/PC.'
-        if capture_saved or photo_saved:
-            msg += f' Attachment baru tersimpan: {capture_saved + photo_saved}.'
+        total_att = capture_saved + photo_saved + approval_saved
+        if total_att:
+            msg += f' Attachment baru tersimpan: {total_att}.'
         flash(msg, 'warning')
     else:
         msg = f'Status request alat kerja diubah ke {new_status}.'
-        if capture_saved or photo_saved:
-            msg += f' Attachment baru tersimpan: {capture_saved + photo_saved}.'
+        total_att = capture_saved + photo_saved + approval_saved
+        if total_att:
+            msg += f' Attachment baru tersimpan: {total_att}.'
         flash(msg, 'success')
     return redirect(url_for('ac_tool_requests'))
 

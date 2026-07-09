@@ -398,6 +398,25 @@
                 <span class="small text-muted ms-2 d-none" id="assetLinkedHint">Asset sudah dibuat untuk request ini.</span>
               </div>
             </div>
+
+            <!-- Bukti Approval / Rejection (wajib saat status Approved / Rejected) -->
+            <div class="col-12 d-none" id="approvalProofWrap">
+              <div class="p-3 rounded border border-warning bg-warning bg-opacity-10">
+                <label class="form-label fw-semibold small text-warning-emphasis mb-1">
+                  <i class="bi bi-paperclip me-1"></i>
+                  Bukti Approval / Rejection
+                  <span class="text-danger">*</span>
+                  <span class="fw-normal text-muted ms-1">(wajib diisi)</span>
+                </label>
+                <input id="modalApprovalProof" name="attach_approval_proof" type="file"
+                       class="form-control form-control-sm"
+                       multiple
+                       accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.eml,.msg">
+                <div class="form-text text-muted mt-1">
+                  Upload screenshot/dokumen bukti approval atau rejection dari pihak yang berwenang.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer py-2">
@@ -415,6 +434,8 @@ var statusSelect = document.getElementById('modalSelectStatus');
 var createWrap = document.getElementById('createAssetWrap');
 var createAsset = document.getElementById('modalCreateAsset');
 var assetLinkedHint = document.getElementById('assetLinkedHint');
+var approvalProofWrap = document.getElementById('approvalProofWrap');
+var approvalProofInput = document.getElementById('modalApprovalProof');
 
 function setField(id, value) {
   var el = document.getElementById(id);
@@ -423,6 +444,7 @@ function setField(id, value) {
 
 function updateCreateAssetState() {
   var isCompleted = statusSelect.value === 'Completed';
+  var needsProof = statusSelect.value === 'Approved' || statusSelect.value === 'Rejected';
   createWrap.classList.toggle('d-none', !isCompleted);
   createAsset.disabled = !!currentAssetId;
   assetLinkedHint.classList.toggle('d-none', !currentAssetId);
@@ -431,6 +453,8 @@ function updateCreateAssetState() {
   } else {
     createAsset.checked = true;
   }
+  approvalProofWrap.classList.toggle('d-none', !needsProof);
+  approvalProofInput.required = needsProof;
 }
 
 document.getElementById('modalStatus').addEventListener('show.bs.modal', function(e) {
@@ -466,9 +490,25 @@ document.getElementById('modalStatus').addEventListener('show.bs.modal', functio
   setField('modalAssetTag', btn.dataset.assetTag);
   setField('modalSerialNumber', btn.dataset.serialNumber);
   setField('modalNotes', btn.dataset.notes);
+  // Reset proof upload on reopen
+  if (approvalProofInput) approvalProofInput.value = '';
   updateCreateAssetState();
 });
 
-statusSelect.addEventListener('change', updateCreateAssetState);
+statusSelect.addEventListener('change', function() {
+  // Reset proof file when user switches status
+  if (approvalProofInput) approvalProofInput.value = '';
+  updateCreateAssetState();
+});
+
+// Client-side guard before submit
+document.getElementById('formStatus').addEventListener('submit', function(e) {
+  var st = statusSelect.value;
+  if ((st === 'Approved' || st === 'Rejected') && (!approvalProofInput.files || approvalProofInput.files.length === 0)) {
+    e.preventDefault();
+    alert('Status "' + st + '" wajib menyertakan bukti attachment (capture approval/rejection). Harap upload setidaknya satu file.');
+    approvalProofInput.focus();
+  }
+});
 </script>
 {% endblock %}
