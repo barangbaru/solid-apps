@@ -15,6 +15,7 @@ Platform superapp berbasis **Flask + PostgreSQL** yang mengintegrasikan manajeme
 | **BookingCore** | `/booking/` | Reservasi ruangan & kendaraan operasional | ✅ Aktif |
 | **AssetCore** | `/aset/` | Inventaris aset IT, lisensi, infrastruktur, subscription | ✅ Aktif |
 | **ProjectCore** | `/project/` | Manajemen proyek, milestone, issue, task | ✅ Aktif |
+| **AttendanceCore** | `/attendance/` | Live daily attendance, rencana & kemajuan kerja, cuti, lembur, dan koreksi | ✅ Aktif |
 
 ---
 
@@ -45,6 +46,15 @@ Ability      : Avg level A/B/C/D × 25
 - Countdown masa kontrak kritis (≤14 hari) / warning (≤30 hari)
 - Tabel gaji & tren historis per karyawan
 - Reminder kontrak otomatis via Email / Telegram / WhatsApp
+
+---
+
+### 🕒 AttendanceCore — Presensi & Waktu Kerja
+- **Live Daily Attendance Wall:** Menampilkan status kehadiran seluruh karyawan hari ini beserta jam clock-in/out, lokasi GPS, durasi kerja, dan link #PLAN/#PROGRESS.
+- **Telegram Bot Webhook:** Mendukung absensi (Clock In & Clock Out) via sharing location di grup maupun japri.
+- **Sequential Attendance Constraint:** Mewajibkan Clock In -> Isi `#PLAN` (min 10 karakter) -> Isi `#PROGRESS` (min 10 karakter) -> Clock Out.
+- **Auto-Register Fallback:** Otomatis mendaftarkan user dan karyawan baru jika pengirim absensi dari Telegram tidak dikenal.
+- **Pengajuan Cuti, Lembur, & Koreksi:** Dilengkapi dengan alur approval admin IT.
 
 ---
 
@@ -134,7 +144,7 @@ Skor Task = min(Total Raw Points ÷ (Benchmark × Durasi Bulan) × 100, 100)
 | Infrastruktur | Server, router, AP, switch, monitor, tools |
 | Lisensi Software | License key, seat, tipe (Perpetual/Subscription/Volume/OEM) |
 | Subscription & ISP | SaaS, ISP — alert 30 hari sebelum berakhir |
-| Request Software | Workflow Pending → Approved → Installed / Rejected |
+| Request Alat Kerja | Workflow laptop purchase/checking, PIC IT Support, spec hardware, mandatori upload BAST & bukti serah terima |
 
 ---
 
@@ -158,7 +168,7 @@ Skor Task = min(Total Raw Points ÷ (Benchmark × Durasi Bulan) × 100, 100)
 - Audit log semua aksi sensitif (`/portal/audit`)
 
 ### 🔔 Notifikasi
-- Email (SMTP), Telegram Bot, WhatsApp (WAHA/OpenWA)
+- Email (SMTP), Telegram Bot (dengan background thread non-blocking), WhatsApp (WAHA/OpenWA)
 - Cron harian 08:00 WIB (kontrak, subscription)
 - Laporan harian 22:00 WIB
 
@@ -177,16 +187,16 @@ Skor Task = min(Total Raw Points ÷ (Benchmark × Durasi Bulan) × 100, 100)
 |----------|--------|
 | Python | 3.11 |
 | Flask | 3.1.x |
-| Database | **PostgreSQL** (production) / SQLite (development) |
-| ORM | Custom `_DBWrapper` — dual-dialect, SQLite ↔ PostgreSQL transparan |
+| Database | **PostgreSQL** (production & development) |
+| ORM | Custom `_DBWrapper` — PostgreSQL adapter |
 | Gunicorn | 21.2.x + gthread workers + unix socket |
 | APScheduler | 3.11.x — cron jobs reminder & update check |
 | Bootstrap | 5.3.3 + Bootstrap Icons |
-| Chart.js | 4.4.x — dashboard charts |
-| Font | Nunito (Google Fonts) |
+| Chart.js / ApexCharts | Dashboard analytics |
+| Font | Nunito / Inter (Google Fonts) |
 | Nginx | Reverse proxy |
 | OpenWA / WAHA | WhatsApp notification |
-| Telegram Bot | Notifikasi alternatif |
+| Telegram Bot | Notifikasi & Absensi harian |
 | systemd | Service management + in-app update trigger |
 
 ---
@@ -195,13 +205,12 @@ Skor Task = min(Total Raw Points ÷ (Benchmark × Durasi Bulan) × 100, 100)
 
 ```
 hive/
-├── app.py                   # Flask app (~8000+ baris) — semua route, auth, scheduler
+├── app.py                   # Flask app (~15000+ baris) — semua route, auth, scheduler
 ├── version.py               # VERSION, RELEASE_DATE, RELEASE_NOTES
 ├── wsgi.py                  # Entry point Gunicorn
 ├── seed_data.py             # Template skill per divisi (TalentCore)
-├── migrate_to_pg.py         # Migrasi data SQLite → PostgreSQL
 ├── requirements.txt
-├── deploy-ubuntu.sh         # Deploy/update script (idempotent, support --auto --version)
+├── deploy-ubuntu.sh         # Deploy/update script (idempotent, support --auto --version, reset password)
 ├── hive-update.path         # systemd: watcher trigger in-app update
 ├── hive-update.service      # systemd: runner deploy --auto
 ├── CHANGELOG.md
@@ -273,25 +282,10 @@ sudo bash deploy-ubuntu.sh --auto --version 1.7.0
 
 Script otomatis: clone GitHub → venv → `.env` → systemd → Nginx → verifikasi.
 
-**Pilihan Database saat install:**
-1. SQLite (default, development)
-2. PostgreSQL — auto-install + setup
-3. PostgreSQL — parameter existing
-
-**Migrasi SQLite → PostgreSQL:**
-```bash
-/var/www/evaluasi/venv/bin/python3 migrate_to_pg.py \
-  --sqlite /var/lib/evaluasi/evaluasi.db \
-  --pg-host localhost --pg-name hive_db --pg-user hive
-```
-
 ### Environment Variables (`.env`)
 
 ```bash
 SECRET_KEY=random-min-32-char
-DATABASE_PATH=/var/lib/evaluasi/evaluasi.db   # SQLite
-
-# PostgreSQL (jika pakai PG)
 DB_TYPE=postgresql
 PG_HOST=localhost
 PG_PORT=5432

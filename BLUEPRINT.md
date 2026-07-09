@@ -1,31 +1,31 @@
-# Blueprint super-us — Arsitektur Keseluruhan Aplikasi
+# Blueprint Hive — Arsitektur Keseluruhan Aplikasi
 
 ## 1. Gambaran Umum
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        super-us Platform                            │
-│                                                                     │
-│  ┌──────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │TalentCore│  │ SupportCore │  │ BookingCore │  │  AssetCore  │  │
-│  │    /     │  │  /support/  │  │  /booking/  │  │   /aset/    │  │
-│  └──────────┘  └─────────────┘  └─────────────┘  └─────────────┘  │
-│                                                                     │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                      Portal  /portal/                        │   │
-│  │         Auth · MFA · User · Role · Permission · Audit        │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                     │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │              Single Flask app.py (~6500 baris)               │   │
-│  │              Single SQLite database (evaluasi.db)            │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                                  Hive Platform                                   │
+│                                                                                  │
+│  ┌──────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────┐  │
+│  │TalentCore│  │ SupportCore │  │ BookingCore │  │  AssetCore  │  │Attendance │  │
+│  │    /     │  │  /support/  │  │  /booking/  │  │   /aset/    │  │/attendance│  │
+│  └──────────┘  └─────────────┘  └─────────────┘  └─────────────┘  └───────────┘  │
+│                                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │                                Portal  /portal/                            │  │
+│  │            Auth · MFA · User · Role · Permission · Audit · Backup          │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                  │
+│  ┌────────────────────────────────────────────────────────────────────────────┐  │
+│  │                 Single Flask app.py (~15000+ baris)                        │  │
+│  │                 Single PostgreSQL database (hive_db)                       │  │
+│  └────────────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Prinsip arsitektur:**
 - Satu file `app.py` — semua modul dalam satu proses Flask
-- Satu database SQLite — tabel dipisah dengan prefix per modul
+- Satu database PostgreSQL — tabel dipisah dengan prefix per modul
 - Satu session/auth — login sekali, akses semua app yang diizinkan
 - Sidebar adaptif — berubah otomatis sesuai modul yang aktif
 
@@ -36,7 +36,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Client (Browser)                                               │
-│  Bootstrap 5.3 · Bootstrap Icons · Nunito font · Vanilla JS    │
+│  Bootstrap 5.3 · Bootstrap Icons · Inter/Nunito font · JS       │
 └────────────────────────────┬────────────────────────────────────┘
                              │ HTTP
 ┌────────────────────────────▼────────────────────────────────────┐
@@ -53,12 +53,12 @@
 │  Flask app.py                                                   │
 │  ├── Auth & MFA (pyotp, itsdangerous)                           │
 │  ├── APScheduler (background jobs)                              │
-│  ├── SQLite via sqlite3 (built-in)                              │
+│  ├── PostgreSQL via psycopg2 adapter                            │
 │  └── Jinja2 templates                                           │
 └────────────────────────────┬────────────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────────────┐
-│  /var/lib/evaluasi/evaluasi.db  (SQLite)                        │
+│  PostgreSQL Database (hive_db)                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -393,8 +393,8 @@ Internet
                │
                ▼
 ┌───────────────────────────────┐
-│  /var/lib/evaluasi/           │
-│  └── evaluasi.db  (SQLite)    │
+│  PostgreSQL Database          │
+│  └── hive_db (production/dev) │
 └───────────────────────────────┘
 
 /var/www/evaluasi/   (read-only app files)
@@ -409,7 +409,7 @@ Internet
 
 ## 8. Pola Pengembangan Modul Baru
 
-Setiap modul baru mengikuti konvensi ini:
+Every new module follows this convention:
 
 ```python
 # 1. Permission helper
@@ -484,11 +484,9 @@ Data karyawan di `employees` adalah **sumber kebenaran tunggal** — user login 
 
 ## 10. Roadmap Modul Berikutnya (Kandidat)
 
-| Slug | Nama | Deskripsi | Warna |
-|------|------|-----------|-------|
-| `finance` | FinanceCore | Pengelolaan anggaran IT, PO, invoice | `#198754` |
-| `helpdesk` | HelpdeskCore | Tiket internal IT support untuk karyawan | `#dc3545` |
-| `project` | ProjectCore | Tracking project internal tim IT | `#fd7e14` |
-| `docs` | DocsCore | Knowledge base & dokumentasi internal | `#20c997` |
+| Slug | Nama | Deskripsi | Warna | Status |
+|------|------|-----------|-------|--------|
+| `finance` | FinanceCore | Pengelolaan anggaran IT, PO, invoice | `#f59e0b` | ⏳ Segera Hadir |
+| `docs` | DocsCore | Knowledge base & dokumentasi internal | `#10b981` | ⏳ Segera Hadir |
 
 Setiap modul baru cukup ikuti pola di bagian 8 — tidak perlu app terpisah, cukup tambah ke `app.py`, `base.html`, dan folder `templates/`.

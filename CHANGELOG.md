@@ -7,6 +7,140 @@ Format: [Semantic Versioning](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ---
 
+## [2.2.62] - 2026-07-09
+### Peningkatan: Otorisasi & Deteksi Telegram Webhook
+- Memperbaiki prioritas deteksi Telegram ID ke tabel karyawan (`employees`) terlebih dahulu sebelum tabel `users`.
+- Menambahkan auto-register fallback untuk pengguna tidak dikenal (jika ID Telegram tidak terdaftar, otomatis membuat user dan employee record agar absensi tetap tercatat).
+- Mendukung clock-out berulang (update checkout) dengan menimpa waktu dan koordinat checkout terbaru.
+- Menambahkan detail nama grup/sumber pada balasan pesan bot Telegram.
+
+---
+
+## [2.2.61] - 2026-07-09
+### Fitur: Detail Grup & Durasi Kerja
+- Menambahkan informasi nama Telegram Group pengirim absensi di kolom `Grup / Sumber` pada tabel Live Attendance Wall.
+- Menambahkan kolom kalkulasi otomatis `Durasi Kerja` (jam desimal) hasil selisih Clock Out dan Clock In.
+
+---
+
+## [2.2.60] - 2026-07-09
+### Fitur: Pengetatan Alur Presensi Telegram
+- Rencana kerja (`#PLAN`) tidak dapat diisi sebelum user melakukan Clock In.
+- Laporan kemajuan (`#PROGRESS`) tidak dapat diisi sebelum `#PLAN` lengkap dan valid (minimal 10 karakter bersih).
+- Clock Out diblokir hingga keduanya (`#PLAN` & `#PROGRESS`) diisi secara terpisah.
+
+---
+
+## [2.2.59] - 2026-07-09
+### Fitur: Live Attendance Wall
+- Menambahkan tabel Status Kehadiran Karyawan Hari Ini (Live Attendance Wall) pada dashboard AttendanceCore untuk menampilkan informasi clock-in, clock-out, lokasi, plan, dan progress seluruh karyawan aktif secara real-time.
+
+---
+
+## [2.2.58] - 2026-07-09
+### Bug Fix: Kompatibilitas Proxy Forwarder
+- Menambahkan dukungan kompatibilitas terhadap custom JSON payload yang dikirimkan oleh Node.js helper bot (Telegraf location forwarder).
+
+---
+
+## [2.2.57] - 2026-07-09
+### Peningkatan: PostgreSQL Forced Default
+- Menghapus total dukungan database SQLite dan mematikan fallback local database SQLite, memaksa penggunaan database PostgreSQL secara penuh (global default) di seluruh lingkungan.
+
+---
+
+## [2.2.56] - 2026-07-09
+### Bug Fix: Deteksi User Telegram & Respon Webhook
+- Memperbaiki deteksi user Telegram dengan mengecek tabel users dan employees, serta memindahkan respons bot ke Telegram agar dikirim terlebih dahulu sebelum proses tulis database (commit) untuk menghindari retries.
+
+---
+
+## [2.2.55] - 2026-07-09
+### Peningkatan: Telegram Webhook AttendanceCore
+- Menyempurnakan Telegram Webhook AttendanceCore agar mendukung group/private chat location tagging.
+- Menambahkan validasi minimal 10 karakter untuk `#PLAN` dan `#PROGRESS` (bersih dari tag).
+- Memblokir Clock Out sampai plan & progress lengkap.
+
+---
+
+## [2.2.54] - 2026-07-09
+### Fitur: TalentCore Manual Review Trigger
+- Menambahkan tombol manual trigger form review evaluasi karyawan di halaman Manajemen Karyawan (kontrak & tetap) dengan modal konfirmasi periode dan pengiriman link self-assessment otomatis via email/Telegram.
+
+---
+
+## [2.2.53] - 2026-07-09
+### Bug Fix: Telegram Timeout di AssetCore
+- Memperbaiki error read timed out pada notifikasi Telegram AssetCore dengan mengurangi timeout dari 10s ke 5s dan mengirim notifikasi fire-and-forget secara non-blocking di background thread.
+
+---
+
+## [2.2.52] - 2026-07-09
+### Fitur: AssetCore Request Proof
+- Menambahkan validasi wajib upload bukti serah terima perangkat (BAST/foto) saat status Request Alat Kerja dirubah ke Completed, baik di sisi client maupun server.
+
+---
+
+## [2.2.51] - 2026-07-09
+### Fitur: AssetCore Request Proof
+- Menambahkan validasi wajib upload bukti attachment (capture approval/rejection) saat status Request Alat Kerja dirubah ke Approved atau Rejected, baik di sisi client (browser) maupun server.
+
+---
+
+## [2.2.50] - 2026-07-09
+### Peningkatan: UI Sidebar
+- Menyembunyikan seluruh teks link menu sidebar saat diminimize (menampilkan ikon saja), menghapus user dropdown dari sidebar, dan menyatukannya ke dropdown user di header atas.
+
+---
+
+## [2.2.49] - 2026-07-09
+### Fitur: UI Sidebar Toggle
+- Menambahkan toggle minimize/maximize sidebar menu pada tampilan desktop menggunakan HTML5 localStorage persistence.
+
+---
+
+## [2.2.48] - 2026-07-09
+### Peningkatan: Redesain Layout Global
+- Peningkatan dan redesain layout/tema HIVE secara global ke gaya Meridian (Stisla V3) menggunakan font Inter, light-sidebar premium dengan aksen ungu, serta card & input modern.
+
+---
+
+## [2.2.47] - 2026-07-09
+### Bug Fix: SupportCore Serialisasi
+- Memperbaiki ValueError loop unpacking too many values to unpack (expected 2) pada data serialisasi templates/sc_reports.html.
+
+---
+
+## [2.2.46] - 2026-07-09
+### Bug Fix: AssetCore Route Assets
+- Memperbaiki ValueError tool_request_id is not in list pada daftar asset dengan menambahkan query tool_request_id di route ac_assets.
+
+---
+
+## [2.2.45] - 2026-07-09
+### Fitur: SupportCore Reports
+- Redesain halaman Laporan & Analitik SupportCore dengan visualisasi modern ala Meridian (KPI Cards dan interactive charts dengan ApexCharts).
+
+---
+
+## [2.2.44] - 2026-07-09
+### Fitur: AssetCore Specs Combo Datalist
+- Menambahkan requestor name, mengubah label Tanggal Masuk menjadi Tanggal Proses IT Support, serta implementasi master hardware specs/software dengan combo datalist.
+
+---
+
+## [2.2.43] - 2026-07-09
+### Fitur: AssetCore Request Completion Lock
+- Mengunci request alat kerja yang Completed (greyed out & disabled) serta menghubungkan detail asset & list asset dengan info request alat kerja asal.
+
+---
+
+## [2.2.42] - 2026-07-09
+### Peningkatan: Otorisasi Role Spesifik
+- Memperbaiki otorisasi AssetCore (dan core lainnya) agar mendeteksi role spesifik aplikasi (app_role dari user_app_access) dan menggabungkannya ke user_perms.
+
+---
+
 ## [2.2.41] - 2026-07-09
 ### Fitur: AssetCore Request Alat Kerja
 - Tambah field `Requested By` dengan pilihan Email, WhatsApp, Telegram, dan Other.
