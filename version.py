@@ -1,4 +1,4 @@
-VERSION = "2.2.51"
+VERSION = "2.2.52"
 RELEASE_DATE = "2026-07-09"
 RELEASE_NOTES = (
     "v2.2.0: Objektifikasi penilaian — difficulty task, self_assigned flag, "
@@ -62,5 +62,6 @@ RELEASE_NOTES = (
     "v2.2.48: Peningkatan dan redesain layout/tema HIVE secara global ke gaya Meridian (Stisla V3) menggunakan font Inter, light-sidebar premium dengan aksen ungu, serta card & input modern. "
     "v2.2.49: Menambahkan toggle minimize/maximize sidebar menu pada tampilan desktop menggunakan HTML5 localStorage persistence. "
     "v2.2.50: Menyembunyikan seluruh teks link menu sidebar saat diminimize (menampilkan ikon saja), menghapus user dropdown dari sidebar, dan menyatukannya ke dropdown user di header atas. "
-    "v2.2.51: Menambahkan validasi wajib upload bukti attachment (capture approval/rejection) saat status Request Alat Kerja dirubah ke Approved atau Rejected, baik di sisi client (browser) maupun server."
+    "v2.2.51: Menambahkan validasi wajib upload bukti attachment (capture approval/rejection) saat status Request Alat Kerja dirubah ke Approved atau Rejected, baik di sisi client (browser) maupun server. "
+    "v2.2.52: Menambahkan validasi wajib upload bukti serah terima perangkat (BAST/foto) saat status Request Alat Kerja dirubah ke Completed, baik di sisi client maupun server."
 )

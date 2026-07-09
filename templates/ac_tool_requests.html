@@ -417,6 +417,25 @@
                 </div>
               </div>
             </div>
+
+            <!-- Bukti Serah Terima Perangkat (wajib saat status Completed) -->
+            <div class="col-12 d-none" id="handoverProofWrap">
+              <div class="p-3 rounded border border-success bg-success bg-opacity-10">
+                <label class="form-label fw-semibold small text-success-emphasis mb-1">
+                  <i class="bi bi-box-seam me-1"></i>
+                  Bukti Serah Terima Perangkat ke User
+                  <span class="text-danger">*</span>
+                  <span class="fw-normal text-muted ms-1">(wajib diisi)</span>
+                </label>
+                <input id="modalHandoverProof" name="attach_handover_proof" type="file"
+                       class="form-control form-control-sm"
+                       multiple
+                       accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,.eml,.msg">
+                <div class="form-text text-muted mt-1">
+                  Upload foto BAST (Berita Acara Serah Terima) atau dokumen/capture bukti penerimaan perangkat oleh user.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer py-2">
@@ -436,6 +455,8 @@ var createAsset = document.getElementById('modalCreateAsset');
 var assetLinkedHint = document.getElementById('assetLinkedHint');
 var approvalProofWrap = document.getElementById('approvalProofWrap');
 var approvalProofInput = document.getElementById('modalApprovalProof');
+var handoverProofWrap = document.getElementById('handoverProofWrap');
+var handoverProofInput = document.getElementById('modalHandoverProof');
 
 function setField(id, value) {
   var el = document.getElementById(id);
@@ -455,6 +476,8 @@ function updateCreateAssetState() {
   }
   approvalProofWrap.classList.toggle('d-none', !needsProof);
   approvalProofInput.required = needsProof;
+  handoverProofWrap.classList.toggle('d-none', !isCompleted);
+  handoverProofInput.required = isCompleted;
 }
 
 document.getElementById('modalStatus').addEventListener('show.bs.modal', function(e) {
@@ -492,12 +515,14 @@ document.getElementById('modalStatus').addEventListener('show.bs.modal', functio
   setField('modalNotes', btn.dataset.notes);
   // Reset proof upload on reopen
   if (approvalProofInput) approvalProofInput.value = '';
+  if (handoverProofInput) handoverProofInput.value = '';
   updateCreateAssetState();
 });
 
 statusSelect.addEventListener('change', function() {
-  // Reset proof file when user switches status
+  // Reset proof files when user switches status
   if (approvalProofInput) approvalProofInput.value = '';
+  if (handoverProofInput) handoverProofInput.value = '';
   updateCreateAssetState();
 });
 
@@ -508,6 +533,12 @@ document.getElementById('formStatus').addEventListener('submit', function(e) {
     e.preventDefault();
     alert('Status "' + st + '" wajib menyertakan bukti attachment (capture approval/rejection). Harap upload setidaknya satu file.');
     approvalProofInput.focus();
+    return;
+  }
+  if (st === 'Completed' && (!handoverProofInput.files || handoverProofInput.files.length === 0)) {
+    e.preventDefault();
+    alert('Status "Completed" wajib menyertakan bukti serah terima perangkat ke user. Harap upload setidaknya satu file (foto/dokumen BAST).');
+    handoverProofInput.focus();
   }
 });
 </script>

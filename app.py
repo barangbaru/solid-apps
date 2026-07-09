@@ -11872,6 +11872,10 @@ AC_TOOL_ATTACHMENT_CONFIG = {
         'field': 'attach_approval_proof',
         'allowed': ALLOWED_ATTACHMENT_EXT,
     },
+    'handover_proof': {
+        'field': 'attach_handover_proof',
+        'allowed': ALLOWED_ATTACHMENT_EXT,
+    },
 }
 
 def _tool_request_channel_label(req):
@@ -12951,6 +12955,18 @@ def ac_tool_request_status(rid):
             )
             return redirect(url_for('ac_tool_requests'))
 
+    # Mandatory handover proof for Completed
+    if new_status == 'Completed':
+        handover_files = [f for f in request.files.getlist('attach_handover_proof')
+                          if f and f.filename]
+        if not handover_files:
+            flash(
+                'Status "Completed" memerlukan bukti serah terima perangkat ke user. '
+                'Harap upload setidaknya satu file (foto/dokumen serah terima).',
+                'danger'
+            )
+            return redirect(url_for('ac_tool_requests'))
+
     admin_item_type = request.form.get('admin_item_type', '').strip()
     admin_specs = request.form.get('admin_specs', '').strip()
     admin_url = request.form.get('admin_url', '').strip()
@@ -12993,6 +13009,7 @@ def ac_tool_request_status(rid):
     capture_saved = _save_tool_request_attachments(db, rid, 'request_capture')
     photo_saved = _save_tool_request_attachments(db, rid, 'unit_photo')
     approval_saved = _save_tool_request_attachments(db, rid, 'approval_proof')
+    handover_saved = _save_tool_request_attachments(db, rid, 'handover_proof')
 
     asset_id = None
     asset_created = False
@@ -13005,19 +13022,19 @@ def ac_tool_request_status(rid):
     if asset_created:
         audit_log('create', 'ac_assets', asset_id, f"Asset dari request alat kerja #{rid}", 'aset')
         msg = f'Status request alat kerja diubah ke {new_status}. Asset Laptop/PC berhasil dibuat.'
-        total_att = capture_saved + photo_saved + approval_saved
+        total_att = capture_saved + photo_saved + approval_saved + handover_saved
         if total_att:
             msg += f' Attachment baru tersimpan: {total_att}.'
         flash(msg, 'success')
     elif new_status == 'Completed' and request.form.get('create_asset') == '1' and not asset_id:
         msg = f'Status request alat kerja diubah ke {new_status}. Asset tidak dibuat karena kategori bukan Laptop/PC.'
-        total_att = capture_saved + photo_saved + approval_saved
+        total_att = capture_saved + photo_saved + approval_saved + handover_saved
         if total_att:
             msg += f' Attachment baru tersimpan: {total_att}.'
         flash(msg, 'warning')
     else:
         msg = f'Status request alat kerja diubah ke {new_status}.'
-        total_att = capture_saved + photo_saved + approval_saved
+        total_att = capture_saved + photo_saved + approval_saved + handover_saved
         if total_att:
             msg += f' Attachment baru tersimpan: {total_att}.'
         flash(msg, 'success')
