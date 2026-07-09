@@ -5918,9 +5918,24 @@ def karyawan():
     for a in apps:
         specific = [r for r in all_roles if r['app_slug'] == a['slug']]
         roles_by_app[a['slug']] = global_roles + specific
+    # Evaluasi terbaru per karyawan (untuk tombol trigger review)
+    current_year = str(date.today().year)
+    eval_rows = db.execute(
+        """SELECT e.employee_id, e.id AS eval_id, e.periode, e.review_status, e.status
+           FROM evaluations e
+           WHERE e.status NOT IN ('approved','closed')
+             AND e.periode=?
+           ORDER BY e.created_at DESC""", (current_year,)
+    ).fetchall()
+    # Map: emp_id -> evaluasi terbaru tahun ini
+    eval_map = {}
+    for row in eval_rows:
+        if row['employee_id'] not in eval_map:
+            eval_map[row['employee_id']] = dict(row)
     return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, today=today,
                            emp_user_map=emp_user_map, global_roles=global_roles,
-                           apps=apps, roles_by_app=roles_by_app)
+                           apps=apps, roles_by_app=roles_by_app,
+                           eval_map=eval_map, current_year=current_year)
 
 @app.route('/contracts')
 @login_required
@@ -7494,6 +7509,66 @@ def eval_new(emp_id):
               'kirim link self-assessment manual dari halaman Summary.', 'info')
 
     return redirect(url_for('eval_project', eval_id=eval_id))
+
+@app.route('/emp/<int:emp_id>/trigger-review', methods=['POST'])
+@login_required
+def emp_trigger_review(emp_id):
+    """Buat atau temukan evaluasi untuk periode yang dipilih, kirim link self-assessment
+    ke karyawan, lalu kembali ke halaman Manajemen Karyawan.
+    """
+    db  = get_db()
+    emp = db.execute('SELECT * FROM employees WHERE id=? AND is_active=1', (emp_id,)).fetchone()
+    if not emp:
+        flash('Karyawan tidak ditemukan.', 'danger')
+        return redirect(url_for('karyawan'))
+
+    periode = request.form.get('periode', str(date.today().year)).strip()
+    if not periode:
+        flash('Periode tidak boleh kosong.', 'danger')
+        return redirect(url_for('karyawan'))
+
+    # Cari evaluasi yang sudah ada untuk periode ini (status bukan approved/closed)
+    existing = db.execute(
+        "SELECT * FROM evaluations WHERE employee_id=? AND periode=? AND status NOT IN ('approved','closed')",
+        (emp_id, periode)
+    ).fetchone()
+
+    if existing:
+        eval_id      = existing['id']
+        created_new  = False
+    else:
+        cur      = db.execute('INSERT INTO evaluations(employee_id, periode) VALUES(?,?)', (emp_id, periode))
+        eval_id  = cur.lastrowid
+        for slot in range(1, 6):
+            db.execute('INSERT INTO peer_reviews(eval_id, slot) VALUES(?,?)', (eval_id, slot))
+        db.commit()
+        created_new = True
+
+    if not (emp['email'] or emp['telegram_id']):
+        label = 'dibuat baru' if created_new else 'sudah ada'
+        flash(
+            f'Evaluasi periode {periode} untuk {emp["name"]} {label} (ID #{eval_id}). '
+            'Email & Telegram karyawan belum diisi — kirim link self-assessment manual dari halaman Summary.',
+            'info' if created_new else 'warning'
+        )
+        return redirect(url_for('karyawan'))
+
+    results, any_ok, link = _send_self_assessment(
+        db, eval_id, emp, periode,
+        request.host_url.rstrip('/'),
+        triggered_by=session.get('username', 'manual')
+    )
+    db.commit()
+    prefix = f'Evaluasi baru (#{eval_id}) dibuat & ' if created_new else f'Evaluasi #{eval_id} ada & '
+    if any_ok:
+        flash(prefix + 'link self-assessment dikirim — ' + ' | '.join(results), 'success')
+    else:
+        flash(
+            prefix + 'gagal mengirim notifikasi (' + '; '.join(results) + '). '
+            f'Link manual: {link}',
+            'warning'
+        )
+    return redirect(url_for('karyawan'))
 
 @app.route('/eval/<int:eval_id>/project', methods=['GET', 'POST'])
 @login_required

@@ -211,11 +211,18 @@
                   </a>
                   <form action="/contracts/remind/{{ emp.id }}" method="post" class="d-inline">
                     <button type="submit" class="btn btn-xs btn-outline-warning"
-                            style="padding:.2rem .5rem;font-size:.75rem" title="Kirim reminder"
+                            style="padding:.2rem .5rem;font-size:.75rem" title="Kirim reminder kontrak"
                             {% if not emp.email and not emp.telegram_id %}disabled{% endif %}>
                       <i class="bi bi-bell"></i>
                     </button>
                   </form>
+                  {%- set ev_k = eval_map.get(emp.id) %}
+                  <button type="button" class="btn btn-xs {% if ev_k %}btn-outline-info{% else %}btn-outline-primary{% endif %}"
+                          style="padding:.2rem .5rem;font-size:.75rem"
+                          title="{% if ev_k %}Kirim ulang self-assessment (Evaluasi #{{ ev_k.eval_id }} — {{ ev_k.review_status }}){% else %}Buat & kirim form review evaluasi{% endif %}"
+                          onclick="openTriggerReview({{ emp.id }},'{{ emp.name | e }}','{{ current_year }}')">
+                    <i class="bi bi-{% if ev_k %}arrow-repeat{% else %}clipboard-plus{% endif %}"></i>
+                  </button>
                   {% if current_user and current_user.role == 'superadmin' %}
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
                         data-confirm="Nonaktifkan {{ emp.name | e }}?" onsubmit="return confirm(this.dataset.confirm)">
@@ -335,6 +342,13 @@
                      style="padding:.2rem .5rem;font-size:.75rem" title="Edit">
                     <i class="bi bi-pencil"></i>
                   </a>
+                  {%- set ev_t = eval_map.get(emp.id) %}
+                  <button type="button" class="btn btn-xs {% if ev_t %}btn-outline-info{% else %}btn-outline-primary{% endif %}"
+                          style="padding:.2rem .5rem;font-size:.75rem"
+                          title="{% if ev_t %}Kirim ulang self-assessment (Evaluasi #{{ ev_t.eval_id }} — {{ ev_t.review_status }}){% else %}Buat & kirim form review evaluasi{% endif %}"
+                          onclick="openTriggerReview({{ emp.id }},'{{ emp.name | e }}','{{ current_year }}')">
+                    <i class="bi bi-{% if ev_t %}arrow-repeat{% else %}clipboard-plus{% endif %}"></i>
+                  </button>
                   {% if current_user and current_user.role == 'superadmin' %}
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
                         data-confirm="Nonaktifkan {{ emp.name | e }}?" onsubmit="return confirm(this.dataset.confirm)">
@@ -550,6 +564,50 @@ function openPromote(empId, name, username, role) {
     togglePAppRole(cb.id.replace('pacc_', ''), false);
   });
   new bootstrap.Modal(document.getElementById('promoteModal')).show();
+}
+</script>
+
+<!-- Modal: Trigger Form Review Evaluasi -->
+<div class="modal fade" id="triggerReviewModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form id="formTriggerReview" method="post">
+        <div class="modal-header py-2 bg-primary text-white">
+          <h6 class="modal-title fw-bold">
+            <i class="bi bi-clipboard-plus me-1"></i> Trigger Review Evaluasi
+          </h6>
+          <button type="button" class="btn-close btn-close-white btn-sm" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small mb-3">
+            Buat atau kirim ulang form self-assessment review evaluasi untuk:
+            <strong id="triggerEmpName">—</strong>
+          </p>
+          <label class="form-label fw-semibold small">Periode (Tahun)</label>
+          <input id="triggerPeriode" name="periode" type="number" min="2020" max="2035"
+                 class="form-control form-control-sm" placeholder="misal: 2025" required>
+          <div class="form-text text-muted mt-1">
+            Jika evaluasi untuk periode ini sudah ada, link self-assessment akan dikirim ulang.
+            Jika belum ada, evaluasi baru akan dibuat otomatis.
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-send me-1"></i> Kirim Link Review
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openTriggerReview(empId, empName, defaultPeriode) {
+  document.getElementById('triggerEmpName').textContent = empName;
+  document.getElementById('triggerPeriode').value = defaultPeriode || new Date().getFullYear();
+  document.getElementById('formTriggerReview').action = '/emp/' + empId + '/trigger-review';
+  new bootstrap.Modal(document.getElementById('triggerReviewModal')).show();
 }
 </script>
 {% endblock %}
