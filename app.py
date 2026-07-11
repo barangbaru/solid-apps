@@ -14610,7 +14610,7 @@ def at_clock():
         if today_att:
             return jsonify({'ok': False, 'msg': 'Anda sudah clock-in hari ini.'})
         status = 'present'
-        if now_time > '09:00:00':
+        if now_time > '09:15:00':
             status = 'late'
         db.execute(
             'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
@@ -15036,7 +15036,7 @@ def telegram_webhook():
 
             if not today_att:
                 status = 'present'
-                if now_time > '09:00:00':
+                if now_time > '09:15:00':
                     status = 'late'
                 
                 # Save to database
