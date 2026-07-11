@@ -14664,7 +14664,10 @@ def telegram_webhook():
                 if chat_obj.get('type') in ('group', 'supergroup'):
                     group_title = chat_obj.get('title', '') or ''
 
-            source_label = f"Telegram Group: {group_title}" if group_title else "Telegram Japri"
+            if group_title:
+                source_label = f"Telegram Group: {group_title} (ID: {chat_id})"
+            else:
+                source_label = f"Telegram Japri (ID: {chat_id})"
             
             today = datetime.now().strftime('%Y-%m-%d')
             now_time = datetime.now().strftime('%H:%M:%S')
@@ -14865,8 +14868,15 @@ def telegram_webhook():
                         )
 
             elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
+                group_info = ""
+                if not is_custom:
+                    chat_obj = message.get('chat', {})
+                    if chat_obj.get('type') in ('group', 'supergroup'):
+                        group_title = chat_obj.get('title', '') or ''
+                        group_info = f"\n\n👥 <b>Group:</b> {html.escape(group_title)} (ID: <code>{chat_id}</code>)"
+                
                 reply(
-                    f"Halo {user_mention}! Selamat datang di Telegram Attendance Bot HIVE.\n\n"
+                    f"Halo {user_display}! Selamat datang di Telegram Attendance Bot HIVE.{group_info}\n\n"
                     "⚠️ <b>Alur Absensi Harian:</b>\n"
                     "1. <b>Clock In:</b> Kirim Lokasi Anda (Send Location)\n"
                     "2. <b>Rencana Kerja:</b> Kirim pesan <code>#PLAN [isi rencana minimal 10 karakter]</code>\n"
