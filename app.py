@@ -15195,35 +15195,32 @@ def telegram_webhook():
                 else:
                     from datetime import datetime, date
                     bday_list = []
-                    today_date = date.today()
-                    curr_year = today_date.year
+                    months_names_en = ["", "July", "August", "September", "October", "November", "December", "January", "February", "March", "April", "May", "June"]
+                    # Let's map month index to english names
+                    months_names = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
                     
                     for r in rows:
                         try:
                             b_date = datetime.strptime(r['birthday'], "%Y-%m-%d").date()
-                            this_year_bday = date(curr_year, b_date.month, b_date.day)
-                            if this_year_bday >= today_date:
-                                upcoming = this_year_bday
-                            else:
-                                upcoming = date(curr_year + 1, b_date.month, b_date.day)
-                            
-                            days = (upcoming - today_date).days
                             bday_list.append({
                                 'name': r['name'],
-                                'date_str': upcoming.strftime('%d %B'),
-                                'days': days
+                                'date_str': f"{b_date.day:02d} {months_names[b_date.month]}",
+                                'month': b_date.month,
+                                'day': b_date.day
                             })
                         except Exception:
                             pass
                     
-                    bday_list.sort(key=lambda x: x['days'])
-                    bday_txt = "\n".join([f"• {item['name']} , {item['date_str']}, (coming in {item['days']} days)" for item in bday_list[:10]])
-                    reply(f"🎂 <b>Upcoming Birthdays:</b>\n\n{bday_txt}")
+                    # Sort chronologically by month and day (Jan to Dec)
+                    bday_list.sort(key=lambda x: (x['month'], x['day']))
+                    bday_txt = "\n".join([f"• {item['name']} , {item['date_str']}" for item in bday_list])
+                    reply(f"🎂 <b>Upcoming Birthdays (sorted):</b>\n\n{bday_txt}")
 
             elif text.startswith('/lapar') or text.startswith('/haus'):
                 from datetime import datetime
                 curr_month = datetime.now().month
                 months_names = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                months_names_en = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
                 
                 rows = db.execute("SELECT name, birthday FROM employees WHERE is_active=1 AND birthday IS NOT NULL AND birthday != ''").fetchall()
                 
@@ -15232,16 +15229,21 @@ def telegram_webhook():
                     try:
                         b_date = datetime.strptime(r['birthday'], "%Y-%m-%d").date()
                         if b_date.month == curr_month:
-                            bday_this_month.append(r['name'])
+                            bday_this_month.append({
+                                'name': r['name'],
+                                'day': b_date.day,
+                                'date_str': f"{b_date.day:02d} {months_names_en[b_date.month]}"
+                            })
                     except Exception:
                         pass
                 
+                bday_this_month.sort(key=lambda x: x['day'])
                 m_name = months_names[curr_month]
                 if not bday_this_month:
                     reply(f"🎈 Tidak ada karyawan yang ulang tahun di bulan {m_name}.")
                 else:
-                    user_list = "\n".join([f"• {name}" for name in bday_this_month])
-                    reply(f"🎂 <b>Karyawan yang ulang tahun di bulan {m_name}:</b>\n{user_list}")
+                    user_list = "\n".join([f"• {item['name']} , {item['date_str']}" for item in bday_this_month])
+                    reply(f"🎂 <b>Karyawan yang ulang tahun di bulan {m_name}:</b>\n\n{user_list}")
 
             elif text.startswith('/mylink'):
                 is_group = False

@@ -1,6 +1,7 @@
-VERSION = "2.2.77"
+VERSION = "2.2.78"
 RELEASE_DATE = "2026-07-11"
 RELEASE_NOTES = (
+    "v2.2.78: Refinement format respon bot Telegram untuk perintah /lapar /haus (mencantumkan tanggal lahir masing-masing) dan perintah /birthday (menampilkan seluruh daftar ulang tahun terdaftar secara berurutan tanpa limitasi waktu mendatang). "
     "v2.2.77: Memastikan semua nama pada list ulang tahun diimpor/disemai ke database karyawan (mendaftarkannya ke Telegram Core jika belum ada) agar fungsi reminder ultah tetap lengkap dan bisa dipetakan manual di kemudian hari. "
     "v2.2.76: Implementasi penjadwal otomatis reminder ulang tahun karyawan (siaran personal & grup absensi), pembersihan auto-delete 30 detik pesan bot, penyaringan pesan grup non-absen, dan antarmuka pemetaan manual Telegram ID karyawan di Web UI. "
     "v2.2.75: Menambahkan token bot Telegram fallback (dari bot lama) dan pengekstrakan chat_id yang lebih tangguh untuk custom JSON payload. "
