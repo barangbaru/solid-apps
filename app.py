@@ -15391,6 +15391,370 @@ def telegram_webhook():
     return 'OK', 200
 
 
+@app.route('/whatsapp/webhook', methods=['POST'])
+def whatsapp_webhook():
+    db = get_db()
+    settings = get_settings(db)
+    wa_url = settings.get('openwa_url', '').strip()
+    wa_key = settings.get('openwa_api_key', '').strip()
+    wa_session = get_openwa_session(settings, 'evaluasi')
+    wa_enabled = settings.get('openwa_enabled', '0') == '1'
+    
+    if not wa_enabled or not wa_url:
+        return 'OK', 200
+
+    try:
+        data = request.get_json()
+        print(f"[WhatsApp Webhook] Payload: {json.dumps(data)}")
+    except Exception as e:
+        print(f"[WhatsApp Webhook] Failed to parse JSON: {e}")
+        return 'OK', 200
+
+    if not data:
+        return 'OK', 200
+
+    msg = data.get('data') if data.get('event') == 'onMessage' else data
+    if not isinstance(msg, dict):
+        return 'OK', 200
+
+    sender_jid = msg.get('from', '') or ''
+    author_jid = msg.get('author', '') or sender_jid
+    
+    if not sender_jid:
+        return 'OK', 200
+
+    is_group = msg.get('isGroupMsg', False) or '@g.us' in sender_jid
+    chat_id = sender_jid
+    
+    phone_number = author_jid.split('@')[0] if '@' in author_jid else author_jid
+    sender_name = msg.get('sender', {}).get('pushname', '') or msg.get('sender', {}).get('name', '') or phone_number
+
+    msg_type = msg.get('type', '')
+    is_location = msg_type == 'location'
+    lat = msg.get('lat') or msg.get('latitude')
+    lng = msg.get('lng') or msg.get('longitude')
+    
+    text = msg.get('body', '') or ''
+    
+    def reply(text_msg):
+        clean_msg = text_msg.replace('<b>', '*').replace('</b>', '*').replace('<code>', '`').replace('</code>', '`').replace('<i>', '_').replace('</i>', '_')
+        try:
+            print(f"[WhatsApp Webhook] Replying to {chat_id}: {clean_msg}")
+            send_whatsapp(wa_url, wa_key, wa_session, chat_id, clean_msg)
+        except Exception as ex:
+            print(f"[WhatsApp Webhook Reply Error] {ex}")
+
+    def format_indo_datetime(dt):
+        months = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+        day = dt.strftime('%d')
+        month = months[dt.month]
+        year = dt.strftime('%Y')
+        time_str = dt.strftime('%H:%M')
+        return f"{day} {month} {year} {time_str} WIB"
+
+    try:
+        tg_id_variants = [phone_number, f"+{phone_number}"]
+        
+        employee = None
+        for variant in tg_id_variants:
+            employee = db.execute('SELECT * FROM employees WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
+            if employee:
+                break
+            employee = db.execute('SELECT * FROM employees WHERE phone = ? AND is_active = 1', (variant,)).fetchone()
+            if employee:
+                break
+
+        user = None
+        if employee and employee['user_id']:
+            user = db.execute('SELECT * FROM users WHERE id = ? AND is_active = 1', (employee['user_id'],)).fetchone()
+
+        if not user:
+            for variant in tg_id_variants:
+                user = db.execute('SELECT * FROM users WHERE LOWER(telegram_id) = LOWER(?) AND is_active = 1', (variant,)).fetchone()
+                if user:
+                    break
+                user = db.execute('SELECT * FROM users WHERE phone = ? AND is_active = 1', (variant,)).fetchone()
+                if user:
+                    break
+
+        if not user:
+            import time
+            from werkzeug.security import generate_password_hash
+            fallback_username = f"wa_{phone_number}"
+            existing_user = db.execute('SELECT * FROM users WHERE username = ?', (fallback_username,)).fetchone()
+            if existing_user:
+                user = existing_user
+            else:
+                dummy_pwd = generate_password_hash("WhatsAppAttendanceFallback@2026")
+                full_name = employee['name'] if employee else sender_name
+                db.execute('''
+                    INSERT INTO users (username, password_hash, full_name, role, is_active, telegram_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (fallback_username, dummy_pwd, full_name, 'karyawan', 1, phone_number))
+                db.commit()
+                user = db.execute('SELECT * FROM users WHERE username = ?', (fallback_username,)).fetchone()
+
+            if employee:
+                db.execute('UPDATE employees SET user_id = ? WHERE id = ?', (user['id'], employee['id']))
+                db.commit()
+            else:
+                db.execute('''
+                    INSERT INTO employees (name, divisi, telegram_id, user_id, is_active)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (sender_name, 'Telegram Core', phone_number, user['id'], 1))
+                db.commit()
+
+        uid = user['id']
+        full_name = user['full_name']
+        user_display = f"{full_name} ({phone_number})"
+
+        if is_location:
+            group_title = msg.get('chat', {}).get('name', '') or ''
+            if group_title:
+                source_label = f"WhatsApp Group: {group_title} (ID: {chat_id})"
+            else:
+                source_label = f"WhatsApp Japri (ID: {chat_id})"
+
+            today = datetime.now().strftime('%Y-%m-%d')
+            now_time = datetime.now().strftime('%H:%M:%S')
+            
+            today_att = db.execute(
+                'SELECT * FROM attendance WHERE user_id=? AND date=?',
+                (uid, today)
+            ).fetchone()
+
+            if not lat or not lng:
+                reply(f"❌ {user_display}\nLokasi GPS tidak valid.")
+                return 'OK', 200
+
+            resolved_address = ""
+            try:
+                osm_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
+                osm_headers = {"User-Agent": "HIVE-Attendance-Bot/2.0 (md@workspace)"}
+                osm_resp = req_lib.get(osm_url, headers=osm_headers, timeout=5)
+                if osm_resp.status_code == 200:
+                    resolved_address = osm_resp.json().get('display_name', '')
+            except Exception as osm_ex:
+                print(f"[OSM Nominatim WA Error] {osm_ex}")
+            loc = f"{resolved_address} ({lat},{lng})" if resolved_address else f"{lat},{lng}"
+
+            if not today_att:
+                status = 'present'
+                if now_time > '09:15:00':
+                    status = 'late'
+                db.execute(
+                    'INSERT INTO attendance (user_id, date, clock_in, location_in, notes_in, status) VALUES (?, ?, ?, ?, ?, ?)',
+                    (uid, today, now_time, loc, source_label, status)
+                )
+                db.commit()
+                now_dt = datetime.now()
+                time_str = format_indo_datetime(now_dt)
+                reply(f"✅ {user_display}\nTagging berhasil dicatat pada {time_str}")
+            else:
+                import re
+                m_chat = re.search(r'\(ID:\s*(.*?)\)', today_att['notes_in'] or '')
+                if m_chat:
+                    checkin_chat_id = m_chat.group(1)
+                    if str(chat_id) != checkin_chat_id:
+                        m_name = re.match(r'^WhatsApp Group:\s*(.*?)\s*\(ID:', today_att['notes_in'] or '')
+                        group_name = m_name.group(1) if m_name else "Japri"
+                        if group_name != "Japri":
+                            reply(f"❌ {user_display}\nCheckout gagal! Anda checkin di group {group_name}, silakan checkout di group yang sama.")
+                        else:
+                            reply(f"❌ {user_display}\nCheckout gagal! Anda checkin via Japri, silakan checkout via Japri kembali.")
+                        return 'OK', 200
+
+                try:
+                    clk_in = today_att['clock_in']
+                    if len(clk_in.split(':')) == 2:
+                        in_dt = datetime.strptime(f"{today} {clk_in}", "%Y-%m-%d %H:%M")
+                    else:
+                        in_dt = datetime.strptime(f"{today} {clk_in}", "%Y-%m-%d %H:%M:%S")
+                    curr_dt = datetime.now()
+                    diff = curr_dt - in_dt
+                    total_seconds = diff.total_seconds()
+                    if total_seconds < 9 * 3600:
+                        needed_seconds = 9 * 3600 - total_seconds
+                        needed_hours = int(needed_seconds // 3600)
+                        needed_minutes = int((needed_seconds % 3600) // 60)
+                        reply(f"❌ {user_display}\nClock Out GAGAL! Total waktu kerja baru berjalan selama {total_seconds / 3600:.2f} jam. Anda baru dapat Clock Out setelah bekerja minimal 9 jam (kurang {needed_hours} jam {needed_minutes} menit).")
+                        return 'OK', 200
+                except Exception as ex:
+                    print(f"[WA Clock Out Calculation Error] {ex}")
+
+                plan = (today_att['plan'] or '').strip()
+                progress = (today_att['progress'] or '').strip()
+                
+                clean_plan = re.sub(r'(?i)#(add|change)?plan', '', plan).strip()
+                clean_progress = re.sub(r'(?i)#(add|change)?progress', '', progress).strip()
+                
+                plan_ok = len(clean_plan) >= 10
+                progress_ok = len(clean_progress) >= 10
+                
+                if not plan_ok or not progress_ok:
+                    status_msg = []
+                    status_msg.append(f"• PLAN: {'Terisi' if plan_ok else 'Kosong atau < 10 karakter'}")
+                    status_msg.append(f"• PROGRESS: {'Terisi' if progress_ok else 'Kosong atau < 10 karakter'}")
+                    reply(f"❌ {user_display}\nClock Out GAGAL! Anda wajib mengisi #PLAN dan #PROGRESS (min 10 karakter) sebelum Clock Out.\n\nStatus:\n" + "\n".join(status_msg))
+                else:
+                    db.execute(
+                        'UPDATE attendance SET clock_out=?, location_out=?, notes_out=? WHERE id=?',
+                        (now_time, loc, source_label, today_att['id'])
+                    )
+                    db.commit()
+                    now_dt = datetime.now()
+                    time_str = format_indo_datetime(now_dt)
+                    reply(f"✅ {user_display}\nTagging berhasil dicatat pada {time_str}")
+        else:
+            text = text.strip()
+            lower_text = text.lower()
+            is_plan = any(x in lower_text for x in ['#plan', '#addplan', '#changeplan'])
+            is_progress = any(x in lower_text for x in ['#progress', '#addprogress', '#changeprogress'])
+
+            if is_plan and is_progress:
+                reply(f"❌ {user_display}\nPLAN dan PROGRESS harus dikirimkan dalam pesan terpisah secara berurutan.")
+                return 'OK', 200
+
+            if is_plan or is_progress:
+                import re
+                today = datetime.now().strftime('%Y-%m-%d')
+                today_att = db.execute('SELECT * FROM attendance WHERE user_id=? AND date=?', (uid, today)).fetchone()
+                is_clocked_in = today_att is not None and bool(today_att['clock_in'])
+
+                if is_plan:
+                    if not is_clocked_in:
+                        reply(f"❌ {user_display}\nGagal mencatat PLAN! Anda wajib Clock In (Kirim Lokasi) terlebih dahulu.")
+                        return 'OK', 200
+
+                    cleaned_plan = re.sub(r'(?i)#(add|change)?plan', '', text).strip()
+                    if len(cleaned_plan) < 10:
+                        reply(f"❌ {user_display}\nPLAN Gagal: Rencana kerja minimal harus 10 karakter.")
+                    else:
+                        db.execute('UPDATE attendance SET plan=? WHERE id=?', (cleaned_plan, today_att['id']))
+                        db.commit()
+                        reply(f"✅ {user_display}\nPLAN berhasil dicatat.")
+
+                elif is_progress:
+                    if not is_clocked_in:
+                        reply(f"❌ {user_display}\nGagal mencatat PROGRESS! Anda wajib Clock In terlebih dahulu.")
+                        return 'OK', 200
+
+                    db_plan = (today_att['plan'] or '').strip()
+                    clean_db_plan = re.sub(r'(?i)#(add|change)?plan', '', db_plan).strip()
+                    if len(clean_db_plan) < 10:
+                        reply(f"❌ {user_display}\nGagal mencatat PROGRESS! Anda wajib mengisi #PLAN (min 10 karakter) terlebih dahulu.")
+                        return 'OK', 200
+
+                    cleaned_prog = re.sub(r'(?i)#(add|change)?progress', '', text).strip()
+                    if len(cleaned_prog) < 10:
+                        reply(f"❌ {user_display}\nPROGRESS Gagal: Laporan kerja minimal harus 10 karakter.")
+                    else:
+                        db.execute('UPDATE attendance SET progress=? WHERE id=?', (cleaned_prog, today_att['id']))
+                        db.commit()
+                        reply(f"✅ {user_display}\nPROGRESS berhasil dicatat.")
+
+            elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
+                reply(
+                    "Halo! Saya adalah Bot WA HIVE 😊\n\n"
+                    "• Kirim share lokasi Anda untuk *Clock In* / *Clock Out*.\n"
+                    "• Kirim `#plan [rencana]` untuk mengisi plan.\n"
+                    "• Kirim `#progress [laporan]` untuk mengisi progress.\n\n"
+                    "Daftar Perintah:\n"
+                    "- `/myinfo` : Status absensi Anda hari ini\n"
+                    "- `/checkin` : Daftar karyawan sudah checkin hari ini\n"
+                    "- `/birthday` : Daftar ulang tahun semua karyawan\n"
+                    "- `/lapar` atau `/haus` : Karyawan ultah bulan ini\n"
+                    "- `/mylink` : Tautan login web"
+                )
+
+            elif text.startswith('/myinfo'):
+                today = datetime.now().strftime('%Y-%m-%d')
+                today_att = db.execute('SELECT * FROM attendance WHERE user_id=? AND date=?', (uid, today)).fetchone()
+                status_txt = "Belum Check In"
+                time_in = "—"
+                time_out = "—"
+                if today_att:
+                    if today_att['clock_in']: status_txt = "Sudah Check In"; time_in = today_att['clock_in']
+                    if today_att['clock_out']: status_txt = "Sudah Check Out"; time_out = today_att['clock_out']
+                reply(f"👤 Karyawan: {user_display}\n📅 Tanggal: {today}\n📊 Status: {status_txt}\n📥 Check In: {time_in}\n📤 Check Out: {time_out}")
+
+            elif text.startswith('/checkin'):
+                today = datetime.now().strftime('%Y-%m-%d')
+                checked_in = db.execute('''
+                    SELECT u.full_name, a.clock_in FROM attendance a 
+                    JOIN users u ON a.user_id = u.id 
+                    WHERE a.date = ? AND a.clock_in IS NOT NULL 
+                    ORDER BY a.clock_in ASC
+                ''', (today,)).fetchall()
+                if not checked_in:
+                    reply("⚠️ Belum ada karyawan yang check-in hari ini.")
+                else:
+                    user_list = "\n".join([f"• {r['full_name']} ({r['clock_in']})" for r in checked_in])
+                    reply(f"👥 Sudah checkin hari ini ({today}):\n{user_list}")
+
+            elif text.startswith('/birthday'):
+                rows = db.execute("SELECT name, birthday FROM employees WHERE is_active=1 AND birthday IS NOT NULL AND birthday != ''").fetchall()
+                if not rows:
+                    reply("🎂 Belum ada data ulang tahun.")
+                else:
+                    from datetime import datetime
+                    bday_list = []
+                    months_names = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+                    for r in rows:
+                        try:
+                            b_date = datetime.strptime(r['birthday'], "%Y-%m-%d").date()
+                            bday_list.append({
+                                'name': r['name'],
+                                'date_str': f"{b_date.day:02d} {months_names[b_date.month]}",
+                                'month': b_date.month,
+                                'day': b_date.day
+                            })
+                        except Exception: pass
+                    bday_list.sort(key=lambda x: (x['month'], x['day']))
+                    bday_txt = "\n".join([f"• {item['name']} , {item['date_str']}" for item in bday_list])
+                    reply(f"🎂 Daftar Ulang Tahun Karyawan:\n\n{bday_txt}")
+
+            elif text.startswith('/lapar') or text.startswith('/haus'):
+                curr_month = datetime.now().month
+                months_names = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                months_names_en = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+                rows = db.execute("SELECT name, birthday FROM employees WHERE is_active=1 AND birthday IS NOT NULL AND birthday != ''").fetchall()
+                bday_this_month = []
+                for r in rows:
+                    try:
+                        b_date = datetime.strptime(r['birthday'], "%Y-%m-%d").date()
+                        if b_date.month == curr_month:
+                            bday_this_month.append({
+                                'name': r['name'],
+                                'day': b_date.day,
+                                'date_str': f"{b_date.day:02d} {months_names_en[b_date.month]}"
+                            })
+                    except Exception: pass
+                bday_this_month.sort(key=lambda x: x['day'])
+                m_name = months_names[curr_month]
+                if not bday_this_month:
+                    reply(f"🎈 Tidak ada yang ulang tahun di bulan {m_name}.")
+                else:
+                    user_list = "\n".join([f"• {item['name']} , {item['date_str']}" for item in bday_this_month])
+                    reply(f"🎂 Karyawan ulang tahun bulan {m_name}:\n\n{user_list}")
+
+            elif text.startswith('/mylink'):
+                if is_group:
+                    reply("❌ Silakan Japri saya dan ketik /mylink untuk mendapatkan tautan login Anda.")
+                else:
+                    portal_url = request.url_root.rstrip('/')
+                    reply(f"🔑 Login Portal HIVE:\n\nTautan: {portal_url}\nUsername: {user['username']}")
+            else:
+                if not is_group and text:
+                    reply("Perintah tidak dikenali. Silakan kirimkan lokasi untuk Clock In/Out, atau pesan dengan #PLAN / #PROGRESS.")
+    except Exception as e:
+        import traceback
+        print(f"[WhatsApp Webhook Error] {str(e)}")
+        traceback.print_exc()
+
+    return 'OK', 200
+
+
 
 
 # ─── Backup and Restore Helpers ────────────────────────────────────────────────
