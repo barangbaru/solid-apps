@@ -14502,8 +14502,10 @@ def at_index():
         # Hitung Durasi Kerja (Hours)
         if r['clock_in'] and r['clock_out']:
             try:
-                t1 = datetime.strptime(r['clock_in'], '%H:%M:%S')
-                t2 = datetime.strptime(r['clock_out'], '%H:%M:%S')
+                t1_str = r['clock_in']
+                t2_str = r['clock_out']
+                t1 = datetime.strptime(t1_str, '%H:%M') if len(t1_str.split(':')) == 2 else datetime.strptime(t1_str, '%H:%M:%S')
+                t2 = datetime.strptime(t2_str, '%H:%M') if len(t2_str.split(':')) == 2 else datetime.strptime(t2_str, '%H:%M:%S')
                 diff = t2 - t1
                 hours = diff.total_seconds() / 3600.0
                 r['work_hours'] = f"{hours:.2f} jam"
@@ -14800,6 +14802,9 @@ def at_approve_action(type, id):
                     )
         db.execute('UPDATE attendance_corrections SET status=?, approved_by=? WHERE id=?', (status, approver, id))
     
+    db.commit()
+    return jsonify({'ok': True, 'msg': 'Persetujuan berhasil diproses'})
+    
 @app.route('/telegram/webhook', methods=['POST'])
 def telegram_webhook():
     db = get_db()
@@ -15032,7 +15037,7 @@ def telegram_webhook():
             except Exception as osm_ex:
                 print(f"[OSM Nominatim Error] {osm_ex}")
             
-            loc = resolved_address if resolved_address else f"{lat},{lng}"
+            loc = f"{resolved_address} ({lat},{lng})" if resolved_address else f"{lat},{lng}"
 
             if not today_att:
                 status = 'present'
@@ -15077,7 +15082,11 @@ def telegram_webhook():
 
                 # First, check 9 hours limit!
                 try:
-                    in_dt = datetime.strptime(f"{today} {today_att['clock_in']}", "%Y-%m-%d %H:%M:%S")
+                    clk_in = today_att['clock_in']
+                    if len(clk_in.split(':')) == 2:
+                        in_dt = datetime.strptime(f"{today} {clk_in}", "%Y-%m-%d %H:%M")
+                    else:
+                        in_dt = datetime.strptime(f"{today} {clk_in}", "%Y-%m-%d %H:%M:%S")
                     curr_dt = datetime.now()
                     diff = curr_dt - in_dt
                     total_seconds = diff.total_seconds()

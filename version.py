@@ -1,6 +1,7 @@
-VERSION = "2.2.81"
+VERSION = "2.2.82"
 RELEASE_DATE = "2026-07-11"
 RELEASE_NOTES = (
+    "v2.2.82: Menambahkan koordinat GPS asli di dalam kurung pada lokasi tagging, memperbaiki response return value JSON pada endpoint admin approval untuk mencegah pesan 'sesi berakhir' palsu, dan menambahkan toleransi parsing format jam kerja HH:MM tanpa detik. "
     "v2.2.81: Mengubah batas toleransi keterlambatan (status Terlambat) saat clock-in dari pukul 09:00 menjadi pukul 09:15, baik pada Web Portal maupun Telegram webhook. "
     "v2.2.80: Menambahkan fitur pengingat otomatis harian (setiap 5 menit sekali) untuk karyawan yang sudah clock in dan masa kerja hariannya sudah mencapai 9 jam, mengirimi notifikasi personal dan grup Telegram agar mereka tidak lupa untuk clock out. "
     "v2.2.79: Memperbaiki bug scope variable global datetime (UnboundLocalError) pada telegram webhook yang menyebabkan kegagalan respon otomatis saat menerima koordinat lokasi GPS dan tag plan/progress. "
