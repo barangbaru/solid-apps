@@ -1527,6 +1527,7 @@ MIGRATIONS = [
     # Attendance Plan & Progress
     ('attendance',           'plan',                    "TEXT DEFAULT ''"),
     ('attendance',           'progress',                "TEXT DEFAULT ''"),
+    ('attendance',           'checkout_reminder_sent',  "INTEGER DEFAULT 0"),
 ]
 
 SC_TICKET_PRIORITIES = [
@@ -4292,6 +4293,107 @@ def run_birthday_reminders():
         print(f"[run_birthday_reminders Error] {e}")
 
 
+def check_checkout_reminders():
+    try:
+        db = _get_raw_db()
+        settings = get_settings(db)
+        bot_token = settings.get('telegram_bot_token', '').strip()
+        if not bot_token:
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '1095530966:AAFkSV9puxmT2z7cvpsbBQy_TWqj9-MCvbM').strip()
+        if not bot_token:
+            db.close()
+            return
+
+        from datetime import datetime
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Get active attendance today without clock out and checkout_reminder_sent = 0
+        rows = db.execute('''
+            SELECT a.id, a.user_id, a.clock_in, a.notes_in, u.full_name, e.telegram_id, u.username
+            FROM attendance a
+            JOIN users u ON a.user_id = u.id
+            JOIN employees e ON e.user_id = u.id
+            WHERE a.date = ? AND a.clock_in IS NOT NULL AND a.clock_out IS NULL AND (a.checkout_reminder_sent IS NULL OR a.checkout_reminder_sent = 0)
+        ''', (today,)).fetchall()
+        
+        for r in rows:
+            try:
+                in_dt = datetime.strptime(f"{today} {r['clock_in']}", "%Y-%m-%d %H:%M:%S")
+                curr_dt = datetime.now()
+                diff = curr_dt - in_dt
+                total_seconds = diff.total_seconds()
+                
+                # 9 hours = 32400 seconds
+                if total_seconds >= 9 * 3600:
+                    import re
+                    import html
+                    
+                    user_display = f"@{html.escape(r['username'])}" if r['username'] else html.escape(r['full_name'])
+                    msg_text = (
+                        f"🔔 <b>[REMINDER]</b> {user_display}\n"
+                        f"Waktu kerja Anda hari ini telah mencapai 9 jam (sejak {r['clock_in']}).\n"
+                        f"Anda sudah dapat melakukan <b>Clock Out</b>.\n\n"
+                        f"⚠️ Jangan lupa untuk mengisi <code>#PLAN</code> dan <code>#PROGRESS</code> sebelum melakukan Clock Out."
+                    )
+                    
+                    # 1. Send to the group where the user checked in (if any)
+                    group_id = None
+                    if r['notes_in']:
+                        m = re.search(r'\(ID:\s*(-?\d+)\)', r['notes_in'])
+                        if m:
+                            group_id = m.group(1)
+                    
+                    if group_id:
+                        try:
+                            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                            payload = {
+                                "chat_id": group_id,
+                                "text": msg_text,
+                                "parse_mode": "HTML"
+                            }
+                            resp = req_lib.post(url, json=payload, timeout=5)
+                            if resp.status_code == 200:
+                                resp_json = resp.json()
+                                if resp_json.get('ok'):
+                                    bot_msg_id = resp_json['result']['message_id']
+                                    # Auto delete group reminder after 60 seconds
+                                    def delete_msg(gid, mid):
+                                        try:
+                                            req_lib.post(f"https://api.telegram.org/bot{bot_token}/deleteMessage", json={
+                                                'chat_id': gid,
+                                                'message_id': mid
+                                            }, timeout=5)
+                                        except Exception:
+                                            pass
+                                    import threading
+                                    threading.Timer(60.0, lambda: delete_msg(group_id, bot_msg_id)).start()
+                        except Exception as ex:
+                            print(f"[Checkout Reminder Group Error] {ex}")
+                            
+                    # 2. Send private message
+                    if r['telegram_id']:
+                        try:
+                            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                            payload = {
+                                "chat_id": r['telegram_id'],
+                                "text": msg_text,
+                                "parse_mode": "HTML"
+                            }
+                            req_lib.post(url, json=payload, timeout=5)
+                        except Exception as ex:
+                            print(f"[Checkout Reminder Personal Error] {ex}")
+                            
+                    # 3. Mark as sent
+                    db.execute('UPDATE attendance SET checkout_reminder_sent = 1 WHERE id = ?', (r['id'],))
+                    db.commit()
+            except Exception as e:
+                print(f"[check_checkout_reminders Row Error] {e}")
+                
+        db.close()
+    except Exception as e:
+        print(f"[check_checkout_reminders Error] {e}")
+
+
 def start_scheduler():
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -4305,6 +4407,9 @@ def start_scheduler():
         scheduler.add_job(run_birthday_reminders,
                           'cron', hour=9, minute=0,
                           id='birthday_reminder', replace_existing=True)
+        scheduler.add_job(check_checkout_reminders,
+                          'interval', minutes=5,
+                          id='checkout_reminders', replace_existing=True)
         scheduler.add_job(check_for_updates,
                           'interval', hours=6,
                           id='update_check', replace_existing=True)

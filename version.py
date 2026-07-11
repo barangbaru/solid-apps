@@ -1,6 +1,7 @@
-VERSION = "2.2.79"
+VERSION = "2.2.80"
 RELEASE_DATE = "2026-07-11"
 RELEASE_NOTES = (
+    "v2.2.80: Menambahkan fitur pengingat otomatis harian (setiap 5 menit sekali) untuk karyawan yang sudah clock in dan masa kerja hariannya sudah mencapai 9 jam, mengirimi notifikasi personal dan grup Telegram agar mereka tidak lupa untuk clock out. "
     "v2.2.79: Memperbaiki bug scope variable global datetime (UnboundLocalError) pada telegram webhook yang menyebabkan kegagalan respon otomatis saat menerima koordinat lokasi GPS dan tag plan/progress. "
     "v2.2.78: Refinement format respon bot Telegram untuk perintah /lapar /haus (mencantumkan tanggal lahir masing-masing) dan perintah /birthday (menampilkan seluruh daftar ulang tahun terdaftar secara berurutan tanpa limitasi waktu mendatang). "
     "v2.2.77: Memastikan semua nama pada list ulang tahun diimpor/disemai ke database karyawan (mendaftarkannya ke Telegram Core jika belum ada) agar fungsi reminder ultah tetap lengkap dan bisa dipetakan manual di kemudian hari. "
