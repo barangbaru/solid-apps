@@ -15193,7 +15193,6 @@ def telegram_webhook():
                 if not rows:
                     reply("🎂 Belum ada data ulang tahun user.")
                 else:
-                    from datetime import datetime, date
                     bday_list = []
                     months_names_en = ["", "July", "August", "September", "October", "November", "December", "January", "February", "March", "April", "May", "June"]
                     # Let's map month index to english names
@@ -15217,7 +15216,6 @@ def telegram_webhook():
                     reply(f"🎂 <b>Upcoming Birthdays (sorted):</b>\n\n{bday_txt}")
 
             elif text.startswith('/lapar') or text.startswith('/haus'):
-                from datetime import datetime
                 curr_month = datetime.now().month
                 months_names = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
                 months_names_en = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
