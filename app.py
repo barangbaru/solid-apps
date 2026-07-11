@@ -14693,6 +14693,19 @@ def telegram_webhook():
                 )
                 return 'OK', 200
 
+            # Reverse geocode using OpenStreetMap Nominatim API
+            resolved_address = ""
+            try:
+                osm_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
+                osm_headers = {"User-Agent": "HIVE-Attendance-Bot/2.0 (md@workspace)"}
+                osm_resp = req_lib.get(osm_url, headers=osm_headers, timeout=5)
+                if osm_resp.status_code == 200:
+                    resolved_address = osm_resp.json().get('display_name', '')
+            except Exception as osm_ex:
+                print(f"[OSM Nominatim Error] {osm_ex}")
+            
+            loc = resolved_address if resolved_address else f"{lat},{lng}"
+
             if not today_att:
                 status = 'present'
                 if now_time > '09:00:00':
@@ -14714,6 +14727,26 @@ def telegram_webhook():
                 )
             else:
                 # User is sending location again (Clock Out / update Clock Out)
+                # Strict check: must checkout in the same group/chat as checkin
+                import re
+                m_chat = re.search(r'\(ID:\s*(-?\d+)\)', today_att['notes_in'] or '')
+                if m_chat:
+                    checkin_chat_id = m_chat.group(1)
+                    if str(chat_id) != checkin_chat_id:
+                        m_name = re.match(r'^Telegram Group:\s*(.*?)\s*\(ID:', today_att['notes_in'] or '')
+                        group_name = m_name.group(1) if m_name else "Japri"
+                        if group_name != "Japri":
+                            reply(
+                                f"❌ {user_display}\n"
+                                f"Checkout gagal!\nAnda checkin di group <b>{group_name}</b>, silahkan checkout di group yang sama."
+                            )
+                        else:
+                            reply(
+                                f"❌ {user_display}\n"
+                                f"Checkout gagal!\nAnda checkin via Japri, silahkan checkout via Japri kembali."
+                            )
+                        return 'OK', 200
+
                 # First, check 9 hours limit!
                 try:
                     in_dt = datetime.strptime(f"{today} {today_att['clock_in']}", "%Y-%m-%d %H:%M:%S")
