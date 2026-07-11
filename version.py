@@ -1,6 +1,7 @@
-VERSION = "2.2.74"
+VERSION = "2.2.75"
 RELEASE_DATE = "2026-07-11"
 RELEASE_NOTES = (
+    "v2.2.75: Menambahkan token bot Telegram fallback (dari bot lama) dan pengekstrakan chat_id yang lebih tangguh untuk custom JSON payload. "
     "v2.2.74: Implementasi reverse geocoding via OpenStreetMap Nominatim API untuk menerjemahkan lokasi GPS Telegram ke alamat teks serta pengetatan pencocokan grup check-in dan check-out. "
     "v2.2.73: Menambahkan log diagnostik dan penanganan exception pada fungsi reply di Telegram webhook untuk mempermudah pelacakan pengiriman pesan. "
     "v2.2.72: Menyertakan ID group Telegram ke dalam catatan lokasi/notes attendance, memperbaiki bug NameError 'user_mention' pada respon start/help/absen, dan menampilkan detail ID grup pada balasan command di grup yang sama. "

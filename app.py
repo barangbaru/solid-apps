@@ -14507,6 +14507,8 @@ def telegram_webhook():
     settings = get_settings(db)
     bot_token = settings.get('telegram_bot_token', '').strip()
     if not bot_token:
+        bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '1095530966:AAFkSV9puxmT2z7cvpsbBQy_TWqj9-MCvbM').strip()
+    if not bot_token:
         return 'OK', 200
 
     try:
@@ -14525,7 +14527,7 @@ def telegram_webhook():
     if is_custom:
         from_id = data.get('telegram_user_id')
         username = data.get('username', '') or ''
-        chat_id = data.get('chat_id')
+        chat_id = data.get('chat_id') or data.get('chatId') or data.get('group_id') or data.get('groupId') or data.get('telegram_chat_id') or from_id
         is_location = True
         lat = data.get('latitude')
         lng = data.get('longitude')
