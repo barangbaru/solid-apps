@@ -1,6 +1,7 @@
-VERSION = "2.2.72"
+VERSION = "2.2.73"
 RELEASE_DATE = "2026-07-11"
 RELEASE_NOTES = (
+    "v2.2.73: Menambahkan log diagnostik dan penanganan exception pada fungsi reply di Telegram webhook untuk mempermudah pelacakan pengiriman pesan. "
     "v2.2.72: Menyertakan ID group Telegram ke dalam catatan lokasi/notes attendance, memperbaiki bug NameError 'user_mention' pada respon start/help/absen, dan menampilkan detail ID grup pada balasan command di grup yang sama. "
     "v2.2.71: Perbaikan role saving agar app-scoped (tidak menimpa app lain) dan penambahan default at_view/at_manage ke sistem role defaults saat startup/seeding. "
     "v2.2.70: Fix at_require helper in AttendanceCore to check permissions via get_db() has_permission instead of unpopulated session['user_permissions']. "

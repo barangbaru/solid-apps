@@ -14568,12 +14568,20 @@ def telegram_webhook():
 
     def reply(text_msg):
         if not chat_id:
+            print("[Telegram Webhook] Reply skipped: chat_id is empty or None")
             return
-        req_lib.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
             'chat_id': chat_id,
             'text': text_msg,
             'parse_mode': 'HTML'
-        })
+        }
+        try:
+            print(f"[Telegram Webhook] Sending reply to {chat_id}: {text_msg}")
+            r = req_lib.post(url, json=payload, timeout=5)
+            print(f"[Telegram Webhook] Telegram API Response (Status {r.status_code}): {r.text}")
+        except Exception as ex:
+            print(f"[Telegram Webhook Error] Exception in reply helper: {str(ex)}")
 
     def format_indo_datetime(dt):
         months = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
