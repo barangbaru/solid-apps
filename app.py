@@ -2283,6 +2283,11 @@ def _seed_employee_birthdays(db):
             emp = db.execute('SELECT id FROM employees WHERE LOWER(name) LIKE ?', (f"%{name_part.strip()}%",)).fetchone()
         if emp:
             db.execute('UPDATE employees SET birthday=? WHERE id=?', (bday_val, emp['id']))
+        else:
+            db.execute('''
+                INSERT INTO employees (name, divisi, birthday, is_active)
+                VALUES (?, ?, ?, 1)
+            ''', (name_part.strip(), 'Telegram Core', bday_val))
 
 def seed_db(db):
     for divisi, (skill_cats, competency_items) in ALL_DIVISIONS.items():
@@ -14419,10 +14424,10 @@ def at_index():
     mappable_employees = []
     if at_require('at_manage'):
         unmapped_employees = db.execute(
-            "SELECT id, name, telegram_id FROM employees WHERE divisi = 'Telegram Core' AND is_active = 1 ORDER BY name"
+            "SELECT id, name, telegram_id FROM employees WHERE divisi = 'Telegram Core' AND telegram_id IS NOT NULL AND telegram_id != '' AND (name LIKE 'Telegram User%' OR name LIKE 'tg_%') AND is_active = 1 ORDER BY name"
         ).fetchall()
         mappable_employees = db.execute(
-            "SELECT id, name FROM employees WHERE divisi != 'Telegram Core' AND is_active = 1 ORDER BY name"
+            "SELECT id, name FROM employees WHERE (telegram_id IS NULL OR telegram_id = '') AND is_active = 1 ORDER BY name"
         ).fetchall()
 
     return render_template('at_index.html', today_att=today_att, history=history, today=today, 
