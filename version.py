@@ -1,6 +1,7 @@
-VERSION = "2.2.75"
+VERSION = "2.2.76"
 RELEASE_DATE = "2026-07-11"
 RELEASE_NOTES = (
+    "v2.2.76: Implementasi penjadwal otomatis reminder ulang tahun karyawan (siaran personal & grup absensi), pembersihan auto-delete 30 detik pesan bot, penyaringan pesan grup non-absen, dan antarmuka pemetaan manual Telegram ID karyawan di Web UI. "
     "v2.2.75: Menambahkan token bot Telegram fallback (dari bot lama) dan pengekstrakan chat_id yang lebih tangguh untuk custom JSON payload. "
     "v2.2.74: Implementasi reverse geocoding via OpenStreetMap Nominatim API untuk menerjemahkan lokasi GPS Telegram ke alamat teks serta pengetatan pencocokan grup check-in dan check-out. "
     "v2.2.73: Menambahkan log diagnostik dan penanganan exception pada fungsi reply di Telegram webhook untuk mempermudah pelacakan pengiriman pesan. "

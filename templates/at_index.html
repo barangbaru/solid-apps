@@ -99,6 +99,48 @@
   </div>
 </div>
 
+{% if unmapped_employees %}
+<!-- Unmapped Telegram Users Section -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white py-3 fw-bold border-bottom">
+    <i class="bi bi-person-plus text-warning me-1"></i> Pemetaan Karyawan Telegram (Belum Terhubung)
+  </div>
+  <div class="card-body">
+    <div class="alert alert-warning py-2 mb-3" style="font-size: .88rem">
+      <i class="bi bi-info-circle me-1"></i> Berikut adalah daftar pengguna Telegram baru yang melakukan absensi otomatis namun belum terhubung dengan data karyawan Anda. Silakan hubungkan data Telegram mereka ke nama karyawan yang sesuai.
+    </div>
+    <div class="row g-3">
+      {% for temp in unmapped_employees %}
+      <div class="col-md-6">
+        <div class="border rounded p-3 bg-light-subtle">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <div class="fw-bold text-dark mb-1">{{ temp.name }}</div>
+              <span class="badge bg-secondary" style="font-size: .72rem">Telegram ID: {{ temp.telegram_id }}</span>
+            </div>
+          </div>
+          <form action="/attendance/map-telegram" method="POST">
+            <input type="hidden" name="temp_employee_id" value="{{ temp.id }}">
+            <div class="input-group">
+              <select name="target_employee_id" class="form-select form-select-sm" required>
+                <option value="" disabled selected>— Pilih Karyawan Penerima —</option>
+                {% for target in mappable_employees %}
+                <option value="{{ target.id }}">{{ target.name }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-primary btn-sm px-3 fw-bold">
+                <i class="bi bi-link me-1"></i> Petakan ID
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Live Daily Attendance Wall (Semua User) -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-white py-3 fw-bold border-bottom d-flex justify-content-between align-items-center">

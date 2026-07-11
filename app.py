@@ -1402,6 +1402,7 @@ COLUMN_TYPE_MIGRATIONS = [
 MIGRATIONS = [
     ('users', 'email',     "TEXT DEFAULT ''"),
     ('users', 'google_id', "TEXT DEFAULT ''"),
+    ('employees', 'birthday',        "TEXT DEFAULT ''"),
     ('employees', 'level',           "TEXT DEFAULT 'Staff'"),
     ('employees', 'employment_type', "TEXT DEFAULT 'tetap'"),
     ('employees', 'contract_start',  "TEXT DEFAULT ''"),
@@ -2197,6 +2198,12 @@ def init_db():
             db.execute('INSERT INTO bk_items(name,category,description,icon,sort_order) VALUES(?,?,?,?,?)',
                        (name, cat, desc, icon, sort))
     db.commit()
+    
+    # Seed employee birthdays
+    try:
+        _seed_employee_birthdays(db)
+    except Exception as e:
+        print(f"[Birthday Seed Error] {e}")
 
     # Seed grade_benchmarks default (hanya jika belum ada data)
     if db.execute('SELECT COUNT(*) FROM grade_benchmarks').fetchone()[0] == 0:
@@ -2224,6 +2231,58 @@ def init_db():
             )
     db.commit()
     db.close()
+
+def _seed_employee_birthdays(db):
+    birthdays_data = [
+        ("muhammad thoriq zihni", "07-18"),
+        ("Amalia", "08-04"),
+        ("Aliyah", "08-06"),
+        ("Khonza Izzati", "08-18"),
+        ("Riska Agustia", "08-23"),
+        ("dioharvandy", "08-27"),
+        ("R Rizky Aria Putra", "09-13"),
+        ("Okta", "10-05"),
+        ("Muhammad Muhsin", "10-14"),
+        ("M Iskandar Adi pratama", "10-20"),
+        ("Riski", "10-22"),
+        ("day", "10-25"),
+        ("Andhy Ardhianto", "10-25"),
+        ("RiRi", "11-07"),
+        ("Ismed Iqbal", "11-24"),
+        ("Ryno Andryano", "11-26"),
+        ("vika andini", "11-29"),
+        ("Fathur Zhafran", "12-28"),
+        ("SirNewton", "01-07"),
+        ("Gita", "01-09"),
+        ("Nurul", "01-19"),
+        ("Deti", "01-24"),
+        ("Farah Fitriah", "02-05"),
+        ("Windi Rahma", "02-17"),
+        ("Feri Widiyanto", "02-25"),
+        ("Yuhyi Wahyudin", "03-15"),
+        ("Bamara Anugrah A.P", "03-19"),
+        ("Faiz Muhammad", "03-31"),
+        ("Rimayani", "03-31"),
+        ("Vita Apriliana", "04-02"),
+        ("Royandi Nicolas Naibaho", "04-03"),
+        ("Yoshfia A.Z", "04-09"),
+        ("Ahmad Sauki", "04-13"),
+        ("Tri Hermawan", "04-20"),
+        ("Ismail", "05-03"),
+        ("Reinhard Meinard", "05-13"),
+        ("JundiAufá", "05-26"),
+        ("Fabian Dewantara Santonie", "06-04"),
+        ("Devina Amanda", "06-10"),
+        ("nita", "06-25"),
+        ("Dwi Wahyuni", "07-07")
+    ]
+    for name_part, mmdd in birthdays_data:
+        bday_val = f"1990-{mmdd}"
+        emp = db.execute('SELECT id FROM employees WHERE LOWER(name) = LOWER(?)', (name_part.strip(),)).fetchone()
+        if not emp:
+            emp = db.execute('SELECT id FROM employees WHERE LOWER(name) LIKE ?', (f"%{name_part.strip()}%",)).fetchone()
+        if emp:
+            db.execute('UPDATE employees SET birthday=? WHERE id=?', (bday_val, emp['id']))
 
 def seed_db(db):
     for divisi, (skill_cats, competency_items) in ALL_DIVISIONS.items():
@@ -4158,6 +4217,76 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
     }
 
 
+def run_birthday_reminders():
+    try:
+        db = _get_raw_db()
+        settings = get_settings(db)
+        bot_token = settings.get('telegram_bot_token', '').strip()
+        if not bot_token:
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '1095530966:AAFkSV9puxmT2z7cvpsbBQy_TWqj9-MCvbM').strip()
+        if not bot_token:
+            db.close()
+            return
+
+        from datetime import datetime
+        today_mmdd = datetime.now().strftime('%m-%d')
+        
+        # Get employees having birthday today
+        employees = db.execute("SELECT id, name, telegram_id, user_id FROM employees WHERE is_active=1 AND birthday LIKE ?", (f"%-{today_mmdd}",)).fetchall()
+        
+        for emp in employees:
+            # 1. Broadcast to groups where this employee has ever clocked in/out
+            att_notes = db.execute("SELECT DISTINCT notes_in, notes_out FROM attendance WHERE user_id = ?", (emp['user_id'],)).fetchall()
+            
+            group_ids = set()
+            import re
+            for row in att_notes:
+                for note in [row['notes_in'], row['notes_out']]:
+                    if note:
+                        m = re.search(r'\(ID:\s*(-?\d+)\)', note)
+                        if m:
+                            group_ids.add(m.group(1))
+            
+            # Template wishes
+            wishes = [
+                f"🎉 Selamat Ulang Tahun untuk <b>{emp['name']}</b>! Semoga sehat selalu, sukses dalam karir, dan panjang umur! 🎂🎈",
+                f"🎁 Happy Birthday <b>{emp['name']}</b>! Semoga hari ini luar biasa dan tahun depan dipenuhi berkah & kebahagiaan! 🎉🍰",
+                f"🎂 Selamat Hari Lahir <b>{emp['name']}</b>! Semoga segala cita-cita tercapai, sukses selalu, dan diberkahi kebahagiaan! 🎁✨"
+            ]
+            import random
+            wish = random.choice(wishes)
+            
+            # Send to groups
+            for gid in group_ids:
+                try:
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    payload = {
+                        "chat_id": gid,
+                        "text": wish,
+                        "parse_mode": "HTML"
+                    }
+                    req_lib.post(url, json=payload, timeout=5)
+                except Exception as ex:
+                    print(f"[Birthday Broadcast Group Error] {ex}")
+            
+            # 2. Send personal chat greeting
+            if emp['telegram_id']:
+                try:
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    payload = {
+                        "chat_id": emp['telegram_id'],
+                        "text": f"🎉 Halo <b>{emp['name']}</b>,\n\nKami segenap keluarga besar HIVE mengucapkan: Selamat Ulang Tahun! 🎂🎁\nSemoga sehat, bahagia, dan sukses selalu di tahun yang baru ini! ✨🎈",
+                        "parse_mode": "HTML"
+                    }
+                    req_lib.post(url, json=payload, timeout=5)
+                except Exception as ex:
+                    print(f"[Birthday Broadcast Personal Error] {ex}")
+        
+        db.close()
+    except Exception as e:
+        print(f"[run_birthday_reminders Error] {e}")
+
+
 def start_scheduler():
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -4168,6 +4297,9 @@ def start_scheduler():
         scheduler.add_job(lambda: run_subscription_reminders('auto'),
                           'cron', hour=8, minute=5,
                           id='sub_reminder', replace_existing=True)
+        scheduler.add_job(run_birthday_reminders,
+                          'cron', hour=9, minute=0,
+                          id='birthday_reminder', replace_existing=True)
         scheduler.add_job(check_for_updates,
                           'interval', hours=6,
                           id='update_check', replace_existing=True)
@@ -4177,7 +4309,7 @@ def start_scheduler():
         scheduler.start()
         import atexit
         atexit.register(scheduler.shutdown)
-        print(" Scheduler aktif: cek kontrak 08:00, cek subscription 08:05, cek update setiap 6 jam")
+        print(" Scheduler aktif: cek kontrak 08:00, cek subscription 08:05, reminder ultah 09:00, cek update setiap 6 jam")
         # Cek update saat startup (non-blocking, delay 30 detik)
         import threading
         threading.Timer(30, check_for_updates).start()
@@ -14283,7 +14415,64 @@ def at_index():
         r['group_name'] = group_name
         all_today_att.append(r)
         
-    return render_template('at_index.html', today_att=today_att, history=history, today=today, all_today_att=all_today_att)
+    unmapped_employees = []
+    mappable_employees = []
+    if at_require('at_manage'):
+        unmapped_employees = db.execute(
+            "SELECT id, name, telegram_id FROM employees WHERE divisi = 'Telegram Core' AND is_active = 1 ORDER BY name"
+        ).fetchall()
+        mappable_employees = db.execute(
+            "SELECT id, name FROM employees WHERE divisi != 'Telegram Core' AND is_active = 1 ORDER BY name"
+        ).fetchall()
+
+    return render_template('at_index.html', today_att=today_att, history=history, today=today, 
+                           all_today_att=all_today_att, unmapped_employees=unmapped_employees, 
+                           mappable_employees=mappable_employees)
+
+@app.route('/attendance/map-telegram', methods=['POST'])
+@login_required
+def at_map_telegram():
+    if not at_require('at_manage'):
+        flash('Anda tidak memiliki izin untuk memetakan Telegram ID.', 'danger')
+        return redirect(url_for('at_index'))
+    
+    temp_emp_id = request.form.get('temp_employee_id')
+    target_emp_id = request.form.get('target_employee_id')
+    
+    if not temp_emp_id or not target_emp_id:
+        flash('Data pemetaan tidak lengkap.', 'danger')
+        return redirect(url_for('at_index'))
+    
+    db = get_db()
+    temp_emp = db.execute('SELECT * FROM employees WHERE id=?', (temp_emp_id,)).fetchone()
+    target_emp = db.execute('SELECT * FROM employees WHERE id=?', (target_emp_id,)).fetchone()
+    
+    if not temp_emp or not target_emp:
+        flash('Data karyawan tidak ditemukan.', 'danger')
+        return redirect(url_for('at_index'))
+        
+    try:
+        telegram_id = temp_emp['telegram_id']
+        
+        # 1. Update target employee's telegram_id
+        db.execute('UPDATE employees SET telegram_id=? WHERE id=?', (telegram_id, target_emp_id))
+        
+        # 2. Update user_id for past attendance records
+        if temp_emp['user_id'] and target_emp['user_id']:
+            db.execute('UPDATE attendance SET user_id=? WHERE user_id=?', (target_emp['user_id'], temp_emp['user_id']))
+        
+        # 3. Delete temporary employee and user
+        db.execute('DELETE FROM employees WHERE id=?', (temp_emp_id,))
+        if temp_emp['user_id']:
+            db.execute('DELETE FROM users WHERE id=?', (temp_emp['user_id'],))
+            
+        db.commit()
+        flash(f"Sukses! Telegram ID '{telegram_id}' berhasil dipetakan ke Karyawan '{target_emp['name']}'.", 'success')
+    except Exception as ex:
+        db.rollback()
+        flash(f"Gagal memetakan Telegram ID: {str(ex)}", 'danger')
+        
+    return redirect(url_for('at_index'))
 
 @app.route('/attendance/clock', methods=['POST'])
 @login_required
@@ -14568,7 +14757,7 @@ def telegram_webhook():
                     except Exception:
                         pass
 
-    def reply(text_msg):
+    def reply(text_msg, auto_delete=True):
         if not chat_id:
             print("[Telegram Webhook] Reply skipped: chat_id is empty or None")
             return
@@ -14582,6 +14771,33 @@ def telegram_webhook():
             print(f"[Telegram Webhook] Sending reply to {chat_id}: {text_msg}")
             r = req_lib.post(url, json=payload, timeout=5)
             print(f"[Telegram Webhook] Telegram API Response (Status {r.status_code}): {r.text}")
+            
+            if auto_delete and r.status_code == 200:
+                resp_json = r.json()
+                if resp_json.get('ok'):
+                    bot_msg_id = resp_json['result']['message_id']
+                    
+                    def delete_messages():
+                        # Delete bot reply
+                        try:
+                            req_lib.post(f"https://api.telegram.org/bot{bot_token}/deleteMessage", json={
+                                'chat_id': chat_id,
+                                'message_id': bot_msg_id
+                            }, timeout=5)
+                        except Exception:
+                            pass
+                        # Delete user message
+                        if not is_custom and 'message' in data and 'message_id' in data['message']:
+                            try:
+                                req_lib.post(f"https://api.telegram.org/bot{bot_token}/deleteMessage", json={
+                                    'chat_id': chat_id,
+                                    'message_id': data['message']['message_id']
+                                }, timeout=5)
+                            except Exception:
+                                pass
+                                
+                    import threading
+                    threading.Timer(30.0, delete_messages).start()
         except Exception as ex:
             print(f"[Telegram Webhook Error] Exception in reply helper: {str(ex)}")
 
@@ -14814,10 +15030,10 @@ def telegram_webhook():
                         f"Tagging berhasil dicatat pada {time_str}"
                     )
         else:
-            text = message.get('text', '')
+            text = message.get('text', '').strip()
             lower_text = text.lower()
-            is_plan = '#plan' in lower_text
-            is_progress = '#progress' in lower_text
+            is_plan = any(x in lower_text for x in ['#plan', '#addplan', '#changeplan'])
+            is_progress = any(x in lower_text for x in ['#progress', '#addprogress', '#changeprogress'])
 
             if is_plan and is_progress:
                 reply(
@@ -14848,7 +15064,7 @@ def telegram_webhook():
                         )
                         return 'OK', 200
 
-                    cleaned_plan = re.sub(r'(?i)#plan', '', text).strip()
+                    cleaned_plan = re.sub(r'(?i)#(add|change)?plan', '', text).strip()
                     if len(cleaned_plan) < 10:
                         reply(
                             f"❌ {user_display}\n"
@@ -14880,7 +15096,7 @@ def telegram_webhook():
 
                     # Check if #PLAN is already filled with at least 10 characters
                     db_plan = (today_att['plan'] or '').strip()
-                    clean_db_plan = re.sub(r'(?i)#plan', '', db_plan).strip()
+                    clean_db_plan = re.sub(r'(?i)#(add|change)?plan', '', db_plan).strip()
                     if len(clean_db_plan) < 10:
                         reply(
                             f"❌ {user_display}\n"
@@ -14888,7 +15104,7 @@ def telegram_webhook():
                         )
                         return 'OK', 200
 
-                    cleaned_prog = re.sub(r'(?i)#progress', '', text).strip()
+                    cleaned_prog = re.sub(r'(?i)#(add|change)?progress', '', text).strip()
                     if len(cleaned_prog) < 10:
                         reply(
                             f"❌ {user_display}\n"
@@ -14911,23 +15127,143 @@ def telegram_webhook():
                         )
 
             elif text.startswith('/start') or text.startswith('/help') or text.startswith('/absen'):
-                group_info = ""
+                reply(
+                    "ℹ️ <b>Informasi</b>\n\n"
+                    "Halo, saya adalah Hive😊\n\n"
+                    "Saya akan mencatat daily aktifitas kamu secara automatis\n\n"
+                    "Untuk melakukan checkin dan checkout share location kamu ke group\n\n"
+                    "Untuk membuat, menambah dan merubah plan atau progress, kamu dapat mengirim pesan dengan menambahkan salah satu kata kunci <code>#plan</code>, <code>#addplan</code>, <code>#changeplan</code>, <code>#progress</code>, <code>#addprogress</code> atau <code>#changeprogress</code>\n\n"
+                    "Kamu dapat melihat status kamu dengan mengetikan perintah <code>/myinfo</code>\n\n"
+                    "Ketik <code>/checkin</code> di group untuk melihat user yg sudah checkin\n"
+                    "Ketik <code>/birthday</code> untuk melihat birthday user yang terdaftar\n"
+                    "Ketik <code>/lapar</code> untuk melihat user yang sedang ulang tahun\n"
+                    "Ketik <code>/haus</code> untuk melihat user yang sedang ulang tahun\n\n"
+                    "Kirim pesan pribadi ke saya dan ketik <code>/mylink</code> untuk mendapatkan link login kamu ke website"
+                )
+
+            elif text.startswith('/myinfo'):
+                today = datetime.now().strftime('%Y-%m-%d')
+                today_att = db.execute('SELECT * FROM attendance WHERE user_id=? AND date=?', (uid, today)).fetchone()
+                
+                status_txt = "Belum Check In"
+                time_in = "—"
+                time_out = "—"
+                
+                if today_att:
+                    if today_att['clock_in']:
+                        status_txt = "Sudah Check In"
+                        time_in = today_att['clock_in']
+                    if today_att['clock_out']:
+                        status_txt = "Sudah Check Out"
+                        time_out = today_att['clock_out']
+                
+                info_msg = (
+                    f"ℹ️ <b>Status Absensi Anda Hari Ini:</b>\n"
+                    f"👤 <b>Karyawan:</b> {user_display}\n"
+                    f"📅 <b>Tanggal:</b> {today}\n"
+                    f"📊 <b>Status:</b> {status_txt}\n"
+                    f"📥 <b>Check In:</b> {time_in}\n"
+                    f"📤 <b>Check Out:</b> {time_out}\n"
+                )
+                reply(info_msg)
+
+            elif text.startswith('/checkin'):
+                today = datetime.now().strftime('%Y-%m-%d')
+                checked_in = db.execute('''
+                    SELECT u.full_name, a.clock_in FROM attendance a 
+                    JOIN users u ON a.user_id = u.id 
+                    WHERE a.date = ? AND a.clock_in IS NOT NULL 
+                    ORDER BY a.clock_in ASC
+                ''', (today,)).fetchall()
+                
+                if not checked_in:
+                    reply("⚠️ Belum ada karyawan yang check-in hari ini.")
+                else:
+                    user_list = "\n".join([f"• {r['full_name']} ({r['clock_in']})" for r in checked_in])
+                    reply(f"👥 <b>Sudah checkin hari ini ({today}):</b>\n{user_list}")
+
+            elif text.startswith('/birthday'):
+                rows = db.execute("SELECT name, birthday FROM employees WHERE is_active=1 AND birthday IS NOT NULL AND birthday != ''").fetchall()
+                
+                if not rows:
+                    reply("🎂 Belum ada data ulang tahun user.")
+                else:
+                    from datetime import datetime, date
+                    bday_list = []
+                    today_date = date.today()
+                    curr_year = today_date.year
+                    
+                    for r in rows:
+                        try:
+                            b_date = datetime.strptime(r['birthday'], "%Y-%m-%d").date()
+                            this_year_bday = date(curr_year, b_date.month, b_date.day)
+                            if this_year_bday >= today_date:
+                                upcoming = this_year_bday
+                            else:
+                                upcoming = date(curr_year + 1, b_date.month, b_date.day)
+                            
+                            days = (upcoming - today_date).days
+                            bday_list.append({
+                                'name': r['name'],
+                                'date_str': upcoming.strftime('%d %B'),
+                                'days': days
+                            })
+                        except Exception:
+                            pass
+                    
+                    bday_list.sort(key=lambda x: x['days'])
+                    bday_txt = "\n".join([f"• {item['name']} , {item['date_str']}, (coming in {item['days']} days)" for item in bday_list[:10]])
+                    reply(f"🎂 <b>Upcoming Birthdays:</b>\n\n{bday_txt}")
+
+            elif text.startswith('/lapar') or text.startswith('/haus'):
+                from datetime import datetime
+                curr_month = datetime.now().month
+                months_names = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                
+                rows = db.execute("SELECT name, birthday FROM employees WHERE is_active=1 AND birthday IS NOT NULL AND birthday != ''").fetchall()
+                
+                bday_this_month = []
+                for r in rows:
+                    try:
+                        b_date = datetime.strptime(r['birthday'], "%Y-%m-%d").date()
+                        if b_date.month == curr_month:
+                            bday_this_month.append(r['name'])
+                    except Exception:
+                        pass
+                
+                m_name = months_names[curr_month]
+                if not bday_this_month:
+                    reply(f"🎈 Tidak ada karyawan yang ulang tahun di bulan {m_name}.")
+                else:
+                    user_list = "\n".join([f"• {name}" for name in bday_this_month])
+                    reply(f"🎂 <b>Karyawan yang ulang tahun di bulan {m_name}:</b>\n{user_list}")
+
+            elif text.startswith('/mylink'):
+                is_group = False
                 if not is_custom:
                     chat_obj = message.get('chat', {})
                     if chat_obj.get('type') in ('group', 'supergroup'):
-                        group_title = chat_obj.get('title', '') or ''
-                        group_info = f"\n\n👥 <b>Group:</b> {html.escape(group_title)} (ID: <code>{chat_id}</code>)"
+                        is_group = True
                 
-                reply(
-                    f"Halo {user_display}! Selamat datang di Telegram Attendance Bot HIVE.{group_info}\n\n"
-                    "⚠️ <b>Alur Absensi Harian:</b>\n"
-                    "1. <b>Clock In:</b> Kirim Lokasi Anda (Send Location)\n"
-                    "2. <b>Rencana Kerja:</b> Kirim pesan <code>#PLAN [isi rencana minimal 10 karakter]</code>\n"
-                    "3. <b>Laporan Kemajuan:</b> Kirim pesan <code>#PROGRESS [isi laporan minimal 10 karakter]</code> (Hanya bisa dikirim setelah #PLAN sukses)\n"
-                    "4. <b>Clock Out:</b> Kirim Lokasi Anda kembali"
-                )
+                if is_group:
+                    reply(f"❌ {user_display}\nKirim pesan pribadi (Japri) ke saya dan ketik <code>/mylink</code> untuk mendapatkan link login Anda.")
+                else:
+                    portal_url = request.url_root.rstrip('/')
+                    reply(
+                        f"🔑 <b>Login Portal HIVE:</b>\n\n"
+                        f"Silakan login ke web portal HIVE menggunakan tautan berikut:\n"
+                        f"🔗 <a href='{portal_url}'>{portal_url}</a>\n\n"
+                        f"Gunakan Username Anda: <code>{user['username']}</code>"
+                    )
             else:
-                reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out, atau kirim pesan berisi #PLAN / #PROGRESS untuk memperbarui rencana/kemajuan kerja Anda.")
+                # Ignore unrecognized messages in group chats to avoid spam
+                is_group = False
+                if not is_custom:
+                    chat_obj = message.get('chat', {})
+                    if chat_obj.get('type') in ('group', 'supergroup'):
+                        is_group = True
+                if not is_group and text:
+                    reply("Perintah tidak dikenali. Silakan kirimkan lokasi Anda untuk melakukan Clock In / Clock Out, atau kirim pesan berisi #PLAN / #PROGRESS untuk memperbarui rencana/kemajuan kerja Anda.")
     except Exception as e:
         import traceback
         print(f"[Telegram Webhook Error] {str(e)}")
