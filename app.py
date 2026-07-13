@@ -2985,7 +2985,7 @@ _APP_PATH_MAP = [
 # Path yang bebas diakses tanpa cek app_access
 _APP_ACCESS_EXEMPT = {
     '/login', '/logout', '/static', '/mfa', '/portal/open',
-    '/reset-password', '/set-password',
+    '/reset-password', '/set-password', '/media/proxy',
 }
 
 @app.before_request
