@@ -14944,6 +14944,16 @@ def telegram_webhook():
         if not chat_id:
             print("[Telegram Webhook] Reply skipped: chat_id is empty or None")
             return
+        
+        # Only auto-delete for /birthday, /lapar, and /haus commands
+        is_target_command = False
+        if text:
+            clean_txt = text.strip().lower()
+            if clean_txt.startswith('/birthday') or clean_txt.startswith('/lapar') or clean_txt.startswith('/haus'):
+                is_target_command = True
+        if not is_target_command:
+            auto_delete = False
+
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         payload = {
             'chat_id': chat_id,

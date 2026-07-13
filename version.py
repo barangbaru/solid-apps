@@ -1,6 +1,7 @@
-VERSION = "2.2.86"
+VERSION = "2.2.87"
 RELEASE_DATE = "2026-07-13"
 RELEASE_NOTES = (
+    "v2.2.87: Membatasi fitur auto-delete chat Telegram webhook agar hanya berlaku untuk command /birthday, /lapar, dan /haus saja. "
     "v2.2.86: Mengubah CHATBOT_SYSTEM prompt untuk menyertakan relasi logis skema database Hive (belajar database) dan melarang AI menampilkan query SQL teknis/raw data kepada user (user POV). "
     "v2.2.85: Implementasi tool execute_sql_query pada AI Chatbot untuk query langsung ke database PostgreSQL, penambahan petunjuk prioritasi database pada system prompt, proteksi data rahasia (gaji, password), dan peningkatan limit loop tool-calling OpenAI dari 2 ke 5. "
     "v2.2.84: Memperbaiki akses media proxy (/media/proxy) agar dibebaskan dari pembatasan hak akses aplikasi, sehingga gambar resource BookingCore dapat dibuka secara publik dan oleh user non-superadmin. "
