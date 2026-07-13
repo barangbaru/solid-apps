@@ -10907,6 +10907,17 @@ def api_kinerja_divisi_data():
 
 CHATBOT_TOOLS = [
     {
+        "name": "execute_sql_query",
+        "description": "Execute a read-only SQL SELECT query on the PostgreSQL database to retrieve application data. Use this as the primary tool to answer any questions about tickets, projects, employees, assets, bookings, or statistics.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The SQL SELECT query to execute. Must be read-only and return no more than 50 rows. Use table joins if necessary."}
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "cari_tiket_support",
         "description": "Cari tiket support berdasarkan kata kunci subjek, nomor tiket, customer, atau status. Gunakan untuk pertanyaan tentang masalah/issue yang pernah dilaporkan.",
         "input_schema": {
@@ -10992,7 +11003,44 @@ CHATBOT_TOOLS = [
 def _chatbot_exec_tool(db, name, inp):
     """Eksekusi tool chatbot dan return hasil sebagai string."""
     try:
-        if name == 'cari_tiket_support':
+        if name == 'execute_sql_query':
+            query = inp.get('query', '').strip()
+            if not query:
+                return "Query kosong."
+            
+            clean_query = query.strip()
+            import re
+            # Remove multi-line comments
+            clean_query = re.sub(r'/\*.*?\*/', '', clean_query, flags=re.DOTALL)
+            # Remove single-line comments
+            clean_query = re.sub(r'--.*$', '', clean_query, flags=re.MULTILINE)
+            clean_query = clean_query.strip()
+            
+            clean_query_upper = clean_query.upper()
+            if not clean_query_upper.startswith('SELECT'):
+                return "Error: Hanya query SELECT (read-only) yang diizinkan."
+                
+            if any(w in clean_query_upper for w in ('SALARY', 'PASSWORD_HASH', 'RATE_MANDAYS')):
+                return "Error: Akses ditolak. Informasi sensitif (gaji, rate mandays, password hash) bersifat rahasia dan tidak dapat diakses."
+                
+            if 'LIMIT' not in clean_query_upper:
+                clean_query = clean_query.rstrip(';')
+                clean_query += " LIMIT 50"
+                
+            rows = db.execute(clean_query).fetchall()
+            if not rows:
+                return "Query berhasil dieksekusi, tetapi tidak mengembalikan baris data."
+                
+            out = []
+            keys = rows[0].keys()
+            out.append(" | ".join(keys))
+            out.append("-" * (len(keys) * 12))
+            for r in rows:
+                row_str = " | ".join(str(r[k]) if r[k] is not None else 'NULL' for k in keys)
+                out.append(row_str)
+            return "\n".join(out)
+
+        elif name == 'cari_tiket_support':
             kw = f"%{inp.get('keyword','')}%"
             st = inp.get('status','')
             lm = min(int(inp.get('limit', 5)), 20)
@@ -11210,9 +11258,22 @@ Hive modules: TalentCore (employees & evaluations), SupportCore (support tickets
 
 RULES:
 - LANGUAGE: Always reply in the SAME language the user used. If they write in Indonesian → reply in Indonesian. If English → reply in English. Detect from each message.
-- Use available tools to answer questions about application data.
-- For employee data: use 'cari_karyawan' for search, 'detail_karyawan' for probation status / work duration / contract details.
-- CONFIDENTIAL — NEVER show: salary, compensation components, personal evaluation scores.
+- Prioritize using the 'execute_sql_query' tool to query the PostgreSQL database directly for any questions regarding application data (such as tickets, projects, tasks, employees, assets, licenses, bookings, or statistics).
+- Do not make assumptions; write a SELECT query to get the exact data.
+- DATABASE TABLES & COLUMNS:
+  * users: id, username, full_name, role, is_active, email
+  * employees: id, name, jabatan, divisi, level, employment_type, contract_start, contract_end, is_active, email, phone, telegram_id
+  * sc_tickets: id, ticket_no, subject, description, customer_id, support_type_id, priority, status, reported_at, resolved_at, solution_note
+  * sc_customers: id, name, code, is_active
+  * sc_support_types: id, name, is_active
+  * pc_projects: id, code, name, description, status, start_date, end_date
+  * pc_tasks: id, project_id, title, description, status, priority, assigned_to (references employees.id), due_date
+  * ac_assets: id, device_type, brand, asset_tag, serial_number, status, condition, employee_id (references employees.id), manual_employee_name, notes
+  * ac_infrastructure: id, device_type, brand, model, serial_number, location, status, nickname, description
+  * ac_licenses: id, software_name, license_type, version, max_seats, is_active, notes
+  * bk_resources: id, name, type ('room' or 'vehicle'), subtype, capacity, description, location, color, is_active
+  * bk_bookings: id, resource_id, title, purpose, booked_by (references users.id), start_dt, end_dt, status ('confirmed' or 'cancelled')
+- CONFIDENTIAL — NEVER show: salary, compensation components, rate_mandays, password hashes, or personal evaluation scores. Queries containing 'employee_salary' or 'salary' or 'rate_mandays' or 'password_hash' will be blocked by the system.
 - For questions outside app scope, use your general knowledge.
 - Keep answers concise and direct; use bullet points when listing multiple items.
 """
@@ -11311,7 +11372,7 @@ def _chatbot_call_openai(api_key, model, messages, system, tools_oa, base_url=No
             kwargs['tool_choice'] = 'auto'
         return client.chat.completions.create(**kwargs)
 
-    for _ in range(2):
+    for _ in range(5):
         try:
             resp = _call_once(use_tools)
         except Exception as e:

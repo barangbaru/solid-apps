@@ -1,6 +1,7 @@
-VERSION = "2.2.84"
+VERSION = "2.2.85"
 RELEASE_DATE = "2026-07-13"
 RELEASE_NOTES = (
+    "v2.2.85: Implementasi tool execute_sql_query pada AI Chatbot untuk query langsung ke database PostgreSQL, penambahan petunjuk prioritasi database pada system prompt, proteksi data rahasia (gaji, password), dan peningkatan limit loop tool-calling OpenAI dari 2 ke 5. "
     "v2.2.84: Memperbaiki akses media proxy (/media/proxy) agar dibebaskan dari pembatasan hak akses aplikasi, sehingga gambar resource BookingCore dapat dibuka secara publik dan oleh user non-superadmin. "
     "v2.2.83: Menambahkan native WhatsApp webhook endpoint (/whatsapp/webhook) yang kompatibel dengan OpenWA REST API HIVE untuk mendukung absensi share location, hashtag plan/progress, dan command info otomatis di WhatsApp. "
     "v2.2.82: Menambahkan koordinat GPS asli di dalam kurung pada lokasi tagging, memperbaiki response return value JSON pada endpoint admin approval untuk mencegah pesan 'sesi berakhir' palsu, dan menambahkan toleransi parsing format jam kerja HH:MM tanpa detik. "
