@@ -6070,12 +6070,53 @@ def emp_edit(emp_id):
 @superadmin_required
 def emp_delete(emp_id):
     db = get_db()
-    emp = db.execute('SELECT name FROM employees WHERE id=?', (emp_id,)).fetchone()
+    emp = db.execute('SELECT name, user_id FROM employees WHERE id=?', (emp_id,)).fetchone()
     if emp:
         db.execute('UPDATE employees SET is_active=0 WHERE id=?', (emp_id,))
+        if emp['user_id']:
+            db.execute('UPDATE users SET is_active=0 WHERE id=?', (emp['user_id'],))
         db.commit()
         flash(f'Karyawan {emp["name"]} dinonaktifkan', 'warning')
     return redirect(url_for('index'))
+
+@app.route('/emp/bulk-deactivate', methods=['POST'])
+@superadmin_required
+def emp_bulk_deactivate():
+    db = get_db()
+    ids_str = request.form.get('ids', '')
+    if not ids_str:
+        flash('Tidak ada karyawan yang dipilih.', 'warning')
+        return redirect(url_for('karyawan'))
+        
+    try:
+        emp_ids = [int(x.strip()) for x in ids_str.split(',') if x.strip()]
+    except ValueError:
+        flash('ID karyawan tidak valid.', 'danger')
+        return redirect(url_for('karyawan'))
+        
+    if not emp_ids:
+        flash('Tidak ada karyawan yang dipilih.', 'warning')
+        return redirect(url_for('karyawan'))
+        
+    # Get names of deactivated employees and user IDs
+    placeholders = ','.join('?' for _ in emp_ids)
+    rows = db.execute(f'SELECT name, user_id FROM employees WHERE id IN ({placeholders})', emp_ids).fetchall()
+    
+    names = [r['name'] for r in rows]
+    user_ids = [r['user_id'] for r in rows if r['user_id']]
+    
+    # Update employees
+    db.execute(f'UPDATE employees SET is_active=0 WHERE id IN ({placeholders})', emp_ids)
+    
+    # Update linked users
+    if user_ids:
+        user_placeholders = ','.join('?' for _ in user_ids)
+        db.execute(f'UPDATE users SET is_active=0 WHERE id IN ({user_placeholders})', user_ids)
+        
+    db.commit()
+    
+    flash(f'Berhasil menonaktifkan {len(names)} karyawan: {", ".join(names)}', 'warning')
+    return redirect(url_for('karyawan'))
 
 # ─── Import Excel: Karyawan & Gaji ────────────────────────────────────────────
 

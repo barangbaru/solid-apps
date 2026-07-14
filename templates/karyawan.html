@@ -5,6 +5,11 @@
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h5 class="fw-bold mb-0"><i class="bi bi-people-fill text-primary"></i> Manajemen Karyawan</h5>
   <div class="d-flex gap-2 flex-wrap">
+    {% if current_user and current_user.role == 'superadmin' %}
+    <button id="btnBulkDeactivate" class="btn btn-danger btn-sm d-none" onclick="triggerBulkDeactivate()">
+      <i class="bi bi-person-x me-1"></i> Nonaktifkan Terpilih (<span id="selectedCount">0</span>)
+    </button>
+    {% endif %}
     {% if 'manage_employees' in user_perms %}
     <a href="/emp/import/template" class="btn btn-outline-success btn-sm">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>Template Import
@@ -156,6 +161,11 @@
         <table class="table table-hover table-sm mb-0">
           <thead class="table-light">
             <tr>
+              {% if current_user and current_user.role == 'superadmin' %}
+              <th class="text-center" style="width: 40px;">
+                <input type="checkbox" id="bulk-select-all-kontrak" onchange="toggleSelectAll('kontrak')">
+              </th>
+              {% endif %}
               <th>Nama</th>
               <th>Divisi / Jabatan</th>
               <th class="text-center">Mulai Kontrak</th>
@@ -182,6 +192,11 @@
                 {% set row_class = '' %}{% set badge_class = 'bg-success' %}{% set status_text = 'AKTIF' %}
               {% endif %}
             <tr class="{{ row_class }}">
+              {% if current_user and current_user.role == 'superadmin' %}
+              <td class="text-center">
+                <input type="checkbox" class="emp-select-cb" value="{{ emp.id }}" data-name="{{ emp.name }}" onchange="updateSelectedCount()">
+              </td>
+              {% endif %}
               <td>
                 <a href="/emp/{{ emp.id }}/edit" class="fw-semibold text-decoration-none">{{ emp.name }}</a>
                 <div class="text-muted small">{{ emp.level }}</div>
@@ -271,6 +286,11 @@
         <table class="table table-hover table-sm mb-0">
           <thead class="table-light">
             <tr>
+              {% if current_user and current_user.role == 'superadmin' %}
+              <th class="text-center" style="width: 40px;">
+                <input type="checkbox" id="bulk-select-all-tetap" onchange="toggleSelectAll('tetap')">
+              </th>
+              {% endif %}
               <th>Nama</th>
               <th>Divisi</th>
               <th>Jabatan / Level</th>
@@ -285,13 +305,18 @@
               {% if emp.divisi != current_divisi.val %}
                 {% set current_divisi.val = emp.divisi %}
                 <tr class="table-light">
-                  <td colspan="6" class="fw-bold text-primary py-1 px-3">
+                  <td colspan="{% if current_user and current_user.role == 'superadmin' %}7{% else %}6{% endif %}" class="fw-bold text-primary py-1 px-3">
                     <i class="bi bi-people-fill me-1"></i>{{ emp.divisi }}
                   </td>
                 </tr>
               {% endif %}
               {% set eu = emp_user_map.get(emp.id) %}
             <tr>
+              {% if current_user and current_user.role == 'superadmin' %}
+              <td class="text-center">
+                <input type="checkbox" class="emp-select-cb" value="{{ emp.id }}" data-name="{{ emp.name }}" onchange="updateSelectedCount()">
+              </td>
+              {% endif %}
               <td>
                 <a href="/emp/{{ emp.id }}/edit" class="fw-semibold text-decoration-none">{{ emp.name }}</a>
               </td>
@@ -608,6 +633,63 @@ function openTriggerReview(empId, empName, defaultPeriode) {
   document.getElementById('triggerPeriode').value = defaultPeriode || new Date().getFullYear();
   document.getElementById('formTriggerReview').action = '/emp/' + empId + '/trigger-review';
   new bootstrap.Modal(document.getElementById('triggerReviewModal')).show();
+}
+
+function toggleSelectAll(tabType) {
+  const masterCb = document.getElementById('bulk-select-all-' + tabType);
+  const targetTable = document.getElementById('tab-' + tabType);
+  const checkboxes = targetTable.querySelectorAll('.emp-select-cb');
+  checkboxes.forEach(cb => {
+    cb.checked = masterCb.checked;
+  });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const selectedCbs = document.querySelectorAll('.emp-select-cb:checked');
+  const count = selectedCbs.length;
+  const btn = document.getElementById('btnBulkDeactivate');
+  const label = document.getElementById('selectedCount');
+  
+  if (btn && label) {
+    label.textContent = count;
+    if (count > 0) {
+      btn.classList.remove('d-none');
+    } else {
+      btn.classList.add('d-none');
+    }
+  }
+}
+
+function triggerBulkDeactivate() {
+  const selectedCbs = document.querySelectorAll('.emp-select-cb:checked');
+  if (selectedCbs.length === 0) {
+    alert('Pilih karyawan yang ingin dinonaktifkan.');
+    return;
+  }
+  
+  const ids = [];
+  const names = [];
+  selectedCbs.forEach(cb => {
+    ids.push(cb.value);
+    names.push(cb.getAttribute('data-name'));
+  });
+  
+  const confirmMsg = `Apakah Anda yakin ingin menonaktifkan ${ids.length} karyawan berikut?\n\n- ` + names.join('\n- ') + `\n\nAkun aplikasi yang terhubung juga akan dinonaktifkan.`;
+  if (confirm(confirmMsg)) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/emp/bulk-deactivate';
+    
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'ids';
+    input.value = ids.join(',');
+    
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+  }
 }
 </script>
 {% endblock %}
