@@ -1866,6 +1866,7 @@ def _seed_menus(db):
             {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Cuti", "url": "/attendance/leave", "icon": "calendar-event", "required_permission": "at_view", "sort_order": 2},
             {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Pengajuan Lembur", "url": "/attendance/overtime", "icon": "clock-history", "required_permission": "at_view", "sort_order": 3},
             {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Koreksi Absen", "url": "/attendance/correction", "icon": "patch-exclamation", "required_permission": "at_view", "sort_order": 4},
+            {"app_slug": "attendance", "parent_title": "Kehadiran Saya", "title": "Laporan Kehadiran", "url": "/attendance/report", "icon": "file-earmark-bar-graph", "required_permission": "at_view", "sort_order": 5},
             
             {"app_slug": "attendance", "parent_title": None, "title": "Manajemen", "url": "#", "icon": "", "required_permission": "at_manage", "sort_order": 2},
             {"app_slug": "attendance", "parent_title": "Manajemen", "title": "Approval Console", "url": "/attendance/admin/approvals", "icon": "check2-square", "required_permission": "at_manage", "sort_order": 1},
@@ -1887,6 +1888,16 @@ def _seed_menus(db):
                     db.execute('''INSERT INTO app_menus (app_slug, parent_id, title, url, icon, required_permission, sort_order, is_active)
                                         VALUES (?, ?, ?, ?, ?, ?, ?, 1)''',
                                      (m['app_slug'], pid, m['title'], m['url'], m['icon'], m['required_permission'], m['sort_order']))
+
+    # Dynamic insertion for existing databases to add Laporan Kehadiran menu
+    chk = db.execute("SELECT id FROM app_menus WHERE app_slug='attendance' AND url='/attendance/report'").fetchone()
+    if not chk:
+        parent = db.execute("SELECT id FROM app_menus WHERE app_slug='attendance' AND title='Kehadiran Saya' AND parent_id IS NULL").fetchone()
+        if parent:
+            db.execute('''
+                INSERT INTO app_menus (app_slug, parent_id, title, url, icon, required_permission, sort_order, is_active)
+                VALUES ('attendance', ?, 'Laporan Kehadiran', '/attendance/report', 'file-earmark-bar-graph', 'at_view', 5, 1)
+            ''', (parent['id'],))
 
     # Re-seed role defaults for any missing relationships (always run this to sync defaults!)
     all_db_menus = db.execute('SELECT id, required_permission, app_slug FROM app_menus').fetchall()
@@ -14873,6 +14884,372 @@ def at_approve_action(type, id):
     db.commit()
     return jsonify({'ok': True, 'msg': 'Persetujuan berhasil diproses'})
     
+@app.route('/attendance/report')
+@login_required
+def at_report():
+    if not at_require('at_view'):
+        flash('Anda tidak memiliki akses ke AttendanceCore.', 'danger')
+        return redirect(url_for('portal'))
+    
+    session['active_app'] = 'attendance'
+    db = get_db()
+    
+    # Range parameters
+    from datetime import datetime, timedelta
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    default_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    
+    start_date = request.args.get('start_date', default_start)
+    end_date = request.args.get('end_date', today_str)
+    
+    # Permission checks
+    is_mgr = at_require('at_manage')
+    
+    # Filter employee
+    selected_user_id = request.args.get('user_id', '')
+    if not is_mgr:
+        # Normal user can only see their own logs
+        selected_user_id = str(session['user_id'])
+    
+    # Fetch active employees for dropdown filter if admin/manager
+    employees = []
+    if is_mgr:
+        employees = db.execute(
+            'SELECT id, full_name, username FROM users WHERE is_active = 1 ORDER BY full_name'
+        ).fetchall()
+        
+    # Fetch attendance logs
+    query = '''
+        SELECT a.*, u.full_name as employee_name, u.username as telegram_username
+        FROM attendance a
+        JOIN users u ON a.user_id = u.id
+        WHERE a.date >= ? AND a.date <= ?
+    '''
+    params = [start_date, end_date]
+    if selected_user_id:
+        query += ' AND a.user_id = ?'
+        params.append(int(selected_user_id))
+        
+    query += ' ORDER BY a.date DESC, a.clock_in DESC'
+    rows = db.execute(query, params).fetchall()
+    
+    # Format rows
+    attendance_list = []
+    for row in rows:
+        r = dict(row)
+        # Work hours duration
+        if r['clock_in'] and r['clock_out']:
+            try:
+                t1_str = r['clock_in']
+                t2_str = r['clock_out']
+                t1 = datetime.strptime(t1_str, '%H:%M') if len(t1_str.split(':')) == 2 else datetime.strptime(t1_str, '%H:%M:%S')
+                t2 = datetime.strptime(t2_str, '%H:%M') if len(t2_str.split(':')) == 2 else datetime.strptime(t2_str, '%H:%M:%S')
+                diff = t2 - t1
+                hours = diff.total_seconds() / 3600.0
+                r['work_hours'] = f"{hours:.2f} jam"
+            except Exception:
+                r['work_hours'] = '-'
+        else:
+            r['work_hours'] = '-'
+            
+        # Group Name / Sumber Absensi
+        source_in = r['notes_in'] or ''
+        group_name = "-"
+        if "Telegram Group:" in source_in:
+            parts = source_in.split("Telegram Group:")
+            if len(parts) > 1:
+                group_name = parts[1].split("(ID:")[0].strip()
+        elif "Telegram Japri" in source_in:
+            group_name = "Telegram Japri"
+        elif "WhatsApp Group:" in source_in:
+            parts = source_in.split("WhatsApp Group:")
+            if len(parts) > 1:
+                group_name = "WA Group: " + parts[1].split("(ID:")[0].strip()
+        elif "WhatsApp Japri" in source_in:
+            group_name = "WA Japri"
+        elif "Web" in source_in or "Web Attendance" in source_in:
+            group_name = "Web Portal"
+            
+        r['group_name'] = group_name
+        attendance_list.append(r)
+        
+    return render_template(
+        'at_report.html',
+        attendance=attendance_list,
+        start_date=start_date,
+        end_date=end_date,
+        employees=employees,
+        selected_user_id=selected_user_id,
+        is_mgr=is_mgr
+    )
+
+@app.route('/attendance/report/export/excel')
+@login_required
+def at_report_export_excel():
+    if not at_require('at_view'):
+        flash('Anda tidak memiliki akses ke AttendanceCore.', 'danger')
+        return redirect(url_for('portal'))
+        
+    db = get_db()
+    from datetime import datetime, timedelta
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    import io
+    
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    default_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    
+    start_date = request.args.get('start_date', default_start)
+    end_date = request.args.get('end_date', today_str)
+    
+    is_mgr = at_require('at_manage')
+    selected_user_id = request.args.get('user_id', '')
+    if not is_mgr:
+        selected_user_id = str(session['user_id'])
+        
+    # Fetch user details if specific filter applied
+    target_emp_name = "Semua Karyawan"
+    if selected_user_id:
+        user_row = db.execute('SELECT full_name FROM users WHERE id=?', (int(selected_user_id),)).fetchone()
+        if user_row:
+            target_emp_name = user_row['full_name']
+            
+    # Fetch logs
+    query = '''
+        SELECT a.*, u.full_name as employee_name, u.username as telegram_username
+        FROM attendance a
+        JOIN users u ON a.user_id = u.id
+        WHERE a.date >= ? AND a.date <= ?
+    '''
+    params = [start_date, end_date]
+    if selected_user_id:
+        query += ' AND a.user_id = ?'
+        params.append(int(selected_user_id))
+        
+    query += ' ORDER BY a.date DESC, a.clock_in DESC'
+    rows = db.execute(query, params).fetchall()
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Log Kehadiran"
+    
+    # Styling
+    BLUE_DARK = 'FF1E293B' # Slate 800
+    BLUE_LIGHT = 'FFF1F5F9' # Slate 100
+    WHITE = 'FFFFFFFF'
+    BORDER_COLOR = 'FFCBD5E1' # Slate 300
+    
+    thin_border = Border(
+        left=Side(style='thin', color=BORDER_COLOR),
+        right=Side(style='thin', color=BORDER_COLOR),
+        top=Side(style='thin', color=BORDER_COLOR),
+        bottom=Side(style='thin', color=BORDER_COLOR)
+    )
+    
+    # Title Block
+    ws.merge_cells('A1:J1')
+    ws['A1'] = "LAPORAN KEHADIRAN KARYAWAN"
+    ws['A1'].font = Font(size=14, bold=True, color='FF0F172A')
+    ws['A1'].alignment = Alignment(horizontal='center')
+    
+    ws['A2'] = "Karyawan:"
+    ws['B2'] = target_emp_name
+    ws['A2'].font = Font(bold=True)
+    
+    ws['A3'] = "Periode:"
+    ws['B3'] = f"{start_date} s/d {end_date}"
+    ws['A3'].font = Font(bold=True)
+    
+    # Headers
+    headers = [
+        "No", "Tanggal", "Nama Karyawan", "Clock In", "Clock Out", 
+        "Durasi Kerja", "Status", "Lokasi Clock In", "Lokasi Clock Out", "Sumber"
+    ]
+    
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=5, column=col_num)
+        cell.value = header
+        cell.font = Font(bold=True, color=WHITE)
+        cell.fill = PatternFill('solid', fgColor=BLUE_DARK)
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = thin_border
+        
+    row_num = 6
+    for idx, row in enumerate(rows, 1):
+        r = dict(row)
+        # Format Work hours
+        work_hours = '-'
+        if r['clock_in'] and r['clock_out']:
+            try:
+                t1_str = r['clock_in']
+                t2_str = r['clock_out']
+                t1 = datetime.strptime(t1_str, '%H:%M') if len(t1_str.split(':')) == 2 else datetime.strptime(t1_str, '%H:%M:%S')
+                t2 = datetime.strptime(t2_str, '%H:%M') if len(t2_str.split(':')) == 2 else datetime.strptime(t2_str, '%H:%M:%S')
+                diff = t2 - t1
+                hours = diff.total_seconds() / 3600.0
+                work_hours = f"{hours:.2f} jam"
+            except Exception:
+                pass
+                
+        # Format Source
+        source_in = r['notes_in'] or ''
+        group_name = "-"
+        if "Telegram Group:" in source_in:
+            parts = source_in.split("Telegram Group:")
+            if len(parts) > 1:
+                group_name = parts[1].split("(ID:")[0].strip()
+        elif "Telegram Japri" in source_in:
+            group_name = "Telegram Japri"
+        elif "WhatsApp Group:" in source_in:
+            parts = source_in.split("WhatsApp Group:")
+            if len(parts) > 1:
+                group_name = "WA Group: " + parts[1].split("(ID:")[0].strip()
+        elif "WhatsApp Japri" in source_in:
+            group_name = "WA Japri"
+        elif "Web" in source_in or "Web Attendance" in source_in:
+            group_name = "Web Portal"
+            
+        vals = [
+            idx,
+            r['date'],
+            r['employee_name'],
+            r['clock_in'] or '-',
+            r['clock_out'] or '-',
+            work_hours,
+            (r['status'] or '').upper(),
+            r['location_in'] or '-',
+            r['location_out'] or '-',
+            group_name
+        ]
+        
+        for col_num, val in enumerate(vals, 1):
+            cell = ws.cell(row=row_num, column=col_num)
+            cell.value = val
+            cell.border = thin_border
+            if col_num in (1, 2, 4, 5, 6, 7):
+                cell.alignment = Alignment(horizontal='center')
+            else:
+                cell.alignment = Alignment(horizontal='left')
+                
+            # Alternate row background
+            if row_num % 2 == 1:
+                cell.fill = PatternFill('solid', fgColor=BLUE_LIGHT)
+        row_num += 1
+        
+    # Auto-adjust column widths
+    for col in ws.columns:
+        max_len = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            if cell.row >= 5 and cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 10)
+        
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    
+    target_name_slug = target_emp_name.replace(" ", "_")
+    fname = f"Log_Kehadiran_{target_name_slug}_{start_date}_to_{end_date}.xlsx"
+    return send_file(
+        out,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=fname
+    )
+
+@app.route('/attendance/report/export/pdf')
+@login_required
+def at_report_export_pdf():
+    if not at_require('at_view'):
+        flash('Anda tidak memiliki akses ke AttendanceCore.', 'danger')
+        return redirect(url_for('portal'))
+        
+    db = get_db()
+    from datetime import datetime, timedelta
+    
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    default_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    
+    start_date = request.args.get('start_date', default_start)
+    end_date = request.args.get('end_date', today_str)
+    
+    is_mgr = at_require('at_manage')
+    selected_user_id = request.args.get('user_id', '')
+    if not is_mgr:
+        selected_user_id = str(session['user_id'])
+        
+    target_emp_name = "Semua Karyawan"
+    if selected_user_id:
+        user_row = db.execute('SELECT full_name FROM users WHERE id=?', (int(selected_user_id),)).fetchone()
+        if user_row:
+            target_emp_name = user_row['full_name']
+            
+    # Fetch logs
+    query = '''
+        SELECT a.*, u.full_name as employee_name, u.username as telegram_username
+        FROM attendance a
+        JOIN users u ON a.user_id = u.id
+        WHERE a.date >= ? AND a.date <= ?
+    '''
+    params = [start_date, end_date]
+    if selected_user_id:
+        query += ' AND a.user_id = ?'
+        params.append(int(selected_user_id))
+        
+    query += ' ORDER BY a.date DESC, a.clock_in DESC'
+    rows = db.execute(query, params).fetchall()
+    
+    # Format rows
+    attendance_list = []
+    for row in rows:
+        r = dict(row)
+        # Work hours duration
+        if r['clock_in'] and r['clock_out']:
+            try:
+                t1_str = r['clock_in']
+                t2_str = r['clock_out']
+                t1 = datetime.strptime(t1_str, '%H:%M') if len(t1_str.split(':')) == 2 else datetime.strptime(t1_str, '%H:%M:%S')
+                t2 = datetime.strptime(t2_str, '%H:%M') if len(t2_str.split(':')) == 2 else datetime.strptime(t2_str, '%H:%M:%S')
+                diff = t2 - t1
+                hours = diff.total_seconds() / 3600.0
+                r['work_hours'] = f"{hours:.2f} jam"
+            except Exception:
+                r['work_hours'] = '-'
+        else:
+            r['work_hours'] = '-'
+            
+        # Group Name / Sumber Absensi
+        source_in = r['notes_in'] or ''
+        group_name = "-"
+        if "Telegram Group:" in source_in:
+            parts = source_in.split("Telegram Group:")
+            if len(parts) > 1:
+                group_name = parts[1].split("(ID:")[0].strip()
+        elif "Telegram Japri" in source_in:
+            group_name = "Telegram Japri"
+        elif "WhatsApp Group:" in source_in:
+            parts = source_in.split("WhatsApp Group:")
+            if len(parts) > 1:
+                group_name = "WA Group: " + parts[1].split("(ID:")[0].strip()
+        elif "WhatsApp Japri" in source_in:
+            group_name = "WA Japri"
+        elif "Web" in source_in or "Web Attendance" in source_in:
+            group_name = "Web Portal"
+            
+        r['group_name'] = group_name
+        attendance_list.append(r)
+        
+    now_str = datetime.now().strftime('%d %b %Y %H:%M')
+    return render_template(
+        'at_report_print.html',
+        attendance=attendance_list,
+        start_date=start_date,
+        end_date=end_date,
+        target_emp_name=target_emp_name,
+        now=now_str
+    )
+
 @app.route('/telegram/webhook', methods=['POST'])
 def telegram_webhook():
     db = get_db()

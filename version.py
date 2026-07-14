@@ -1,6 +1,7 @@
-VERSION = "2.2.88"
+VERSION = "2.2.89"
 RELEASE_DATE = "2026-07-14"
 RELEASE_NOTES = (
+    "v2.2.89: Penambahan menu Laporan Kehadiran mandiri di AttendanceCore dengan filter rentang tanggal, filter karyawan (untuk admin/manager), serta export data ke format Excel dan cetak PDF. "
     "v2.2.88: Penyesuaian format respon Telegram webhook untuk menyertakan nama profil Telegram di dalam tanda kurung serta menyertakan lokasi tagging dan imbauan pembuatan PLAN dan PROGRESS pada respon check-in. "
     "v2.2.87: Membatasi fitur auto-delete chat Telegram webhook agar hanya berlaku untuk command /birthday, /lapar, dan /haus saja. "
     "v2.2.86: Mengubah CHATBOT_SYSTEM prompt untuk menyertakan relasi logis skema database Hive (belajar database) dan melarang AI menampilkan query SQL teknis/raw data kepada user (user POV). "

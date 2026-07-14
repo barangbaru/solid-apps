@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laporan Kehadiran Karyawan — {{ target_emp_name }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #111; background: #fff; }
+  .page { max-width: 1000px; margin: 0 auto; padding: 20px 30px; }
+
+  /* Print controls — tidak ikut cetak */
+  .print-bar {
+    background: #1e293b; color: #fff; padding: 10px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .print-bar button {
+    background: #8b5cf6; color: #fff; border: none; padding: 6px 18px;
+    border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 10pt;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .print-bar button:hover { background: #7c3aed; }
+  
+  @media print {
+    .print-bar { display: none !important; }
+    .page { padding: 0; }
+    @page { size: landscape; margin: 1.5cm; }
+  }
+
+  h1 { font-size: 16pt; text-align: center; margin-bottom: 4px; color: #0f172a; }
+  h2 { font-size: 11pt; color: #1e293b; padding-bottom: 3px; margin: 12px 0 6px; font-weight: bold; }
+
+  .divider { border: none; border-top: 2px solid #334155; margin: 8px 0 16px; }
+  .sub-title { text-align: center; font-size: 9.5pt; color: #475569; margin-bottom: 12px; }
+
+  .meta-info { margin-bottom: 15px; font-size: 9.5pt; line-height: 1.5; }
+  .meta-info span { display: inline-block; width: 120px; font-weight: bold; color: #475569; }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+  th, td { border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 8.5pt; vertical-align: middle; }
+  th { background: #f1f5f9; font-weight: bold; text-align: center; color: #1e293b; }
+  
+  .text-center { text-align: center; }
+  .fw-bold { font-weight: bold; }
+  
+  .badge {
+    display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 8pt; font-weight: bold;
+    text-transform: uppercase;
+  }
+  .badge-success { background: #d1e7dd; color: #0f5132; }
+  .badge-warning { background: #fff3cd; color: #664d03; }
+  .badge-secondary { background: #e2e3e5; color: #41464b; }
+
+  .plan-progress-box {
+    margin-top: 4px; padding: 4px 6px; background: #f8fafc; border-left: 2px solid #94a3b8; font-size: 8pt; color: #334155;
+    white-space: pre-wrap; word-break: break-word;
+  }
+
+  .footer { margin-top: 30px; font-size: 8pt; color: #64748b; text-align: center; border-top: 1px solid #e2e3e5; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <span>Preview Cetak — Laporan Kehadiran Karyawan (<strong>{{ target_emp_name }}</strong>)</span>
+  <button onclick="window.print()">🖨 Cetak / Simpan PDF</button>
+</div>
+
+<div class="page">
+  <!-- HEADER -->
+  <h1>LAPORAN KEHADIRAN KARYAWAN</h1>
+  <div class="sub-title">Hive AttendanceCore System</div>
+  <hr class="divider">
+
+  <!-- META DATA -->
+  <div class="meta-info">
+    <div><span>Nama Karyawan</span>: {{ target_emp_name }}</div>
+    <div><span>Periode Laporan</span>: {{ start_date }} s/d {{ end_date }}</div>
+    <div><span>Tanggal Cetak</span>: {{ now }}</div>
+  </div>
+
+  <!-- TABLE -->
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 4%;">No</th>
+        <th style="width: 10%;">Tanggal</th>
+        <th style="width: 15%;">Nama Karyawan</th>
+        <th style="width: 7%;">In</th>
+        <th style="width: 7%;">Out</th>
+        <th style="width: 10%;">Durasi Kerja</th>
+        <th style="width: 9%;">Status</th>
+        <th style="width: 15%;">Lokasi</th>
+        <th style="width: 23%;">PLAN & PROGRESS</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if attendance %}
+        {% for r in attendance %}
+        <tr>
+          <td class="text-center">{{ loop.index }}</td>
+          <td class="fw-bold text-center">{{ r.date }}</td>
+          <td>{{ r.employee_name }}</td>
+          <td class="text-center fw-bold">{{ r.clock_in or '-' }}</td>
+          <td class="text-center fw-bold">{{ r.clock_out or '-' }}</td>
+          <td class="text-center fw-bold" style="color: #2563eb;">{{ r.work_hours }}</td>
+          <td class="text-center">
+            {% if r.status == 'present' %}
+              <span class="badge badge-success">Hadir</span>
+            {% elif r.status == 'late' %}
+              <span class="badge badge-warning">Terlambat</span>
+            {% else %}
+              <span class="badge badge-secondary">{{ r.status or 'Hadir' }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="fw-bold" style="font-size: 8pt;">In: <span style="font-weight: normal; color: #475569;">{{ r.location_in or '-' }}</span></div>
+            <div class="fw-bold" style="font-size: 8pt; margin-top: 2px;">Out: <span style="font-weight: normal; color: #475569;">{{ r.location_out or '-' }}</span></div>
+          </td>
+          <td>
+            {% if r.plan %}
+              <div class="fw-bold" style="font-size: 7.5pt; color: #0284c7;">#PLAN:</div>
+              <div class="plan-progress-box" style="border-left-color: #0284c7;">{{ r.plan }}</div>
+            {% endif %}
+            {% if r.progress %}
+              <div class="fw-bold" style="font-size: 7.5pt; color: #16a34a; margin-top: 4px;">#PROGRESS:</div>
+              <div class="plan-progress-box" style="border-left-color: #16a34a;">{{ r.progress }}</div>
+            {% endif %}
+            {% if not r.plan and not r.progress %}
+              <span style="color: #94a3b8; font-style: italic; font-size: 8pt;">Tidak mengisi plan/progress</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr>
+          <td colspan="9" class="text-center" style="padding: 30px; color: #64748b; font-style: italic;">
+            Tidak ada data log kehadiran ditemukan untuk periode ini.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Dokumen ini digenerate secara otomatis oleh Sistem Hive AttendanceCore.
+  </div>
+</div>
+
+</body>
+</html>

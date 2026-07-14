@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+{% block title %}Laporan Kehadiran — AttendanceCore{% endblock %}
+{% block page_title %}<span class="breadcrumb-page">Laporan Kehadiran</span>{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div class="d-flex align-items-center gap-2">
+    <div style="width:38px;height:38px;border-radius:10px;background:#8b5cf6;display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-file-earmark-bar-graph text-white fs-5"></i>
+    </div>
+    <div>
+      <h5 class="fw-bold mb-0">Laporan Kehadiran</h5>
+      <div class="text-muted small">Log riwayat absensi dan jam kerja karyawan</div>
+    </div>
+  </div>
+  
+  <!-- Export Actions -->
+  <div class="dropdown">
+    <button class="btn btn-outline-primary dropdown-toggle fw-semibold" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-download me-1"></i> Export Laporan
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0" aria-labelledby="exportDropdown">
+      <li>
+        <a class="dropdown-item py-2" href="/attendance/report/export/excel?start_date={{ start_date }}&end_date={{ end_date }}&user_id={{ selected_user_id }}">
+          <i class="bi bi-file-earmark-excel text-success me-2"></i> Export Excel (.xlsx)
+        </a>
+      </li>
+      <li>
+        <a class="dropdown-item py-2" href="/attendance/report/export/pdf?start_date={{ start_date }}&end_date={{ end_date }}&user_id={{ selected_user_id }}" target="_blank">
+          <i class="bi bi-file-earmark-pdf text-danger me-2"></i> Cetak / Simpan PDF
+        </a>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<!-- Filters Card -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body">
+    <form method="GET" action="/attendance/report" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small fw-bold text-muted">Tanggal Mulai</label>
+        <input type="date" name="start_date" class="form-control form-control-sm" value="{{ start_date }}" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-bold text-muted">Tanggal Selesai</label>
+        <input type="date" name="end_date" class="form-control form-control-sm" value="{{ end_date }}" required>
+      </div>
+      
+      {% if is_mgr %}
+      <div class="col-md-4">
+        <label class="form-label small fw-bold text-muted">Karyawan</label>
+        <select name="user_id" class="form-select form-select-sm select2">
+          <option value="">— Semua Karyawan —</option>
+          {% for emp in employees %}
+          <option value="{{ emp.id }}" {% if selected_user_id == emp.id|string %}selected{% endif %}>
+            {{ emp.full_name }} {% if emp.username %}(@{{ emp.username }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      
+      <div class="col-md-2 d-grid">
+        <button type="submit" class="btn btn-primary btn-sm fw-bold">
+          <i class="bi bi-filter me-1"></i> Filter
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Log Data Card -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-white py-3 fw-bold border-bottom d-flex justify-content-between align-items-center">
+    <div>
+      <i class="bi bi-list-task text-primary me-1"></i> Data Log Kehadiran
+    </div>
+    <span class="badge bg-light text-dark border">{{ attendance|length }} Rekaman</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="text-center" style="width: 60px;">No</th>
+            <th style="width: 130px;">Tanggal</th>
+            {% if is_mgr %}
+            <th>Nama Karyawan</th>
+            {% endif %}
+            <th class="text-center" style="width: 100px;">Clock In</th>
+            <th class="text-center" style="width: 100px;">Clock Out</th>
+            <th class="text-center" style="width: 120px;">Durasi Kerja</th>
+            <th class="text-center" style="width: 110px;">Status</th>
+            <th style="width: 180px;">Sumber</th>
+            <th class="text-center" style="width: 100px;">Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if attendance %}
+            {% for r in attendance %}
+            <tr>
+              <td class="text-center text-muted small">{{ loop.index }}</td>
+              <td class="fw-bold text-dark">{{ r.date }}</td>
+              {% if is_mgr %}
+              <td>
+                <div class="fw-bold">{{ r.employee_name }}</div>
+                {% if r.telegram_username %}
+                <span class="text-muted small">@{{ r.telegram_username }}</span>
+                {% endif %}
+              </td>
+              {% endif %}
+              <td class="text-center">
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fw-bold fs-7">{{ r.clock_in or '--:--' }}</span>
+              </td>
+              <td class="text-center">
+                {% if r.clock_out %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 fw-bold fs-7">{{ r.clock_out }}</span>
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              <td class="text-center fw-semibold text-primary">{{ r.work_hours }}</td>
+              <td class="text-center">
+                {% if r.status == 'present' %}
+                  <span class="badge bg-success px-2 py-1">Hadir</span>
+                {% elif r.status == 'late' %}
+                  <span class="badge bg-warning text-dark px-2 py-1">Terlambat</span>
+                {% else %}
+                  <span class="badge bg-secondary px-2 py-1">{{ r.status or 'Hadir' }}</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ r.group_name }}</td>
+              <td class="text-center">
+                <button type="button" class="btn btn-outline-info btn-xs fw-bold px-2" data-bs-toggle="modal" data-bs-target="#detailModal{{ loop.index }}">
+                  <i class="bi bi-eye"></i> Detail
+                </button>
+              </td>
+            </tr>
+            
+            <!-- Detail Modal -->
+            <div class="modal fade" id="detailModal{{ loop.index }}" tabindex="-1" aria-labelledby="detailModalLabel{{ loop.index }}" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content border-0 shadow-lg">
+                  <div class="modal-header bg-light border-bottom">
+                    <h6 class="modal-title fw-bold text-dark" id="detailModalLabel{{ loop.index }}">
+                      <i class="bi bi-info-circle text-primary me-2"></i>Detail Kehadiran - {{ r.date }}
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body p-4">
+                    <div class="row g-3 mb-4">
+                      <div class="col-sm-6">
+                        <div class="p-3 bg-light rounded border-start border-success border-3 h-100">
+                          <div class="small fw-bold text-muted mb-1"><i class="bi bi-box-arrow-in-right me-1"></i>Clock In:</div>
+                          <div class="fw-bold fs-5 text-success mb-2">{{ r.clock_in or '--:--:--' }}</div>
+                          <div class="small text-dark"><i class="bi bi-geo-alt me-1"></i>Lokasi: {{ r.location_in or '-' }}</div>
+                          <div class="small text-muted mt-1" style="font-size: 0.75rem;"><i class="bi bi-hdd-network me-1"></i>Notes: {{ r.notes_in or '-' }}</div>
+                        </div>
+                      </div>
+                      <div class="col-sm-6">
+                        <div class="p-3 bg-light rounded border-start border-danger border-3 h-100">
+                          <div class="small fw-bold text-muted mb-1"><i class="bi bi-box-arrow-left me-1"></i>Clock Out:</div>
+                          <div class="fw-bold fs-5 text-danger mb-2">{{ r.clock_out or '--:--:--' }}</div>
+                          <div class="small text-dark"><i class="bi bi-geo-alt me-1"></i>Lokasi: {{ r.location_out or '-' }}</div>
+                          <div class="small text-muted mt-1" style="font-size: 0.75rem;"><i class="bi bi-hdd-network me-1"></i>Notes: {{ r.notes_out or '-' }}</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                      <div class="p-3 bg-light rounded border-start border-info border-3">
+                        <div class="small fw-bold text-muted mb-2"><i class="bi bi-journal-text me-1"></i>Rencana Kerja (#PLAN):</div>
+                        <p class="mb-0 text-dark small" style="white-space: pre-line;">{{ r.plan or 'Belum mengisi PLAN.' }}</p>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <div class="p-3 bg-light rounded border-start border-primary border-3">
+                        <div class="small fw-bold text-muted mb-2"><i class="bi bi-check2-circle me-1"></i>Kemajuan Kerja (#PROGRESS):</div>
+                        <p class="mb-0 text-dark small" style="white-space: pre-line;">{{ r.progress or 'Belum mengisi PROGRESS.' }}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="modal-footer bg-light border-top py-2">
+                    <button type="button" class="btn btn-secondary btn-sm px-3 fw-bold" data-bs-dismiss="modal">Tutup</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="{% if is_mgr %}9{% else %}8{% endif %}" class="text-center py-5 text-muted">
+                <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                Tidak ada data kehadiran ditemukan untuk periode ini.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
