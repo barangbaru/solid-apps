@@ -133,8 +133,55 @@
             </th>
           </tr>
         </thead>
+        {% macro render_group_total(group_name, group_list) %}
+          {% if group_list %}
+            <tr class="fw-bold bg-light subtotal-row" data-group="{{ group_name }}" style="font-size:.78rem;border-top:2px solid #ccc;border-bottom:2px solid #ccc;">
+              <td colspan="5" class="text-end pe-2 align-middle">SUBTOTAL {{ group_name | upper }}</td>
+              {% for col, code, label in salary_cols %}
+                {% set col_sum = namespace(val=0) %}
+                {% for emp in group_list %}{% set col_sum.val = col_sum.val + (emp[col] or 0) %}{% endfor %}
+                <td class="text-end text-muted small align-middle subtotal-cell" data-field="{{ col }}">{{ "{:,.0f}".format(col_sum.val) if col_sum.val else '—' }}</td>
+              {% endfor %}
+              
+              {# Total gross #}
+              {% set gross_sum = namespace(val=0) %}
+              {% for emp in group_list %}{% set gross_sum.val = gross_sum.val + salary_total(emp) %}{% endfor %}
+              <td class="text-end text-success align-middle subtotal-gross">{{ "{:,.0f}".format(gross_sum.val) if gross_sum.val else '—' }}</td>
+              
+              {# Prev gross #}
+              {% set prev_sum = namespace(val=0) %}
+              {% for emp in group_list %}
+                {% set pg = (emp.p_base_salary or 0)+(emp.p_al_001 or 0)+(emp.p_al_002 or 0)+(emp.p_al_003 or 0)+(emp.p_al_004 or 0) %}
+                {% set prev_sum.val = prev_sum.val + pg %}
+              {% endfor %}
+              <td class="text-end text-muted align-middle subtotal-prev" data-prev="{{ prev_sum.val }}">{{ "{:,.0f}".format(prev_sum.val) if prev_sum.val else '—' }}</td>
+              
+              {# % YoY delta #}
+              <td class="text-center align-middle subtotal-yoy">
+                {% if prev_sum.val and gross_sum.val %}
+                  {% set yoy = ((gross_sum.val - prev_sum.val) / prev_sum.val * 100) | round(1) %}
+                  <span class="badge {% if yoy > 0 %}bg-success{% elif yoy < 0 %}bg-danger{% else %}bg-secondary{% endif %}" style="font-size:.72rem">
+                    {% if yoy > 0 %}▲{% elif yoy < 0 %}▼{% endif %}{{ yoy | abs }}%
+                  </span>
+                {% else %}—{% endif %}
+              </td>
+              
+              <td class="align-middle"></td>{# % naik #}
+              <td class="align-middle"></td>{# bulan naik #}
+              
+              {# Proyeksi #}
+              {% set proj_sum = namespace(val=0) %}
+              {% for emp in group_list %}
+                {% set g = salary_total(emp) %}
+                {% set proj_sum.val = proj_sum.val + (g * (1 + (emp.increase_pct or 0) / 100)) %}
+              {% endfor %}
+              <td class="text-end text-primary align-middle subtotal-next">{{ "{:,.0f}".format(proj_sum.val | round | int) if proj_sum.val else '—' }}</td>
+            </tr>
+          {% endif %}
+        {% endmacro %}
+
         <tbody id="salaryBody">
-          {% set group_ns = namespace(cur_group='') %}
+          {% set group_ns = namespace(cur_group='', group_emps=[]) %}
           {% for emp in emps %}
             {% if emp.divisi == 'Telegram Core' %}
               {% set emp_group = 'Telegram Core' %}
@@ -142,6 +189,10 @@
               {% set emp_group = emp.employment_type | capitalize %}
             {% endif %}
             {% if emp_group != group_ns.cur_group %}
+              {% if group_ns.cur_group %}
+                {{ render_group_total(group_ns.cur_group, group_ns.group_emps) }}
+                {% set group_ns.group_emps = [] %}
+              {% endif %}
               {% set group_ns.cur_group = emp_group %}
               <tr class="group-header">
                 <td colspan="{{ 5 + salary_cols|length + 6 }}"
@@ -152,6 +203,7 @@
                 </td>
               </tr>
             {% endif %}
+            {% set _ = group_ns.group_emps.append(emp) %}
           {% set gross = salary_total(emp) %}
           {% set prev_gross = (emp.p_base_salary or 0) + (emp.p_al_001 or 0) + (emp.p_al_002 or 0) + (emp.p_al_003 or 0) + (emp.p_al_004 or 0) %}
           {% set inc_pct = emp.increase_pct or 0 %}
@@ -245,6 +297,9 @@
             Belum ada data karyawan untuk tahun {{ year }}. Klik "Buka Tahun" untuk membuat.
           </td></tr>
           {% endfor %}
+          {% if group_ns.cur_group %}
+            {{ render_group_total(group_ns.cur_group, group_ns.group_emps) }}
+          {% endif %}
         </tbody>
         <tfoot id="salaryFoot">
           <tr class="fw-bold" style="background:#f8f9fa;font-size:.8rem">
@@ -286,9 +341,9 @@
 {# ── Pre-compute semua angka yang dibutuhkan dashboard ── #}
 {% set d = namespace(
   cur_gross=0, prev_gross=0, next_proj=0,
-  kontrak_gross=0, tetap_gross=0,
-  kontrak_prev=0, tetap_prev=0,
-  kontrak_n=0, tetap_n=0,
+  kontrak_gross=0, tetap_gross=0, telegram_core_gross=0,
+  kontrak_prev=0, tetap_prev=0, telegram_core_prev=0,
+  kontrak_n=0, tetap_n=0, telegram_core_n=0,
   no_data=0, with_increase=0, no_increase=0,
   top_name='', top_gross=0,
   max_yoy_name='', max_yoy_pct=0,
@@ -301,7 +356,11 @@
   {% set d.cur_gross  = d.cur_gross  + g %}
   {% set d.prev_gross = d.prev_gross + pg %}
   {% set d.next_proj  = d.next_proj  + (g * (1 + (emp.increase_pct or 0) / 100)) %}
-  {% if emp.employment_type == 'kontrak' %}
+  {% if emp.divisi == 'Telegram Core' %}
+    {% set d.telegram_core_n     = d.telegram_core_n + 1 %}
+    {% set d.telegram_core_gross = d.telegram_core_gross + g %}
+    {% set d.telegram_core_prev  = d.telegram_core_prev + pg %}
+  {% elif emp.employment_type == 'kontrak' %}
     {% set d.kontrak_n     = d.kontrak_n + 1 %}
     {% set d.kontrak_gross = d.kontrak_gross + g %}
     {% set d.kontrak_prev  = d.kontrak_prev + pg %}
@@ -410,9 +469,13 @@
             <span><span class="badge bg-warning text-dark me-1">KONTRAK</span>{{ d.kontrak_n }} orang</span>
             <span class="fw-semibold">{{ "{:,.0f}".format(d.kontrak_gross) }}/bln</span>
           </div>
-          <div class="d-flex justify-content-between py-1">
+          <div class="d-flex justify-content-between py-1 border-bottom">
             <span><span class="badge bg-info text-dark me-1">TETAP</span>{{ d.tetap_n }} orang</span>
             <span class="fw-semibold">{{ "{:,.0f}".format(d.tetap_gross) }}/bln</span>
+          </div>
+          <div class="d-flex justify-content-between py-1">
+            <span><span class="badge text-white me-1" style="background-color:#8250df">TELEGRAM CORE</span>{{ d.telegram_core_n }} orang</span>
+            <span class="fw-semibold">{{ "{:,.0f}".format(d.telegram_core_gross) }}/bln</span>
           </div>
         </div>
       </div>
@@ -524,15 +587,16 @@
             </thead>
             <tbody>
               {% set rows_cmp = [
-                ('Kontrak', d.kontrak_n, d.kontrak_prev, d.kontrak_gross, 'warning'),
-                ('Tetap',   d.tetap_n,   d.tetap_prev,   d.tetap_gross,   'info'),
-                ('TOTAL',   total_emp,   d.prev_gross,    d.cur_gross,     'success'),
+                ('Kontrak', d.kontrak_n, d.kontrak_prev, d.kontrak_gross, 'background-color:#ffc107;color:#212529;'),
+                ('Tetap',   d.tetap_n,   d.tetap_prev,   d.tetap_gross,   'background-color:#0dcaf0;color:#212529;'),
+                ('Telegram Core', d.telegram_core_n, d.telegram_core_prev, d.telegram_core_gross, 'background-color:#8250df;color:#fff;'),
+                ('TOTAL',   total_emp,   d.prev_gross,    d.cur_gross,     'background-color:#198754;color:#fff;'),
               ] %}
-              {% for label, n, prev_g, cur_g, color in rows_cmp %}
+              {% for label, n, prev_g, cur_g, bg_style in rows_cmp %}
               {% set delta_abs = (cur_g - prev_g) | round | int %}
               {% set delta_pct = ((cur_g - prev_g) / prev_g * 100) | round(1) if prev_g else 0 %}
               <tr {% if label == 'TOTAL' %}class="fw-bold" style="background:#f8f9fa"{% endif %}>
-                <td><span class="badge bg-{{ color }} {% if color in ('warning','info') %}text-dark{% endif %}">{{ label }}</span></td>
+                <td><span class="badge" style="{{ bg_style }}">{{ label }}</span></td>
                 <td class="text-center">{{ n }}</td>
                 <td class="text-end">{{ "{:,.0f}".format(prev_g) if prev_g else '—' }}</td>
                 <td class="text-end">{{ "{:,.0f}".format(cur_g) if cur_g else '—' }}</td>
@@ -565,8 +629,8 @@
 <script>
 // ── Data untuk chart dari Jinja ──
 const CHART_TYPE_DATA = {
-  labels: ['Kontrak ({{ d.kontrak_n }})', 'Tetap ({{ d.tetap_n }})'],
-  values: [{{ d.kontrak_gross | round | int }}, {{ d.tetap_gross | round | int }}],
+  labels: ['Kontrak ({{ d.kontrak_n }})', 'Tetap ({{ d.tetap_n }})', 'Telegram Core ({{ d.telegram_core_n }})'],
+  values: [{{ d.kontrak_gross | round | int }}, {{ d.tetap_gross | round | int }}, {{ d.telegram_core_gross | round | int }}],
 };
 
 // Divisi data — build dari emps
@@ -585,14 +649,14 @@ const divisiLabels = Object.keys(divisiMap).sort();
 const divisiCur    = divisiLabels.map(d => divisiMap[d]);
 const divisiPrevArr= divisiLabels.map(d => divisiPrev[d] || 0);
 
-// ── Doughnut: Kontrak vs Tetap ──
+// ── Doughnut: Kontrak vs Tetap vs Telegram Core ──
 new Chart(document.getElementById('chartType'), {
   type: 'doughnut',
   data: {
     labels: CHART_TYPE_DATA.labels,
     datasets: [{
       data: CHART_TYPE_DATA.values,
-      backgroundColor: ['#ffc107','#0dcaf0'],
+      backgroundColor: ['#ffc107','#0dcaf0','#8250df'],
       borderWidth: 2,
     }]
   },
@@ -764,6 +828,73 @@ function recalcSummary() {
   });
   const el4 = document.getElementById('foot-next-gross');
   if (el4) el4.textContent = fmt(nextTotal);
+
+  // Recalculate group subtotals dynamically
+  const groups = ['Telegram Core', 'Tetap', 'Kontrak'];
+  groups.forEach(groupName => {
+    const empRows = Array.from(document.querySelectorAll('#salaryBody tr[data-emp-id]')).filter(row => {
+      const div = row.querySelector('td:nth-child(4)').textContent.trim();
+      const badgeEl = row.querySelector('.badge');
+      const type = badgeEl ? badgeEl.textContent.trim().toLowerCase() : '';
+      if (div === 'Telegram Core') return groupName === 'Telegram Core';
+      return groupName.toLowerCase() === type;
+    });
+    
+    const subtotalRow = document.querySelector(`#salaryBody tr.subtotal-row[data-group="${groupName}"]`);
+    if (!subtotalRow || empRows.length === 0) return;
+    
+    // 1. Recalculate component sums
+    const components = ['base_salary', 'al_001', 'al_002', 'al_003', 'al_004'];
+    components.forEach(col => {
+      let colSum = 0;
+      empRows.forEach(row => {
+        const cell = row.querySelector(`td[data-field="${col}"] .cell-display`);
+        if (cell) {
+          colSum += parseInt(cell.textContent.trim().replace(/[^0-9]/g, '')) || 0;
+        }
+      });
+      const subCell = subtotalRow.querySelector(`.subtotal-cell[data-field="${col}"]`);
+      if (subCell) subCell.textContent = colSum ? fmt(colSum) : '—';
+    });
+    
+    // 2. Recalculate gross sum
+    let grossSum = 0;
+    empRows.forEach(row => {
+      const cell = row.querySelector('.salary-total');
+      if (cell) {
+        grossSum += parseInt(cell.textContent.trim().replace(/[^0-9]/g, '')) || 0;
+      }
+    });
+    const subGross = subtotalRow.querySelector('.subtotal-gross');
+    if (subGross) subGross.textContent = grossSum ? fmt(grossSum) : '—';
+    
+    // 3. Recalculate next projection sum
+    let nextSum = 0;
+    empRows.forEach(row => {
+      const cell = row.querySelector('.next-gross');
+      if (cell) {
+        nextSum += parseInt(cell.textContent.trim().replace(/[^0-9]/g, '')) || 0;
+      }
+    });
+    const subNext = subtotalRow.querySelector('.subtotal-next');
+    if (subNext) subNext.textContent = nextSum ? fmt(nextSum) : '—';
+    
+    // 4. YoY percentage update
+    const subPrev = subtotalRow.querySelector('.subtotal-prev');
+    const subYoY = subtotalRow.querySelector('.subtotal-yoy');
+    if (subPrev && subYoY) {
+      const prevSum = parseInt(subPrev.dataset.prev) || 0;
+      if (prevSum && grossSum) {
+        const pct = ((grossSum - prevSum) / prevSum * 100).toFixed(1);
+        const abs = Math.abs(pct);
+        const cls = pct > 0 ? 'bg-success' : pct < 0 ? 'bg-danger' : 'bg-secondary';
+        const arr = pct > 0 ? '▲' : pct < 0 ? '▼' : '';
+        subYoY.innerHTML = `<span class="badge ${cls}" style="font-size:.72rem">${arr}${abs}%</span>`;
+      } else {
+        subYoY.innerHTML = '—';
+      }
+    }
+  });
 }
 
 function recalcYoY(row) {
