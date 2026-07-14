@@ -47,26 +47,35 @@
 {% endwith %}
 
 <!-- Summary Cards — nilai diisi JS agar live update setelah edit -->
-{% set ns = namespace(total_gross=0, total_emp=0, kontrak=0, tetap=0, telegram_core=0) %}
+{% set ns = namespace(total_gross=0, total_emp=0, kontrak=0, tetap=0, telegram_core=0, expired_kontrak=0) %}
 {% for emp in emps %}
-  {% set ns.total_emp = ns.total_emp + 1 %}
-  {% set ns.total_gross = ns.total_gross + salary_total(emp) %}
-  {% if emp.divisi == 'Telegram Core' %}{% set ns.telegram_core = ns.telegram_core + 1 %}
-  {% elif emp.employment_type == 'kontrak' %}{% set ns.kontrak = ns.kontrak + 1 %}
-  {% else %}{% set ns.tetap = ns.tetap + 1 %}{% endif %}
+  {% if not emp.is_expired %}
+    {% set ns.total_emp = ns.total_emp + 1 %}
+    {% set ns.total_gross = ns.total_gross + salary_total(emp) %}
+    {% if emp.divisi == 'Telegram Core' %}{% set ns.telegram_core = ns.telegram_core + 1 %}
+    {% elif emp.employment_type in ('kontrak', 'staff_worker') %}{% set ns.kontrak = ns.kontrak + 1 %}
+    {% else %}{% set ns.tetap = ns.tetap + 1 %}{% endif %}
+  {% else %}
+    {% if emp.employment_type in ('kontrak', 'staff_worker') %}{% set ns.expired_kontrak = ns.expired_kontrak + 1 %}{% endif %}
+  {% endif %}
 {% endfor %}
 
 <div class="row g-2 mb-3">
   <div class="col-6 col-md-3">
     <div class="card border-0 bg-light text-center py-2">
-      <div class="small text-muted">Total Karyawan</div>
+      <div class="small text-muted">Total Karyawan Aktif</div>
       <div class="fw-bold fs-5">{{ ns.total_emp }}</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
     <div class="card border-0 bg-light text-center py-2">
-      <div class="small text-muted">Tetap / Kontrak / Tele Core</div>
-      <div class="fw-bold fs-5">{{ ns.tetap }} / {{ ns.kontrak }} / {{ ns.telegram_core }}</div>
+      <div class="small text-muted">Tetap / Kontrak Aktif / Tele Core</div>
+      <div class="fw-bold fs-5">
+        {{ ns.tetap }} / {{ ns.kontrak }} / {{ ns.telegram_core }}
+        {% if ns.expired_kontrak > 0 %}
+        <span class="text-danger" style="font-size:.78rem;font-weight:600" title="Kontrak Berakhir">(+{{ ns.expired_kontrak }} berakhir)</span>
+        {% endif %}
+      </div>
     </div>
   </div>
   <div class="col-6 col-md-3">
@@ -208,15 +217,22 @@
           {% set prev_gross = (emp.p_base_salary or 0) + (emp.p_al_001 or 0) + (emp.p_al_002 or 0) + (emp.p_al_003 or 0) + (emp.p_al_004 or 0) %}
           {% set inc_pct = emp.increase_pct or 0 %}
           {% set next_gross = (gross * (1 + inc_pct / 100)) | round | int %}
-          <tr data-emp-id="{{ emp.id }}" data-year="{{ year }}">
+          <tr data-emp-id="{{ emp.id }}" data-year="{{ year }}"
+              data-expired="{{ 'true' if emp.is_expired else 'false' }}"
+              data-fraction="{{ emp.active_fraction }}"
+              data-fraction-next="{{ emp.active_fraction_next }}">
             <td class="text-center text-muted small align-middle">{{ loop.index }}</td>
             <td class="fw-semibold small align-middle">{{ emp.name }}</td>
             <td class="small text-muted align-middle">{{ emp.jabatan or '—' }}</td>
             <td class="small text-muted align-middle">{{ emp.divisi }}</td>
             <td class="text-center align-middle">
-              <span class="badge {% if emp.employment_type=='kontrak' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}" style="font-size:.62rem">
-                {{ emp.employment_type | upper }}
-              </span>
+              {% if emp.employment_type in ('kontrak', 'staff_worker') and emp.is_expired %}
+                <span class="badge bg-secondary" style="font-size:.62rem">BERAKHIR</span>
+              {% else %}
+                <span class="badge {% if emp.employment_type in ('kontrak', 'staff_worker') %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}" style="font-size:.62rem">
+                  {{ emp.employment_type | upper }}
+                </span>
+              {% endif %}
             </td>
 
             {# ── Komponen gaji ── #}
@@ -341,9 +357,11 @@
 {# ── Pre-compute semua angka yang dibutuhkan dashboard ── #}
 {% set d = namespace(
   cur_gross=0, prev_gross=0, next_proj=0,
+  cur_gross_annual=0, prev_gross_annual=0, next_proj_annual=0,
   kontrak_gross=0, tetap_gross=0, telegram_core_gross=0,
   kontrak_prev=0, tetap_prev=0, telegram_core_prev=0,
   kontrak_n=0, tetap_n=0, telegram_core_n=0,
+  expired_kontrak_n=0,
   no_data=0, with_increase=0, no_increase=0,
   top_name='', top_gross=0,
   max_yoy_name='', max_yoy_pct=0,
@@ -353,22 +371,41 @@
 {% for emp in emps %}
   {% set g  = salary_total(emp) %}
   {% set pg = (emp.p_base_salary or 0)+(emp.p_al_001 or 0)+(emp.p_al_002 or 0)+(emp.p_al_003 or 0)+(emp.p_al_004 or 0) %}
-  {% set d.cur_gross  = d.cur_gross  + g %}
-  {% set d.prev_gross = d.prev_gross + pg %}
-  {% set d.next_proj  = d.next_proj  + (g * (1 + (emp.increase_pct or 0) / 100)) %}
-  {% if emp.divisi == 'Telegram Core' %}
-    {% set d.telegram_core_n     = d.telegram_core_n + 1 %}
-    {% set d.telegram_core_gross = d.telegram_core_gross + g %}
-    {% set d.telegram_core_prev  = d.telegram_core_prev + pg %}
-  {% elif emp.employment_type == 'kontrak' %}
-    {% set d.kontrak_n     = d.kontrak_n + 1 %}
-    {% set d.kontrak_gross = d.kontrak_gross + g %}
-    {% set d.kontrak_prev  = d.kontrak_prev + pg %}
-  {% else %}
-    {% set d.tetap_n     = d.tetap_n + 1 %}
-    {% set d.tetap_gross = d.tetap_gross + g %}
-    {% set d.tetap_prev  = d.tetap_prev + pg %}
+  
+  {# Annual values scale by active fractions #}
+  {% set d.cur_gross_annual  = d.cur_gross_annual  + (g * 12 * emp.active_fraction) %}
+  {% set d.prev_gross_annual = d.prev_gross_annual + (pg * 12 * emp.active_fraction_prev) %}
+  {% set d.next_proj_annual  = d.next_proj_annual  + ((g * (1 + (emp.increase_pct or 0) / 100)) * 12 * emp.active_fraction_next) %}
+  
+  {# Monthly active sums (only if not expired) #}
+  {% if not emp.is_expired %}
+    {% set d.cur_gross  = d.cur_gross  + g %}
+    {% set d.prev_gross = d.prev_gross + pg %}
+    {% set d.next_proj  = d.next_proj  + (g * (1 + (emp.increase_pct or 0) / 100)) %}
   {% endif %}
+  
+  {% if emp.divisi == 'Telegram Core' %}
+    {% if not emp.is_expired %}
+      {% set d.telegram_core_n     = d.telegram_core_n + 1 %}
+      {% set d.telegram_core_gross = d.telegram_core_gross + g %}
+      {% set d.telegram_core_prev  = d.telegram_core_prev + pg %}
+    {% endif %}
+  {% elif emp.employment_type in ('kontrak', 'staff_worker') %}
+    {% if emp.is_expired %}
+      {% set d.expired_kontrak_n   = d.expired_kontrak_n + 1 %}
+    {% else %}
+      {% set d.kontrak_n     = d.kontrak_n + 1 %}
+      {% set d.kontrak_gross = d.kontrak_gross + g %}
+      {% set d.kontrak_prev  = d.kontrak_prev + pg %}
+    {% endif %}
+  {% else %}
+    {% if not emp.is_expired %}
+      {% set d.tetap_n     = d.tetap_n + 1 %}
+      {% set d.tetap_gross = d.tetap_gross + g %}
+      {% set d.tetap_prev  = d.tetap_prev + pg %}
+    {% endif %}
+  {% endif %}
+  
   {% if g == 0 %}{% set d.no_data = d.no_data + 1 %}{% endif %}
   {% if (emp.increase_pct or 0) > 0 %}{% set d.with_increase = d.with_increase + 1 %}
   {% else %}{% set d.no_increase = d.no_increase + 1 %}{% endif %}
@@ -390,8 +427,8 @@
   {% set yoy_total_pct  = 0 %}
   {% set yoy_total_abs  = 0 %}
 {% endif %}
-{% set avg_gross = (d.cur_gross / emps|length) | round | int if emps|length > 0 else 0 %}
-{% set total_emp = emps|length %}
+{% set total_emp = d.tetap_n + d.kontrak_n + d.telegram_core_n %}
+{% set avg_gross = (d.cur_gross / total_emp) | round | int if total_emp > 0 else 0 %}
 
 <div class="d-flex align-items-center gap-2 mb-3">
   <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-fill text-primary me-2"></i>Dashboard Analitik Gaji {{ year }}</h6>
@@ -406,8 +443,8 @@
     <div class="card border-0 h-100" style="background:linear-gradient(135deg,#1a7a3a,#25a85a)">
       <div class="card-body text-white py-3">
         <div class="small opacity-75 mb-1"><i class="bi bi-calendar-check me-1"></i>Total Beban Gaji {{ year }}</div>
-        <div class="fw-bold" style="font-size:1.05rem" id="kpi-cur-annual">{{ "{:,.0f}".format(d.cur_gross * 12) }}</div>
-        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.cur_gross) }}/bulan</div>
+        <div class="fw-bold" style="font-size:1.05rem" id="kpi-cur-annual">{{ "{:,.0f}".format(d.cur_gross_annual) }}</div>
+        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.cur_gross) }}/bulan (aktif)</div>
       </div>
     </div>
   </div>
@@ -417,8 +454,8 @@
     <div class="card border-0 h-100" style="background:linear-gradient(135deg,#3a2060,#5a3b99)">
       <div class="card-body text-white py-3">
         <div class="small opacity-75 mb-1"><i class="bi bi-calendar3 me-1"></i>Total Beban Gaji {{ prev_year }}</div>
-        <div class="fw-bold" style="font-size:1.05rem">{{ "{:,.0f}".format(d.prev_gross * 12) if d.prev_gross else '—' }}</div>
-        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.prev_gross) }}/bulan</div>
+        <div class="fw-bold" style="font-size:1.05rem" id="kpi-prev-annual">{{ "{:,.0f}".format(d.prev_gross_annual) if d.prev_gross_annual else '—' }}</div>
+        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.prev_gross) }}/bulan (aktif)</div>
       </div>
     </div>
   </div>
@@ -448,8 +485,8 @@
     <div class="card border-0 h-100" style="background:linear-gradient(135deg,#0d2a4d,#1a4f8a)">
       <div class="card-body text-white py-3">
         <div class="small opacity-75 mb-1"><i class="bi bi-graph-up-arrow me-1"></i>Proyeksi Beban {{ year + 1 }}</div>
-        <div class="fw-bold" style="font-size:1.05rem">{{ "{:,.0f}".format(d.next_proj | round | int * 12) }}</div>
-        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.next_proj | round | int) }}/bulan</div>
+        <div class="fw-bold" style="font-size:1.05rem" id="kpi-next-annual">{{ "{:,.0f}".format(d.next_proj_annual) }}</div>
+        <div class="small opacity-75 mt-1">{{ "{:,.0f}".format(d.next_proj | round | int) }}/bulan (aktif)</div>
       </div>
     </div>
   </div>
@@ -812,27 +849,55 @@ const YEAR = {{ year }};
 // ── Summary recalc (live update setelah edit) ──
 function recalcSummary() {
   let total = 0;
-  document.querySelectorAll('#salaryBody tr[data-emp-id] .salary-total').forEach(td => {
-    total += parseInt(td.textContent.trim().replace(/[^0-9]/g, '')) || 0;
+  let annualTotal = 0;
+  document.querySelectorAll('#salaryBody tr[data-emp-id]').forEach(row => {
+    const isExpired = row.getAttribute('data-expired') === 'true';
+    const fraction = parseFloat(row.getAttribute('data-fraction')) || 0;
+    const grossCell = row.querySelector('.salary-total');
+    const grossVal = parseInt(grossCell.textContent.trim().replace(/[^0-9]/g, '')) || 0;
+    
+    if (!isExpired) {
+      total += grossVal;
+    }
+    annualTotal += grossVal * 12 * fraction;
   });
+  
   const fmt = n => n.toLocaleString('id-ID');
   const el1 = document.getElementById('sum-gross-month');
   const el2 = document.getElementById('sum-gross-annual');
   const el3 = document.getElementById('foot-total-gross');
+  const kpiCurAnnual = document.getElementById('kpi-cur-annual');
+  
   if (el1) el1.textContent = fmt(total);
   if (el2) el2.textContent = fmt(total * 12);
   if (el3) el3.textContent = fmt(total);
+  if (kpiCurAnnual) kpiCurAnnual.textContent = fmt(Math.round(annualTotal));
+  
   let nextTotal = 0;
-  document.querySelectorAll('#salaryBody tr[data-emp-id] .next-gross').forEach(td => {
-    nextTotal += parseInt(td.textContent.trim().replace(/[^0-9]/g, '')) || 0;
+  let nextAnnualTotal = 0;
+  document.querySelectorAll('#salaryBody tr[data-emp-id]').forEach(row => {
+    const isExpired = row.getAttribute('data-expired') === 'true';
+    const fractionNext = parseFloat(row.getAttribute('data-fraction-next')) || 0;
+    const nextCell = row.querySelector('.next-gross');
+    const nextVal = parseInt(nextCell.textContent.trim().replace(/[^0-9]/g, '')) || 0;
+    
+    if (!isExpired) {
+      nextTotal += nextVal;
+    }
+    nextAnnualTotal += nextVal * 12 * fractionNext;
   });
+  
   const el4 = document.getElementById('foot-next-gross');
+  const kpiNextAnnual = document.getElementById('kpi-next-annual');
   if (el4) el4.textContent = fmt(nextTotal);
+  if (kpiNextAnnual) kpiNextAnnual.textContent = fmt(Math.round(nextAnnualTotal));
 
   // Recalculate group subtotals dynamically
   const groups = ['Telegram Core', 'Tetap', 'Kontrak'];
   groups.forEach(groupName => {
     const empRows = Array.from(document.querySelectorAll('#salaryBody tr[data-emp-id]')).filter(row => {
+      const isExpired = row.getAttribute('data-expired') === 'true';
+      if (isExpired) return false;
       const div = row.querySelector('td:nth-child(4)').textContent.trim();
       const badgeEl = row.querySelector('.badge');
       const type = badgeEl ? badgeEl.textContent.trim().toLowerCase() : '';

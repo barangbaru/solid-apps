@@ -84,7 +84,8 @@
 
 <!-- Summary Cards -->
 {% set expired  = kontrak | selectattr('days_left', 'lt', 0)  | list if kontrak else [] %}
-{% set expiring = kontrak | selectattr('days_left', 'ge', 0) | selectattr('days_left', 'le', 30) | list if kontrak else [] %}
+{% set active_kontrak = kontrak | rejectattr('days_left', 'lt', 0) | list if kontrak else [] %}
+{% set expiring = active_kontrak | selectattr('days_left', 'ge', 0) | selectattr('days_left', 'le', 30) | list if active_kontrak else [] %}
 <div class="row g-3 mb-4">
   <div class="col-6 col-md-3">
     <div class="card text-center p-3 border-start border-4 border-primary">
@@ -94,8 +95,8 @@
   </div>
   <div class="col-6 col-md-3">
     <div class="card text-center p-3 border-start border-4 border-warning">
-      <div class="display-6 fw-bold text-warning">{{ kontrak | length }}</div>
-      <div class="small text-muted">Karyawan Kontrak</div>
+      <div class="display-6 fw-bold text-warning">{{ active_kontrak | length }}</div>
+      <div class="small text-muted">Karyawan Kontrak Aktif</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
@@ -118,7 +119,7 @@
     <button class="nav-link active" id="kontrak-tab" data-bs-toggle="tab"
             data-bs-target="#tab-kontrak" type="button">
       <i class="bi bi-file-earmark-text me-1"></i> Karyawan Kontrak
-      <span class="badge bg-warning text-dark ms-1">{{ kontrak | length }}</span>
+      <span class="badge bg-warning text-dark ms-1">{{ active_kontrak | length }}</span>
     </button>
   </li>
   <li class="nav-item">

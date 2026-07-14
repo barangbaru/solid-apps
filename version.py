@@ -1,6 +1,7 @@
-VERSION = "2.2.93"
+VERSION = "2.2.94"
 RELEASE_DATE = "2026-07-14"
 RELEASE_NOTES = (
+    "v2.2.94: Penyesuaian kalkulasi headcount dan beban gaji karyawan kontrak dengan memisahkan kontrak aktif & berakhir serta menerapkan pembobotan fraksi hari aktif kontrak untuk beban tahunan. "
     "v2.2.93: Penambahan baris subtotal untuk masing-masing kelompok karyawan (Tetap, Kontrak, Telegram Core) di tabel gaji dan pemisahan data Telegram Core pada charts dan tables di dashboard analitik gaji. "
     "v2.2.92: Pemisahan kelompok karyawan 'Telegram Core' pada tabel gaji karyawan agar tidak tercampur dengan karyawan tetap/kontrak inti. "
     "v2.2.91: Pemisahan karyawan 'Telegram Core' dari daftar Karyawan Kontrak dan Tetap ke dalam tab terpisah di TalentCore. "

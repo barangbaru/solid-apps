@@ -10252,6 +10252,48 @@ def salary_table():
             e.divisi, e.name
     ''', (year, prev_year)).fetchall()
     emps = [_dec_sal_row(r) for r in emps]
+    
+    today = date.today()
+    def get_active_fraction(emp, Y):
+        if emp.get('employment_type') == 'tetap' or emp.get('divisi') == 'Telegram Core':
+            return 1.0
+        start_str = emp.get('contract_start')
+        end_str = emp.get('contract_end')
+        if not start_str and not end_str:
+            return 1.0
+        s_y = date(Y, 1, 1)
+        e_y = date(Y, 12, 31)
+        try:
+            c_start = datetime.strptime(start_str, '%Y-%m-%d').date() if start_str else s_y
+        except Exception:
+            c_start = s_y
+        try:
+            c_end = datetime.strptime(end_str, '%Y-%m-%d').date() if end_str else e_y
+        except Exception:
+            c_end = e_y
+        o_start = max(s_y, c_start)
+        o_end = min(e_y, c_end)
+        if o_start > o_end:
+            return 0.0
+        active_days = (o_end - o_start).days + 1
+        total_days = 366.0 if (Y % 4 == 0 and (Y % 100 != 0 or Y % 400 == 0)) else 365.0
+        return active_days / total_days
+
+    for emp in emps:
+        days_left = None
+        is_expired = False
+        if emp.get('contract_end'):
+            try:
+                end_date = datetime.strptime(emp['contract_end'], '%Y-%m-%d').date()
+                days_left = (end_date - today).days
+                is_expired = end_date < today
+            except Exception:
+                pass
+        emp['days_left'] = days_left if days_left is not None else 9999
+        emp['is_expired'] = is_expired
+        emp['active_fraction'] = get_active_fraction(emp, year)
+        emp['active_fraction_prev'] = get_active_fraction(emp, prev_year)
+        emp['active_fraction_next'] = get_active_fraction(emp, year + 1)
     years = [r['year'] for r in db.execute(
         'SELECT DISTINCT year FROM employee_salary ORDER BY year DESC').fetchall()]
     if year not in years:
