@@ -6486,7 +6486,7 @@ def karyawan():
     _kontrak_raw = db.execute('''
         SELECT *, julianday(contract_end) - julianday('now') AS days_left
         FROM employees
-        WHERE employment_type IN ('kontrak','staff_worker') AND is_active = 1
+        WHERE employment_type IN ('kontrak','staff_worker') AND is_active = 1 AND divisi != 'Telegram Core'
         ORDER BY CASE WHEN contract_end IS NULL OR contract_end='' THEN 1 ELSE 0 END,
                  contract_end ASC
     ''').fetchall()
@@ -6495,8 +6495,13 @@ def karyawan():
                for r in _kontrak_raw]
     tetap = db.execute('''
         SELECT * FROM employees
-        WHERE employment_type = 'tetap' AND is_active = 1
+        WHERE employment_type = 'tetap' AND is_active = 1 AND divisi != 'Telegram Core'
         ORDER BY divisi, name
+    ''').fetchall()
+    telegram_core = db.execute('''
+        SELECT * FROM employees
+        WHERE divisi = 'Telegram Core' AND is_active = 1
+        ORDER BY name
     ''').fetchall()
     emp_user_map = {r['id']: r for r in db.execute('''
         SELECT e.id, u.username, u.role, u.is_active AS u_active
@@ -6524,7 +6529,7 @@ def karyawan():
     for row in eval_rows:
         if row['employee_id'] not in eval_map:
             eval_map[row['employee_id']] = dict(row)
-    return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, today=today,
+    return render_template('karyawan.html', kontrak=kontrak, tetap=tetap, telegram_core=telegram_core, today=today,
                            emp_user_map=emp_user_map, global_roles=global_roles,
                            apps=apps, roles_by_app=roles_by_app,
                            eval_map=eval_map, current_year=current_year)

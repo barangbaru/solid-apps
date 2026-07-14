@@ -128,6 +128,13 @@
       <span class="badge bg-primary ms-1">{{ tetap | length }}</span>
     </button>
   </li>
+  <li class="nav-item">
+    <button class="nav-link" id="telegram-core-tab" data-bs-toggle="tab"
+            data-bs-target="#tab-telegram-core" type="button">
+      <i class="bi bi-telegram me-1"></i> Telegram Core
+      <span class="badge bg-info text-white ms-1">{{ telegram_core | length }}</span>
+    </button>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -373,6 +380,113 @@
                           title="{% if ev_t %}Kirim ulang self-assessment (Evaluasi #{{ ev_t.eval_id }} — {{ ev_t.review_status }}){% else %}Buat & kirim form review evaluasi{% endif %}"
                           onclick="openTriggerReview({{ emp.id }},'{{ emp.name | e }}','{{ current_year }}')">
                     <i class="bi bi-{% if ev_t %}arrow-repeat{% else %}clipboard-plus{% endif %}"></i>
+                  </button>
+                  {% if current_user and current_user.role == 'superadmin' %}
+                  <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
+                        data-confirm="Nonaktifkan {{ emp.name | e }}?" onsubmit="return confirm(this.dataset.confirm)">
+                    <button type="submit" class="btn btn-xs btn-outline-danger"
+                            style="padding:.2rem .5rem;font-size:.75rem" title="Nonaktifkan">
+                      <i class="bi bi-person-x"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Tab Telegram Core ────────────────────────────────────────────────── -->
+  <div class="tab-pane fade" id="tab-telegram-core">
+    {% if not telegram_core %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-telegram display-3 text-info"></i>
+      <div class="mt-2">Belum ada karyawan Telegram Core.</div>
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="card-body p-0">
+        <table class="table table-hover table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              {% if current_user and current_user.role == 'superadmin' %}
+              <th class="text-center" style="width: 40px;">
+                <input type="checkbox" id="bulk-select-all-telegram-core" onchange="toggleSelectAll('telegram-core')">
+              </th>
+              {% endif %}
+              <th>Nama</th>
+              <th>Divisi / Jabatan</th>
+              <th class="text-center">Akun Aplikasi</th>
+              <th>Email / Phone</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for emp in telegram_core %}
+              {% set eu = emp_user_map.get(emp.id) %}
+            <tr>
+              {% if current_user and current_user.role == 'superadmin' %}
+              <td class="text-center">
+                <input type="checkbox" class="emp-select-cb" value="{{ emp.id }}" data-name="{{ emp.name }}" onchange="updateSelectedCount()">
+              </td>
+              {% endif %}
+              <td>
+                <a href="/emp/{{ emp.id }}/edit" class="fw-semibold text-decoration-none">{{ emp.name }}</a>
+                <div class="text-muted small">{{ emp.level or 'Staff' }}</div>
+              </td>
+              <td>
+                <div>{{ emp.divisi }}</div>
+                <div class="text-muted small">{{ emp.jabatan or '—' }}</div>
+              </td>
+              <td class="text-center">
+                {% if eu %}
+                  <span class="badge {% if eu.role=='superadmin' %}bg-warning text-dark{% else %}bg-primary{% endif %}">
+                    {{ eu.role | upper }}
+                  </span>
+                  <div class="small text-muted">@{{ eu.username }}</div>
+                  {% if current_user and current_user.role == 'superadmin' %}
+                  <button class="btn btn-xs btn-outline-secondary mt-1"
+                          style="padding:.15rem .4rem;font-size:.7rem"
+                          onclick="openPromote({{ emp.id }},'{{ emp.name }}','{{ eu.username }}','{{ eu.role }}')">
+                    <i class="bi bi-arrow-repeat"></i>
+                  </button>
+                  {% endif %}
+                {% else %}
+                  <span class="text-muted small">—</span>
+                  {% if current_user and current_user.role == 'superadmin' %}
+                  <div>
+                    <button class="btn btn-xs btn-outline-info mt-1"
+                            style="padding:.15rem .4rem;font-size:.7rem"
+                            onclick="openPromote({{ emp.id }},'{{ emp.name }}','','')">
+                      <i class="bi bi-person-plus"></i> Beri Akses
+                    </button>
+                  </div>
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if emp.email %}
+                  <a href="mailto:{{ emp.email }}" class="text-decoration-none d-block">{{ emp.email }}</a>
+                {% endif %}
+                <span class="text-muted">{{ emp.phone or '—' }}</span>
+              </td>
+              <td class="text-end pe-2">
+                <div class="d-flex gap-1 justify-content-end flex-wrap">
+                  <a href="/emp/{{ emp.id }}/edit" class="btn btn-xs btn-outline-secondary"
+                     style="padding:.2rem .5rem;font-size:.75rem" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  {%- set ev_tc = eval_map.get(emp.id) %}
+                  <button type="button" class="btn btn-xs {% if ev_tc %}btn-outline-info{% else %}btn-outline-primary{% endif %}"
+                          style="padding:.2rem .5rem;font-size:.75rem"
+                          title="{% if ev_tc %}Kirim ulang self-assessment (Evaluasi #{{ ev_tc.eval_id }} — {{ ev_tc.review_status }}){% else %}Buat & kirim form review evaluasi{% endif %}"
+                          onclick="openTriggerReview({{ emp.id }},'{{ emp.name | e }}','{{ current_year }}')">
+                    <i class="bi bi-{% if ev_tc %}arrow-repeat{% else %}clipboard-plus{% endif %}"></i>
                   </button>
                   {% if current_user and current_user.role == 'superadmin' %}
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
