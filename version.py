@@ -1,6 +1,7 @@
-VERSION = "2.2.87"
-RELEASE_DATE = "2026-07-13"
+VERSION = "2.2.88"
+RELEASE_DATE = "2026-07-14"
 RELEASE_NOTES = (
+    "v2.2.88: Penyesuaian format respon Telegram webhook untuk menyertakan nama profil Telegram di dalam tanda kurung serta menyertakan lokasi tagging dan imbauan pembuatan PLAN dan PROGRESS pada respon check-in. "
     "v2.2.87: Membatasi fitur auto-delete chat Telegram webhook agar hanya berlaku untuk command /birthday, /lapar, dan /haus saja. "
     "v2.2.86: Mengubah CHATBOT_SYSTEM prompt untuk menyertakan relasi logis skema database Hive (belajar database) dan melarang AI menampilkan query SQL teknis/raw data kepada user (user POV). "
     "v2.2.85: Implementasi tool execute_sql_query pada AI Chatbot untuk query langsung ke database PostgreSQL, penambahan petunjuk prioritasi database pada system prompt, proteksi data rahasia (gaji, password), dan peningkatan limit loop tool-calling OpenAI dari 2 ke 5. "

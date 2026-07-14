@@ -15011,6 +15011,14 @@ def telegram_webhook():
             tg_id_variants.append(clean_username)
             tg_id_variants.append(f"@{clean_username}")
 
+        # Extract telegram user's first/last name if available from Telegram payload
+        tg_first_name = ""
+        tg_last_name = ""
+        if not is_custom and message:
+            tg_first_name = from_user.get('first_name', '') or ''
+            tg_last_name = from_user.get('last_name', '') or ''
+        tg_full_name = f"{tg_first_name} {tg_last_name}".strip()
+
         # 1. Check in employees table first
         employee = None
         for variant in tg_id_variants:
@@ -15039,7 +15047,7 @@ def telegram_webhook():
                 user = existing_user
             else:
                 dummy_pwd = generate_password_hash("TelegramAttendanceFallback@2026")
-                full_name = employee['name'] if employee else (username or f"Telegram User {from_id}")
+                full_name = employee['name'] if employee else (tg_full_name or username or f"Telegram User {from_id}")
                 
                 db.execute('''
                     INSERT INTO users (username, password_hash, full_name, role, is_active, telegram_id)
@@ -15052,7 +15060,7 @@ def telegram_webhook():
                 db.execute('UPDATE employees SET user_id = ? WHERE id = ?', (user['id'], employee['id']))
                 db.commit()
             else:
-                emp_name = username or f"Telegram User {from_id}"
+                emp_name = tg_full_name or username or f"Telegram User {from_id}"
                 db.execute('''
                     INSERT INTO employees (name, divisi, telegram_id, user_id, is_active)
                     VALUES (?, ?, ?, ?, ?)
@@ -15064,14 +15072,26 @@ def telegram_webhook():
         
         # Resolve employee/username display with HTML escaping
         import html
-        user_mention_escaped = f"@{html.escape(username)}" if username else html.escape(full_name)
-        emp_info = ""
+        
+        display_name = ""
         if employee and employee['name']:
-            emp_info = f" ({html.escape(employee['name'])})"
+            display_name = employee['name']
         elif user and user['full_name']:
-            emp_info = f" ({html.escape(user['full_name'])})"
+            display_name = user['full_name']
+        elif tg_full_name:
+            display_name = tg_full_name
             
-        user_display = f"{user_mention_escaped}{emp_info}"
+        telegram_identifier = f"@{username}" if username else (str(from_id) if from_id else "")
+        
+        # Resolve display string: (@telegram_identifier (display_name))
+        if telegram_identifier and display_name:
+            user_display = f"({html.escape(telegram_identifier)} ({html.escape(display_name)}))"
+        elif telegram_identifier:
+            user_display = f"({html.escape(telegram_identifier)})"
+        elif display_name:
+            user_display = f"({html.escape(display_name)})"
+        else:
+            user_display = "(Unknown)"
 
         if is_location:
             # Get group title / name
@@ -15134,7 +15154,9 @@ def telegram_webhook():
                 time_str = format_indo_datetime(now_dt)
                 reply(
                     f"✅ {user_display}\n"
-                    f"Tagging berhasil dicatat pada {time_str}"
+                    f"Tagging berhasil dicatat pada {time_str}\n"
+                    f"Lokasi: {html.escape(loc)}\n\n"
+                    f"Silakan segera membuat PLAN dan PROGRESS sebelum clock out."
                 )
             else:
                 # User is sending location again (Clock Out / update Clock Out)
@@ -15627,7 +15649,12 @@ def whatsapp_webhook():
                 db.commit()
                 now_dt = datetime.now()
                 time_str = format_indo_datetime(now_dt)
-                reply(f"✅ {user_display}\nTagging berhasil dicatat pada {time_str}")
+                reply(
+                    f"✅ {user_display}\n"
+                    f"Tagging berhasil dicatat pada {time_str}\n"
+                    f"Lokasi: {loc}\n\n"
+                    f"Silakan segera membuat PLAN dan PROGRESS sebelum clock out."
+                )
             else:
                 import re
                 m_chat = re.search(r'\(ID:\s*(.*?)\)', today_att['notes_in'] or '')
