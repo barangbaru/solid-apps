@@ -15016,6 +15016,51 @@ def at_report():
         # Normal user can only see their own logs
         selected_user_id = str(session['user_id'])
     
+    target_emp_name = "Semua Karyawan"
+    if selected_user_id:
+        user_row = db.execute('SELECT full_name FROM users WHERE id=?', (int(selected_user_id),)).fetchone()
+        if user_row:
+            target_emp_name = user_row['full_name']
+
+    # Fetch SupportCore tickets assigned and worked on by this employee or all employees in date range
+    assigned_tickets = []
+    if selected_user_id:
+        emp_row = db.execute('SELECT id FROM employees WHERE user_id = ?', (int(selected_user_id),)).fetchone()
+        if emp_row:
+            emp_id = emp_row['id']
+            assigned_tickets = db.execute('''
+                SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
+                       c.name as customer_name
+                FROM sc_ticket_assignees ta
+                JOIN sc_tickets t ON t.id = ta.ticket_id
+                JOIN sc_customers c ON c.id = t.customer_id
+                WHERE ta.employee_id = ? 
+                  AND (
+                      (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
+                      OR (t.resolved_at IS NOT NULL AND date(t.resolved_at) >= ? AND date(t.resolved_at) <= ?)
+                      OR (t.status IN ('open', 'progress'))
+                  )
+                  AND t.status != 'cancelled'
+                ORDER BY t.reported_at DESC
+            ''', (emp_id, start_date, end_date, start_date, end_date)).fetchall()
+    else:
+        assigned_tickets = db.execute('''
+            SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
+                   c.name as customer_name, u.full_name as assignee_name
+            FROM sc_ticket_assignees ta
+            JOIN sc_tickets t ON t.id = ta.ticket_id
+            JOIN sc_customers c ON c.id = t.customer_id
+            JOIN employees e ON e.id = ta.employee_id
+            JOIN users u ON u.id = e.user_id
+            WHERE (
+                  (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
+                  OR (t.resolved_at IS NOT NULL AND date(t.resolved_at) >= ? AND date(t.resolved_at) <= ?)
+                  OR (t.status IN ('open', 'progress'))
+              )
+              AND t.status != 'cancelled'
+            ORDER BY t.reported_at DESC
+        ''', (start_date, end_date, start_date, end_date)).fetchall()
+
     # Fetch active employees for dropdown filter if admin/manager
     employees = []
     if is_mgr:
@@ -15085,7 +15130,9 @@ def at_report():
         end_date=end_date,
         employees=employees,
         selected_user_id=selected_user_id,
-        is_mgr=is_mgr
+        is_mgr=is_mgr,
+        assigned_tickets=assigned_tickets,
+        target_emp_name=target_emp_name
     )
 
 @app.route('/attendance/report/export/excel')
@@ -15118,6 +15165,45 @@ def at_report_export_excel():
         user_row = db.execute('SELECT full_name FROM users WHERE id=?', (int(selected_user_id),)).fetchone()
         if user_row:
             target_emp_name = user_row['full_name']
+
+    # Fetch SupportCore tickets assigned and worked on by this employee or all employees in date range
+    assigned_tickets = []
+    if selected_user_id:
+        emp_row = db.execute('SELECT id FROM employees WHERE user_id = ?', (int(selected_user_id),)).fetchone()
+        if emp_row:
+            emp_id = emp_row['id']
+            assigned_tickets = db.execute('''
+                SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
+                       c.name as customer_name
+                FROM sc_ticket_assignees ta
+                JOIN sc_tickets t ON t.id = ta.ticket_id
+                JOIN sc_customers c ON c.id = t.customer_id
+                WHERE ta.employee_id = ? 
+                  AND (
+                      (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
+                      OR (t.resolved_at IS NOT NULL AND date(t.resolved_at) >= ? AND date(t.resolved_at) <= ?)
+                      OR (t.status IN ('open', 'progress'))
+                  )
+                  AND t.status != 'cancelled'
+                ORDER BY t.reported_at DESC
+            ''', (emp_id, start_date, end_date, start_date, end_date)).fetchall()
+    else:
+        assigned_tickets = db.execute('''
+            SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
+                   c.name as customer_name, u.full_name as assignee_name
+            FROM sc_ticket_assignees ta
+            JOIN sc_tickets t ON t.id = ta.ticket_id
+            JOIN sc_customers c ON c.id = t.customer_id
+            JOIN employees e ON e.id = ta.employee_id
+            JOIN users u ON u.id = e.user_id
+            WHERE (
+                  (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
+                  OR (t.resolved_at IS NOT NULL AND date(t.resolved_at) >= ? AND date(t.resolved_at) <= ?)
+                  OR (t.status IN ('open', 'progress'))
+              )
+              AND t.status != 'cancelled'
+            ORDER BY t.reported_at DESC
+        ''', (start_date, end_date, start_date, end_date)).fetchall()
             
     # Fetch logs
     query = '''
@@ -15241,6 +15327,46 @@ def at_report_export_excel():
                 cell.fill = PatternFill('solid', fgColor=BLUE_LIGHT)
         row_num += 1
         
+    # ── Section 2: Support Tickets ──
+    if assigned_tickets:
+        row_num += 2
+        ws.cell(row=row_num, column=1, value="DAFTAR TIKET & TASK SUPPORTCORE (PERIODE INI)").font = Font(size=11, bold=True, color='FF0F172A')
+        ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=7)
+        
+        row_num += 1
+        t_headers = ["No", "No Tiket", "Pelanggan", "Subjek", "Status", "Prioritas", "Penerima Tugas"]
+        for col_num, h in enumerate(t_headers, 1):
+            cell = ws.cell(row=row_num, column=col_num)
+            cell.value = h
+            cell.font = Font(bold=True, color=WHITE)
+            cell.fill = PatternFill('solid', fgColor='FF475569') # Slate 600
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = thin_border
+            
+        row_num += 1
+        for idx, t in enumerate(assigned_tickets, 1):
+            assignee_display = t.get('assignee_name') or target_emp_name
+            vals = [
+                idx,
+                t['ticket_no'],
+                t['customer_name'],
+                t['subject'],
+                t['status'].upper(),
+                t['priority'] or 'Medium',
+                assignee_display
+            ]
+            for col_num, val in enumerate(vals, 1):
+                cell = ws.cell(row=row_num, column=col_num)
+                cell.value = val
+                cell.border = thin_border
+                if col_num in (1, 2, 5, 6):
+                    cell.alignment = Alignment(horizontal='center')
+                else:
+                    cell.alignment = Alignment(horizontal='left')
+                if row_num % 2 == 1:
+                    cell.fill = PatternFill('solid', fgColor=BLUE_LIGHT)
+            row_num += 1
+        
     # Auto-adjust column widths
     for col in ws.columns:
         max_len = 0
@@ -15289,6 +15415,45 @@ def at_report_export_pdf():
         user_row = db.execute('SELECT full_name FROM users WHERE id=?', (int(selected_user_id),)).fetchone()
         if user_row:
             target_emp_name = user_row['full_name']
+
+    # Fetch SupportCore tickets assigned and worked on by this employee or all employees in date range
+    assigned_tickets = []
+    if selected_user_id:
+        emp_row = db.execute('SELECT id FROM employees WHERE user_id = ?', (int(selected_user_id),)).fetchone()
+        if emp_row:
+            emp_id = emp_row['id']
+            assigned_tickets = db.execute('''
+                SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
+                       c.name as customer_name
+                FROM sc_ticket_assignees ta
+                JOIN sc_tickets t ON t.id = ta.ticket_id
+                JOIN sc_customers c ON c.id = t.customer_id
+                WHERE ta.employee_id = ? 
+                  AND (
+                      (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
+                      OR (t.resolved_at IS NOT NULL AND date(t.resolved_at) >= ? AND date(t.resolved_at) <= ?)
+                      OR (t.status IN ('open', 'progress'))
+                  )
+                  AND t.status != 'cancelled'
+                ORDER BY t.reported_at DESC
+            ''', (emp_id, start_date, end_date, start_date, end_date)).fetchall()
+    else:
+        assigned_tickets = db.execute('''
+            SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
+                   c.name as customer_name, u.full_name as assignee_name
+            FROM sc_ticket_assignees ta
+            JOIN sc_tickets t ON t.id = ta.ticket_id
+            JOIN sc_customers c ON c.id = t.customer_id
+            JOIN employees e ON e.id = ta.employee_id
+            JOIN users u ON u.id = e.user_id
+            WHERE (
+                  (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
+                  OR (t.resolved_at IS NOT NULL AND date(t.resolved_at) >= ? AND date(t.resolved_at) <= ?)
+                  OR (t.status IN ('open', 'progress'))
+              )
+              AND t.status != 'cancelled'
+            ORDER BY t.reported_at DESC
+        ''', (start_date, end_date, start_date, end_date)).fetchall()
             
     # Fetch logs
     query = '''
@@ -15352,7 +15517,8 @@ def at_report_export_pdf():
         start_date=start_date,
         end_date=end_date,
         target_emp_name=target_emp_name,
-        now=now_str
+        now=now_str,
+        assigned_tickets=assigned_tickets
     )
 
 @app.route('/telegram/webhook', methods=['POST'])
