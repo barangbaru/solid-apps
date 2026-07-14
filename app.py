@@ -69,7 +69,19 @@ def _save_upload_file(file_obj, subfolder='', allowed_ext=None):
     if not file_obj or not file_obj.filename or '.' not in file_obj.filename:
         return None
     ext = file_obj.filename.rsplit('.', 1)[-1].lower()
-    if allowed_ext is not None and ext not in allowed_ext:
+    
+    DANGEROUS_EXT = {
+        'php', 'sh', 'bat', 'exe', 'py', 'cmd', 'ps1', 'js', 'vbs', 'pl', 'msi', 'cgi', 
+        'asp', 'aspx', 'jsp', 'jar', 'com', 'scr', 'pif', 'vbe', 'jse', 'reg'
+    }
+    actual_allowed = allowed_ext if allowed_ext is not None else ALLOWED_ATTACHMENT_EXT
+    
+    if ext in DANGEROUS_EXT or ext not in actual_allowed:
+        try:
+            from flask import flash
+            flash(f'File "{file_obj.filename}" ditolak. Hanya dokumen dan gambar yang diperbolehkan.', 'danger')
+        except Exception:
+            pass
         return None
     fname = uuid.uuid4().hex + '.' + ext
 
@@ -6736,7 +6748,7 @@ def _save_ticket_attachments(db, ticket_id, section):
     for f in files:
         if not f or not f.filename:
             continue
-        url = _save_upload(f, f'tickets/{ticket_id}/{section}')
+        url = _save_upload_file(f, f'tickets/{ticket_id}/{section}', ALLOWED_ATTACHMENT_EXT)
         if url:
             db.execute('''INSERT INTO sc_ticket_attachments(ticket_id,section,filename,original_name,uploaded_by,uploaded_by_name)
                           VALUES(?,?,?,?,?,?)''',

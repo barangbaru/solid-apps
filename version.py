@@ -1,6 +1,7 @@
-VERSION = "2.2.95"
+VERSION = "2.2.96"
 RELEASE_DATE = "2026-07-14"
 RELEASE_NOTES = (
+    "v2.2.96: Penambahan pengamanan file upload berupa whitelist ekstensi dokumen & gambar serta blacklist untuk file eksekusi/skrip berbahaya (seperti php, sh, bat, exe, dll) di seluruh modul. "
     "v2.2.95: Perbaikan error sort_order is not defined saat menambahkan resource di BookingCore serta penyesuaian penanda navigasi aplikasi pada breadcrumb halaman resource BookingCore. "
     "v2.2.94: Penyesuaian kalkulasi headcount dan beban gaji karyawan kontrak dengan memisahkan kontrak aktif & berakhir serta menerapkan pembobotan fraksi hari aktif kontrak untuk beban tahunan. "
     "v2.2.93: Penambahan baris subtotal untuk masing-masing kelompok karyawan (Tetap, Kontrak, Telegram Core) di tabel gaji dan pemisahan data Telegram Core pada charts dan tables di dashboard analitik gaji. "
