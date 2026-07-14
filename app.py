@@ -15030,10 +15030,12 @@ def at_report():
             emp_id = emp_row['id']
             assigned_tickets = db.execute('''
                 SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
-                       c.name as customer_name
+                       c.name as customer_name, u.full_name as assignee_name
                 FROM sc_ticket_assignees ta
                 JOIN sc_tickets t ON t.id = ta.ticket_id
                 JOIN sc_customers c ON c.id = t.customer_id
+                JOIN employees e ON e.id = ta.employee_id
+                JOIN users u ON u.id = e.user_id
                 WHERE ta.employee_id = ? 
                   AND (
                       (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
@@ -15174,10 +15176,12 @@ def at_report_export_excel():
             emp_id = emp_row['id']
             assigned_tickets = db.execute('''
                 SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
-                       c.name as customer_name
+                       c.name as customer_name, u.full_name as assignee_name
                 FROM sc_ticket_assignees ta
                 JOIN sc_tickets t ON t.id = ta.ticket_id
                 JOIN sc_customers c ON c.id = t.customer_id
+                JOIN employees e ON e.id = ta.employee_id
+                JOIN users u ON u.id = e.user_id
                 WHERE ta.employee_id = ? 
                   AND (
                       (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)
@@ -15424,10 +15428,12 @@ def at_report_export_pdf():
             emp_id = emp_row['id']
             assigned_tickets = db.execute('''
                 SELECT t.id, t.ticket_no, t.subject, t.status, t.priority, t.reported_at, t.resolved_at, t.due_date,
-                       c.name as customer_name
+                       c.name as customer_name, u.full_name as assignee_name
                 FROM sc_ticket_assignees ta
                 JOIN sc_tickets t ON t.id = ta.ticket_id
                 JOIN sc_customers c ON c.id = t.customer_id
+                JOIN employees e ON e.id = ta.employee_id
+                JOIN users u ON u.id = e.user_id
                 WHERE ta.employee_id = ? 
                   AND (
                       (date(t.reported_at) >= ? AND date(t.reported_at) <= ?)

@@ -1,6 +1,7 @@
-VERSION = "2.2.97"
+VERSION = "2.2.98"
 RELEASE_DATE = "2026-07-14"
 RELEASE_NOTES = (
+    "v2.2.98: Perbaikan ValueError: 'assignee_name' is not in list pada controller at_report dengan menyertakan nama assignee pada query individual. "
     "v2.2.97: Integrasi daftar tiket/task SupportCore yang sedang dikerjakan ke dalam Laporan Kehadiran, termasuk ekspor Excel dan cetak PDF sebagai penunjang real task. "
     "v2.2.96: Penambahan pengamanan file upload berupa whitelist ekstensi dokumen & gambar serta blacklist untuk file eksekusi/skrip berbahaya (seperti php, sh, bat, exe, dll) di seluruh modul. "
     "v2.2.95: Perbaikan error sort_order is not defined saat menambahkan resource di BookingCore serta penyesuaian penanda navigasi aplikasi pada breadcrumb halaman resource BookingCore. "
