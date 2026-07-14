@@ -10245,7 +10245,11 @@ def salary_table():
         LEFT JOIN employee_salary s ON s.employee_id = e.id AND s.year = ?
         LEFT JOIN employee_salary p ON p.employee_id = e.id AND p.year = ?
         WHERE e.is_active = 1
-        ORDER BY e.employment_type DESC, e.divisi, e.name
+        ORDER BY 
+            CASE WHEN e.divisi = 'Telegram Core' THEN 3
+                 WHEN e.employment_type = 'tetap' THEN 1
+                 ELSE 2 END ASC,
+            e.divisi, e.name
     ''', (year, prev_year)).fetchall()
     emps = [_dec_sal_row(r) for r in emps]
     years = [r['year'] for r in db.execute(

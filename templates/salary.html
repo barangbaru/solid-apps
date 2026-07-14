@@ -47,11 +47,12 @@
 {% endwith %}
 
 <!-- Summary Cards — nilai diisi JS agar live update setelah edit -->
-{% set ns = namespace(total_gross=0, total_emp=0, kontrak=0, tetap=0) %}
+{% set ns = namespace(total_gross=0, total_emp=0, kontrak=0, tetap=0, telegram_core=0) %}
 {% for emp in emps %}
   {% set ns.total_emp = ns.total_emp + 1 %}
   {% set ns.total_gross = ns.total_gross + salary_total(emp) %}
-  {% if emp.employment_type == 'kontrak' %}{% set ns.kontrak = ns.kontrak + 1 %}
+  {% if emp.divisi == 'Telegram Core' %}{% set ns.telegram_core = ns.telegram_core + 1 %}
+  {% elif emp.employment_type == 'kontrak' %}{% set ns.kontrak = ns.kontrak + 1 %}
   {% else %}{% set ns.tetap = ns.tetap + 1 %}{% endif %}
 {% endfor %}
 
@@ -64,8 +65,8 @@
   </div>
   <div class="col-6 col-md-3">
     <div class="card border-0 bg-light text-center py-2">
-      <div class="small text-muted">Kontrak / Tetap</div>
-      <div class="fw-bold fs-5">{{ ns.kontrak }} / {{ ns.tetap }}</div>
+      <div class="small text-muted">Tetap / Kontrak / Tele Core</div>
+      <div class="fw-bold fs-5">{{ ns.tetap }} / {{ ns.kontrak }} / {{ ns.telegram_core }}</div>
     </div>
   </div>
   <div class="col-6 col-md-3">
@@ -133,19 +134,24 @@
           </tr>
         </thead>
         <tbody id="salaryBody">
-          {% set group_ns = namespace(cur_type='') %}
+          {% set group_ns = namespace(cur_group='') %}
           {% for emp in emps %}
-          {% if emp.employment_type != group_ns.cur_type %}
-            {% set group_ns.cur_type = emp.employment_type %}
-            <tr class="group-header">
-              <td colspan="{{ 5 + salary_cols|length + 6 }}"
-                  class="fw-bold small py-1 px-3"
-                  style="background:{% if emp.employment_type=='kontrak' %}#fff3cd{% else %}#d1ecf1{% endif %}">
-                <i class="bi bi-{% if emp.employment_type=='kontrak' %}file-earmark-text{% else %}person-check{% endif %} me-1"></i>
-                Karyawan {{ emp.employment_type | upper }}
-              </td>
-            </tr>
-          {% endif %}
+            {% if emp.divisi == 'Telegram Core' %}
+              {% set emp_group = 'Telegram Core' %}
+            {% else %}
+              {% set emp_group = emp.employment_type | capitalize %}
+            {% endif %}
+            {% if emp_group != group_ns.cur_group %}
+              {% set group_ns.cur_group = emp_group %}
+              <tr class="group-header">
+                <td colspan="{{ 5 + salary_cols|length + 6 }}"
+                    class="fw-bold small py-1 px-3"
+                    style="background:{% if emp_group == 'Telegram Core' %}#e2d9f3{% elif emp_group == 'Kontrak' %}#fff3cd{% else %}#d1ecf1{% endif %}">
+                  <i class="bi bi-{% if emp_group == 'Telegram Core' %}telegram{% elif emp_group == 'Kontrak' %}file-earmark-text{% else %}person-check{% endif %} me-1"></i>
+                  Karyawan {{ emp_group | upper }}
+                </td>
+              </tr>
+            {% endif %}
           {% set gross = salary_total(emp) %}
           {% set prev_gross = (emp.p_base_salary or 0) + (emp.p_al_001 or 0) + (emp.p_al_002 or 0) + (emp.p_al_003 or 0) + (emp.p_al_004 or 0) %}
           {% set inc_pct = emp.increase_pct or 0 %}
