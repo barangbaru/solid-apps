@@ -7668,6 +7668,8 @@ def sc_ticket_status(tid):
         updates['closed_at'] = now
     sets = ', '.join(f'{k}=?' for k in updates)
     db.execute(f'UPDATE sc_tickets SET {sets} WHERE id=?', list(updates.values()) + [tid])
+    if str(row['pct_done'] or 0) != str(pct_done):
+        _sc_ticket_history(db, tid, 'update', 'pct_done', str(row['pct_done'] or 0), str(pct_done), '% Done diubah')
     db.commit()
     _sc_ticket_history(db, tid, 'status_change', 'status', row['status'], new_status,
                        status_note or f'Status diubah ke {new_status}')
@@ -15123,6 +15125,20 @@ def at_report():
             group_name = "Web Portal"
             
         r['group_name'] = group_name
+
+        # Fetch ticket progress updates for this user on this date
+        progress_updates = db.execute('''
+            SELECT h.old_value, h.new_value, h.created_at, t.ticket_no, t.subject
+            FROM sc_ticket_history h
+            JOIN sc_tickets t ON t.id = h.ticket_id
+            WHERE h.changed_by = ? 
+              AND h.field_name = 'pct_done' 
+              AND date(h.created_at) = ?
+            ORDER BY h.created_at ASC
+        ''', (r['user_id'], r['date'])).fetchall()
+        
+        r['progress_updates'] = [dict(pu) for pu in progress_updates]
+        r['progress_count'] = len(progress_updates)
         attendance_list.append(r)
         
     return render_template(
@@ -15242,7 +15258,7 @@ def at_report_export_excel():
     )
     
     # Title Block
-    ws.merge_cells('A1:J1')
+    ws.merge_cells('A1:K1')
     ws['A1'] = "LAPORAN KEHADIRAN KARYAWAN"
     ws['A1'].font = Font(size=14, bold=True, color='FF0F172A')
     ws['A1'].alignment = Alignment(horizontal='center')
@@ -15258,7 +15274,7 @@ def at_report_export_excel():
     # Headers
     headers = [
         "No", "Tanggal", "Nama Karyawan", "Clock In", "Clock Out", 
-        "Durasi Kerja", "Status", "Lokasi Clock In", "Lokasi Clock Out", "Sumber"
+        "Durasi Kerja", "Status", "Lokasi Clock In", "Lokasi Clock Out", "Sumber", "Progress Tiket"
     ]
     
     for col_num, header in enumerate(headers, 1):
@@ -15304,6 +15320,24 @@ def at_report_export_excel():
         elif "Web" in source_in or "Web Attendance" in source_in:
             group_name = "Web Portal"
             
+        # Fetch ticket progress updates for this user on this date
+        progress_updates = db.execute('''
+            SELECT h.old_value, h.new_value, t.ticket_no
+            FROM sc_ticket_history h
+            JOIN sc_tickets t ON t.id = h.ticket_id
+            WHERE h.changed_by = ? 
+              AND h.field_name = 'pct_done' 
+              AND date(h.created_at) = ?
+            ORDER BY h.created_at ASC
+        ''', (r['user_id'], r['date'])).fetchall()
+        
+        progress_str = "-"
+        if progress_updates:
+            progress_parts = []
+            for pu in progress_updates:
+                progress_parts.append(f"{pu['ticket_no']} ({pu['old_value']}%->{pu['new_value']}%)")
+            progress_str = f"{len(progress_updates)} Update: " + ", ".join(progress_parts)
+
         vals = [
             idx,
             r['date'],
@@ -15314,7 +15348,8 @@ def at_report_export_excel():
             (r['status'] or '').upper(),
             r['location_in'] or '-',
             r['location_out'] or '-',
-            group_name
+            group_name,
+            progress_str
         ]
         
         for col_num, val in enumerate(vals, 1):
@@ -15335,10 +15370,10 @@ def at_report_export_excel():
     if assigned_tickets:
         row_num += 2
         ws.cell(row=row_num, column=1, value="DAFTAR TIKET & TASK SUPPORTCORE (PERIODE INI)").font = Font(size=11, bold=True, color='FF0F172A')
-        ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=7)
+        ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=8)
         
         row_num += 1
-        t_headers = ["No", "No Tiket", "Pelanggan", "Subjek", "Status", "Prioritas", "Penerima Tugas"]
+        t_headers = ["No", "No Tiket", "Waktu Lapor", "Pelanggan", "Subjek", "Status", "Prioritas", "Penerima Tugas"]
         for col_num, h in enumerate(t_headers, 1):
             cell = ws.cell(row=row_num, column=col_num)
             cell.value = h
@@ -15353,6 +15388,7 @@ def at_report_export_excel():
             vals = [
                 idx,
                 t['ticket_no'],
+                t['reported_at'],
                 t['customer_name'],
                 t['subject'],
                 t['status'].upper(),
@@ -15363,7 +15399,7 @@ def at_report_export_excel():
                 cell = ws.cell(row=row_num, column=col_num)
                 cell.value = val
                 cell.border = thin_border
-                if col_num in (1, 2, 5, 6):
+                if col_num in (1, 2, 3, 6, 7):
                     cell.alignment = Alignment(horizontal='center')
                 else:
                     cell.alignment = Alignment(horizontal='left')
@@ -15514,6 +15550,20 @@ def at_report_export_pdf():
             group_name = "Web Portal"
             
         r['group_name'] = group_name
+
+        # Fetch ticket progress updates for this user on this date
+        progress_updates = db.execute('''
+            SELECT h.old_value, h.new_value, h.created_at, t.ticket_no, t.subject
+            FROM sc_ticket_history h
+            JOIN sc_tickets t ON t.id = h.ticket_id
+            WHERE h.changed_by = ? 
+              AND h.field_name = 'pct_done' 
+              AND date(h.created_at) = ?
+            ORDER BY h.created_at ASC
+        ''', (r['user_id'], r['date'])).fetchall()
+        
+        r['progress_updates'] = [dict(pu) for pu in progress_updates]
+        r['progress_count'] = len(progress_updates)
         attendance_list.append(r)
         
     now_str = datetime.now().strftime('%d %b %Y %H:%M')

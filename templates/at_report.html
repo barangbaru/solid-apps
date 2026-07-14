@@ -101,7 +101,14 @@
             {% for r in attendance %}
             <tr>
               <td class="text-center text-muted small">{{ loop.index }}</td>
-              <td class="fw-bold text-dark">{{ r.date }}</td>
+              <td class="fw-bold text-dark">
+                {{ r.date }}
+                {% if r.progress_count > 0 %}
+                <span class="badge bg-warning text-dark ms-1" style="font-size: .65rem;" title="{{ r.progress_count }} update progress tiket">
+                  <i class="bi bi-ticket-detailed"></i> {{ r.progress_count }}
+                </span>
+                {% endif %}
+              </td>
               {% if is_mgr %}
               <td>
                 <div class="fw-bold">{{ r.employee_name }}</div>
@@ -175,12 +182,28 @@
                       </div>
                     </div>
                     
-                    <div>
+                    <div class="mb-3">
                       <div class="p-3 bg-light rounded border-start border-primary border-3">
                         <div class="small fw-bold text-muted mb-2"><i class="bi bi-check2-circle me-1"></i>Kemajuan Kerja (#PROGRESS):</div>
                         <p class="mb-0 text-dark small" style="white-space: pre-line;">{{ r.progress or 'Belum mengisi PROGRESS.' }}</p>
                       </div>
                     </div>
+
+                    {% if r.progress_updates %}
+                    <div>
+                      <div class="p-3 bg-light rounded border-start border-warning border-3">
+                        <div class="small fw-bold text-muted mb-2"><i class="bi bi-ticket-detailed me-1"></i>Progress Tiket SupportCore ({{ r.progress_count }} Update):</div>
+                        <ul class="mb-0 ps-3 small text-dark">
+                          {% for pu in r.progress_updates %}
+                          <li class="mb-1">
+                            <span class="badge bg-warning text-dark me-1" style="font-size: 0.7rem;">{{ pu.ticket_no }}</span>
+                            <span class="fw-bold">{{ pu.subject }}</span>: {{ pu.old_value }}% &rarr; {{ pu.new_value }}%
+                          </li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    </div>
+                    {% endif %}
                   </div>
                   <div class="modal-footer bg-light border-top py-2">
                     <button type="button" class="btn btn-secondary btn-sm px-3 fw-bold" data-bs-dismiss="modal">Tutup</button>
@@ -219,6 +242,7 @@
           <tr>
             <th class="text-center" style="width: 60px;">No</th>
             <th style="width: 130px;">No Tiket</th>
+            <th style="width: 150px;">Waktu Lapor</th>
             <th>Pelanggan</th>
             <th>Subjek</th>
             <th class="text-center" style="width: 100px;">Status</th>
@@ -231,10 +255,10 @@
           <tr>
             <td class="text-center text-muted small">{{ loop.index }}</td>
             <td class="fw-bold text-dark">{{ t.ticket_no }}</td>
+            <td class="text-muted small">{{ t.reported_at or '-' }}</td>
             <td>{{ t.customer_name }}</td>
             <td>
               <div class="fw-semibold text-dark">{{ t.subject }}</div>
-              <div class="text-muted small">Dilaporkan: {{ t.reported_at }}</div>
             </td>
             <td class="text-center">
               <span class="badge {% if t.status=='resolved' %}bg-success{% elif t.status=='progress' %}bg-warning text-dark{% else %}bg-secondary{% endif %}" style="font-size: .72rem;">
