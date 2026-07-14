@@ -12355,6 +12355,7 @@ def booking_resource_add():
         notes      = request.form.get('notes', '').strip()
         color      = request.form.get('color', '#d97706').strip()
         icon       = request.form.get('icon', 'door-open').strip()
+        sort_order = request.form.get('sort_order', 0, type=int)
         is_active  = 1 if request.form.get('is_active') else 0
         image      = ''
         

@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}{{ resource.name }} — BookingCore{% endblock %}
-{% block page_title %}<span class="breadcrumb-page">{{ resource.name }}</span>{% endblock %}
+{% block page_title %}
+  BookingCore<span class="breadcrumb-sep">/</span>
+  <span class="breadcrumb-page">{{ resource.name }}</span>
+{% endblock %}
 
 {% block content %}
 {# ── Header resource info ── #}

@@ -1,6 +1,7 @@
-VERSION = "2.2.94"
+VERSION = "2.2.95"
 RELEASE_DATE = "2026-07-14"
 RELEASE_NOTES = (
+    "v2.2.95: Perbaikan error sort_order is not defined saat menambahkan resource di BookingCore serta penyesuaian penanda navigasi aplikasi pada breadcrumb halaman resource BookingCore. "
     "v2.2.94: Penyesuaian kalkulasi headcount dan beban gaji karyawan kontrak dengan memisahkan kontrak aktif & berakhir serta menerapkan pembobotan fraksi hari aktif kontrak untuk beban tahunan. "
     "v2.2.93: Penambahan baris subtotal untuk masing-masing kelompok karyawan (Tetap, Kontrak, Telegram Core) di tabel gaji dan pemisahan data Telegram Core pada charts dan tables di dashboard analitik gaji. "
     "v2.2.92: Pemisahan kelompok karyawan 'Telegram Core' pada tabel gaji karyawan agar tidak tercampur dengan karyawan tetap/kontrak inti. "
