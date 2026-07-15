@@ -437,7 +437,7 @@
           <div class="sidebar-section">{{ menu.title }}</div>
           {% for child in menu.children %}
             <li>
-              <a href="{{ child.url }}" class="{{ 'active' if child.url == request.path or (child.url != '/' and child.url in request.path) }}">
+              <a href="{{ child.url }}" class="{{ 'active' if child.url == request.path or child.url.rstrip('/') == request.path.rstrip('/') or (child.url != '/' and child.url not in ['/attendance/', '/support/', '/aset/', '/booking/', '/project/', '/portal'] and child.url in request.path) }}">
                 {% if child.icon %}
                   <i class="bi bi-{{ child.icon }} nav-icon"></i>
                 {% else %}
@@ -465,7 +465,7 @@
             <ul class="sidebar-sub">
               {% for child in menu.children %}
                 <li>
-                  <a href="{{ child.url }}" class="{{ 'active' if child.url == request.path or (child.url != '/' and child.url in request.path) }}">
+                  <a href="{{ child.url }}" class="{{ 'active' if child.url == request.path or child.url.rstrip('/') == request.path.rstrip('/') or (child.url != '/' and child.url not in ['/attendance/', '/support/', '/aset/', '/booking/', '/project/', '/portal'] and child.url in request.path) }}">
                     {{ child.title }}
                   </a>
                 </li>
@@ -476,7 +476,7 @@
       {% else %}
         {# Item menu tunggal #}
         <li>
-          <a href="{{ menu.url }}" class="{{ 'active' if menu.url == request.path or (menu.url != '/' and menu.url in request.path) }}">
+          <a href="{{ menu.url }}" class="{{ 'active' if menu.url == request.path or menu.url.rstrip('/') == request.path.rstrip('/') or (menu.url != '/' and menu.url not in ['/attendance/', '/support/', '/aset/', '/booking/', '/project/', '/portal'] and menu.url in request.path) }}">
             {% if menu.icon %}
               <i class="bi bi-{{ menu.icon }} nav-icon"></i>
             {% endif %}
