@@ -1,6 +1,7 @@
-VERSION = "2.2.100"
+VERSION = "2.2.101"
 RELEASE_DATE = "2026-07-15"
 RELEASE_NOTES = (
+    "v2.2.101: Memperbaiki pemetaan prefix path /attendance, /project, /docs, dan /finance ke slug aplikasi yang sesuai di enforce_app_access agar user dengan hak akses dapat membuka AttendanceCore dan aplikasi terkait tanpa terblokir. "
     "v2.2.100: Perbaikan ValueError pada detail tiket SupportCore dengan menghapus inisialisasi status_map yang tidak valid dan tidak digunakan di sc_ticket_detail.html. "
     "v2.2.99: Integrasi kolom Waktu Lapor tiket dan pelacakan progress daily (% Done) tiket SupportCore ke dalam Laporan Kehadiran (Web, PDF, Excel) berdasarkan riwayat perubahan. "
     "v2.2.98: Perbaikan ValueError: 'assignee_name' is not in list pada controller at_report dengan menyertakan nama assignee pada query individual. "

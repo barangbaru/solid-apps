@@ -3000,10 +3000,14 @@ def auto_set_active_app():
 
 # Prefix path → app_slug. Urutan penting: lebih spesifik di atas.
 _APP_PATH_MAP = [
-    ('/support',  'support'),
-    ('/portal',   'portal'),
-    ('/booking',  'booking'),
-    ('/aset',     'aset'),
+    ('/support',     'support'),
+    ('/portal',      'portal'),
+    ('/booking',     'booking'),
+    ('/aset',        'aset'),
+    ('/attendance',  'attendance'),
+    ('/project',     'project'),
+    ('/docs',        'docs'),
+    ('/finance',     'finance'),
 ]
 # Path yang bebas diakses tanpa cek app_access
 _APP_ACCESS_EXEMPT = {
