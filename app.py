@@ -2065,7 +2065,7 @@ def init_db():
     db.execute("DELETE FROM superapp_apps WHERE slug='helpdesk'")
     db.commit()
     # Seed system roles sebagai global (app_slug='')
-    for rname, rdesc, rsys in [('superadmin','Super Administrator',1),('admin','Administrator',1),('viewer','Viewer Read-Only',1)]:
+    for rname, rdesc, rsys in [('superadmin','Super Administrator',1),('admin','Administrator',1),('viewer','Viewer Read-Only',1),('user','User / Staff',1)]:
         db.execute('INSERT OR IGNORE INTO roles(name,description,is_system,app_slug) VALUES(?,?,?,?)', (rname, rdesc, rsys, ''))
     # Migrate existing system roles agar global
     db.execute("UPDATE roles SET app_slug='' WHERE is_system=1 AND (app_slug='evaluasi' OR app_slug IS NULL)")
@@ -4683,10 +4683,16 @@ def login_google_callback():
         if emp and not emp['user_id']:
             db.execute('UPDATE employees SET user_id=? WHERE id=?', (new_uid, emp['id']))
             db.commit()
+        # Berikan default akses ke AttendanceCore dengan role user
+        db.execute(
+            'INSERT INTO user_app_access(user_id, app_slug, app_role, is_active) VALUES(?,?,?,1)',
+            (new_uid, 'attendance', 'user')
+        )
+        db.commit()
         user = db.execute('SELECT * FROM users WHERE id=?', (new_uid,)).fetchone()
         is_new_user = True
         audit_log('register_google', 'users', user['id'],
-                  f'Akun baru via Google ({google_email}) — menunggu pemberian akses', app_slug='portal')
+                  f'Akun baru via Google ({google_email}) — diberikan akses default AttendanceCore (user)', app_slug='portal')
 
     # Pastikan tidak ada sisa akses aktif dari akun lama (seharusnya tidak ada, tapi defensive)
     # Tidak lakukan apa-apa — akses dikontrol sepenuhnya via user_app_access
@@ -4706,7 +4712,7 @@ def login_google_callback():
     if is_new_user:
         flash(
             f'Selamat datang, {session["user_name"]}! '
-            'Akun Anda telah terdaftar. Hubungi administrator untuk mendapatkan akses aplikasi.',
+            'Akun Anda telah terdaftar dengan akses default ke AttendanceCore. Hubungi administrator jika Anda memerlukan akses ke aplikasi lainnya.',
             'info'
         )
     else:

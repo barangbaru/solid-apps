@@ -1,6 +1,7 @@
-VERSION = "2.2.102"
+VERSION = "2.2.103"
 RELEASE_DATE = "2026-07-15"
 RELEASE_NOTES = (
+    "v2.2.103: Menambahkan default akses aplikasi berupa AttendanceCore (role user) aktif secara otomatis saat user baru pertama kali terdaftar melalui login Google SSO, serta mendaftarkan role 'user' sebagai sistem role global. "
     "v2.2.102: Modifikasi pengiriman link reset password agar dikirimkan ke semua kontak unik (email, Telegram, WhatsApp) baik yang ada di tabel user maupun data karyawan terhubung, serta memunculkan tombol reset di UI jika salah satunya terisi. "
     "v2.2.101: Memperbaiki pemetaan prefix path /attendance, /project, /docs, dan /finance ke slug aplikasi yang sesuai di enforce_app_access agar user dengan hak akses dapat membuka AttendanceCore dan aplikasi terkait tanpa terblokir. "
     "v2.2.100: Perbaikan ValueError pada detail tiket SupportCore dengan menghapus inisialisasi status_map yang tidak valid dan tidak digunakan di sc_ticket_detail.html. "
