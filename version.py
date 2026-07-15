@@ -1,6 +1,7 @@
-VERSION = "2.2.99"
-RELEASE_DATE = "2026-07-14"
+VERSION = "2.2.100"
+RELEASE_DATE = "2026-07-15"
 RELEASE_NOTES = (
+    "v2.2.100: Perbaikan ValueError pada detail tiket SupportCore dengan menghapus inisialisasi status_map yang tidak valid dan tidak digunakan di sc_ticket_detail.html. "
     "v2.2.99: Integrasi kolom Waktu Lapor tiket dan pelacakan progress daily (% Done) tiket SupportCore ke dalam Laporan Kehadiran (Web, PDF, Excel) berdasarkan riwayat perubahan. "
     "v2.2.98: Perbaikan ValueError: 'assignee_name' is not in list pada controller at_report dengan menyertakan nama assignee pada query individual. "
     "v2.2.97: Integrasi daftar tiket/task SupportCore yang sedang dikerjakan ke dalam Laporan Kehadiran, termasuk ekspor Excel dan cetak PDF sebagai penunjang real task. "

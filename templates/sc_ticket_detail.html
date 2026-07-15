@@ -31,7 +31,6 @@
         <i class="bi bi-activity me-1"></i>Status Tiket
       </div>
       <div class="card-body">
-        {% set status_map = dict(sc_ticket_statuses) %}
         {% for val, label, color in sc_ticket_statuses %}
           {% if t.status == val %}
         <div class="text-center mb-3">
