@@ -4826,23 +4826,40 @@ RESET_TOKEN_TTL = 3600  # 1 jam
 
 def _send_reset_notifications(user, reset_link, settings, db=None):
     """Kirim link reset password via email, Telegram, dan WhatsApp.
-    Kontak diambil dari user fields; jika kosong, fallback ke data karyawan yang terhubung."""
-    sent = []
-    # Resolve contacts — merge user fields + linked employee
-    if db is not None:
-        contacts = get_user_contacts(db, user)
-    else:
-        contacts = {
-            'email':       (user.get('email') or '').strip(),
-            'phone':       (user.get('phone') or '').strip(),
-            'telegram_id': (user.get('telegram_id') or '').strip(),
-        }
+    Mengirim ke semua kontak unik yang terdaftar di user fields maupun data karyawan."""
+    emails = set()
+    phones = set()
+    telegram_ids = set()
 
-    display_name = user['full_name'] or user['username']
+    # Ambil dari user
+    if user.get('email'):
+        emails.add(user['email'].strip())
+    if user.get('phone'):
+        phones.add(user['phone'].strip())
+    if user.get('telegram_id'):
+        telegram_ids.add(user['telegram_id'].strip())
+
+    # Ambil dari employee
+    if db is not None:
+        uid = user['id'] if hasattr(user, 'keys') else user.get('id')
+        emp = db.execute(
+            'SELECT email, phone, telegram_id FROM employees WHERE user_id=? AND is_active=1',
+            (uid,)
+        ).fetchone()
+        if emp:
+            if emp['email']:
+                emails.add(emp['email'].strip())
+            if emp['phone']:
+                phones.add(emp['phone'].strip())
+            if emp['telegram_id']:
+                telegram_ids.add(emp['telegram_id'].strip())
+
+    sent = []
+    display_name = user.get('full_name') or user.get('username')
     subject  = 'Reset Password — Aplikasi TalentCore'
     body_html = f'''
 <p>Halo <b>{display_name}</b>,</p>
-<p>Anda (atau seseorang) meminta reset password untuk akun <b>{user['username']}</b>.</p>
+<p>Anda (atau seseorang) meminta reset password untuk akun <b>{user.get('username')}</b>.</p>
 <p><a href="{reset_link}" style="background:#1a7a3a;color:#fff;padding:10px 20px;border-radius:6px;
    text-decoration:none;font-weight:bold">Klik di sini untuk reset password</a></p>
 <p>Link ini hanya berlaku <b>1 jam</b> dan <b>langsung kadaluarsa setelah dibuka satu kali</b>.</p>
@@ -4851,32 +4868,37 @@ def _send_reset_notifications(user, reset_link, settings, db=None):
 '''
 
     # Email
-    if contacts.get('email'):
-        ok, _ = send_email(settings, contacts['email'], subject, body_html)
-        if ok:
-            sent.append('email')
+    for email in sorted(emails):
+        if email:
+            ok, _ = send_email(settings, email, subject, body_html)
+            if ok and 'email' not in sent:
+                sent.append('email')
 
     # Telegram
     bot_token = settings.get('telegram_bot_token','').strip()
-    if bot_token and contacts.get('telegram_id'):
-        tg_msg = (f'🔐 *Reset Password*\n\nHalo {display_name},\n'
-                  f'Klik link berikut untuk reset password akun `{user["username"]}`:\n\n'
-                  f'{reset_link}\n\n_Link berlaku 1 jam dan sekali pakai._')
-        ok, _ = send_telegram(bot_token, contacts['telegram_id'], tg_msg)
-        if ok:
-            sent.append('telegram')
+    if bot_token:
+        for tg_id in sorted(telegram_ids):
+            if tg_id:
+                tg_msg = (f'🔐 *Reset Password*\n\nHalo {display_name},\n'
+                          f'Klik link berikut untuk reset password akun `{user.get("username")}`:\n\n'
+                          f'{reset_link}\n\n_Link berlaku 1 jam dan sekali pakai._')
+                ok, _ = send_telegram(bot_token, tg_id, tg_msg)
+                if ok and 'telegram' not in sent:
+                    sent.append('telegram')
 
     # WhatsApp
     wa_url     = settings.get('openwa_url','').strip()
     wa_key     = settings.get('openwa_api_key','').strip()
-    wa_session = get_openwa_session(settings)  # portal reset password: pakai global session
-    if wa_url and contacts.get('phone'):
-        wa_msg = (f'🔐 Reset Password\n\nHalo {display_name},\n'
-                  f'Link reset password akun *{user["username"]}*:\n\n{reset_link}\n\n'
-                  f'Link berlaku 1 jam dan langsung kadaluarsa setelah dibuka.')
-        ok, _ = send_whatsapp(wa_url, wa_key, wa_session, contacts['phone'], wa_msg)
-        if ok:
-            sent.append('whatsapp')
+    wa_session = get_openwa_session(settings)
+    if wa_url:
+        for phone in sorted(phones):
+            if phone:
+                wa_msg = (f'🔐 Reset Password\n\nHalo {display_name},\n'
+                          f'Link reset password akun *{user.get("username")}*:\n\n{reset_link}\n\n'
+                          f'Link berlaku 1 jam dan langsung kadaluarsa setelah dibuka.')
+                ok, _ = send_whatsapp(wa_url, wa_key, wa_session, phone, wa_msg)
+                if ok and 'whatsapp' not in sent:
+                    sent.append('whatsapp')
 
     return sent
 

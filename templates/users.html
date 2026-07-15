@@ -79,7 +79,7 @@
             <a href="/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-pencil"></i> Edit
             </a>
-            {% if u.email or u.phone or u.telegram_id %}
+            {% if show_email or show_phone or show_tg %}
             <form action="/admin/users/{{ u.id }}/send-reset" method="post" class="d-inline"
                   data-confirm="Kirim link reset password ke {{ u.username | e }}?"
                   onsubmit="return confirm(this.dataset.confirm)">
