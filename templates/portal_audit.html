@@ -59,6 +59,25 @@
     padding: 10px 12px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   }
+
+  /* High contrast action badges */
+  .badge-login { background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+  .badge-logout { background-color: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
+  .badge-open_app { background-color: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  .badge-create { background-color: #ccfbf1; color: #0f766e; border: 1px solid #99f6e4; }
+  .badge-update { background-color: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+  .badge-delete { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+  .badge-action-default { background-color: #f3f4f6; color: #1f2937; border: 1px solid #e5e7eb; }
+
+  /* High contrast notification channel badges */
+  .badge-telegram { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+  .badge-email { background-color: #f3e8ff; color: #6d28d9; border: 1px solid #e9d5ff; }
+  .badge-whatsapp { background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+  .badge-channel-default { background-color: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
+
+  /* High contrast notification status badges */
+  .badge-status-sent { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+  .badge-status-failed { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -171,12 +190,12 @@
             <span class="fw-semibold">{{ r.username or '—' }}</span>
           </td>
           <td>
-            {% set action_colors = {
-              'login': 'success', 'logout': 'secondary', 'open_app': 'primary',
-              'create': 'info', 'update': 'warning', 'delete': 'danger'
+            {% set action_classes = {
+              'login': 'badge-login', 'logout': 'badge-logout', 'open_app': 'badge-open_app',
+              'create': 'badge-create', 'update': 'badge-update', 'delete': 'badge-delete'
             } %}
-            {% set color = action_colors.get(r.action, 'dark') %}
-            <span class="badge bg-{{ color }} bg-opacity-15 text-{{ color }} border border-{{ color }}" style="font-size:.7rem">
+            {% set action_cls = action_classes.get(r.action, 'badge-action-default') %}
+            <span class="badge {{ action_cls }}" style="font-size:.7rem">
               {{ r.action }}
             </span>
           </td>
@@ -306,20 +325,25 @@
             </span>
           </td>
           <td>
-            {% set ch_icons = {'telegram': ('bi-telegram', 'info'), 'email': ('bi-envelope', 'primary'), 'whatsapp': ('bi-whatsapp', 'success'), 'wa': ('bi-whatsapp', 'success')} %}
-            {% set ico, col = ch_icons.get(r.channel, ('bi-bell', 'secondary')) %}
-            <span class="badge bg-{{ col }} bg-opacity-15 text-{{ col }} border" style="font-size:.7rem">
+            {% set ch_icons = {
+              'telegram': ('bi-telegram', 'badge-telegram'),
+              'email': ('bi-envelope', 'badge-email'),
+              'whatsapp': ('bi-whatsapp', 'badge-whatsapp'),
+              'wa': ('bi-whatsapp', 'badge-whatsapp')
+            } %}
+            {% set ico, ch_class = ch_icons.get(r.channel, ('bi-bell', 'badge-channel-default')) %}
+            <span class="badge {{ ch_class }}" style="font-size:.7rem">
               <i class="bi {{ ico }} me-1"></i>{{ r.channel }}
             </span>
           </td>
           <td class="text-muted font-monospace" style="font-size:.75rem">{{ r.recipient or '—' }}</td>
           <td>
             {% if r.status == 'sent' %}
-            <span class="badge bg-success-subtle text-success border border-success" style="font-size:.7rem">
+            <span class="badge badge-status-sent" style="font-size:.7rem">
               <i class="bi bi-check me-1"></i>Terkirim
             </span>
             {% else %}
-            <span class="badge bg-danger-subtle text-danger border border-danger" style="font-size:.7rem">
+            <span class="badge badge-status-failed" style="font-size:.7rem">
               <i class="bi bi-x me-1"></i>Gagal
             </span>
             {% endif %}
