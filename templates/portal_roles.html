@@ -273,9 +273,46 @@ const allMenus = {
 function showRole(name) {
   panels.forEach(p => p.style.display = p.id === 'role-' + name ? '' : 'none');
   tabs.forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
+  updateAvailableMenuVisibility(name);
 }
 
+function updateAvailableMenuVisibility(roleName) {
+  const assignedIds = assignedMenus[roleName] || [];
+  const rolePanel = document.getElementById("role-" + roleName);
+  if (!rolePanel) return;
+  
+  const availableItems = rolePanel.querySelectorAll(".available-menus-list .draggable-menu-item");
+  availableItems.forEach(item => {
+    const id = parseInt(item.dataset.id);
+    if (assignedIds.includes(id)) {
+      item.style.display = "none";
+    } else {
+      item.style.display = "flex";
+    }
+  });
 
+  const groups = rolePanel.querySelectorAll(".available-menus-list .menu-group");
+  groups.forEach(group => {
+    const header = group.querySelector(".draggable-menu-item[data-is-parent='true']");
+    const children = group.querySelectorAll(".draggable-menu-item:not([data-is-parent='true'])");
+    
+    let allHidden = true;
+    if (header && header.style.display !== "none") {
+      allHidden = false;
+    }
+    children.forEach(child => {
+      if (child.style.display !== "none") {
+        allHidden = false;
+      }
+    });
+
+    if (allHidden) {
+      group.style.display = "none";
+    } else {
+      group.style.display = "block";
+    }
+  });
+}
 
 function populateAssignedList(roleName) {
   const container = document.getElementById("assigned-list-" + roleName);
@@ -334,6 +371,7 @@ function addMenuToRole(roleName, menuId) {
   
   assignedMenus[roleName].push(mid);
   populateAssignedList(roleName);
+  updateAvailableMenuVisibility(roleName);
 }
 
 function removeMenuFromRole(roleName, menuId) {
@@ -352,6 +390,7 @@ function removeMenuFromRole(roleName, menuId) {
     }
     
     populateAssignedList(roleName);
+    updateAvailableMenuVisibility(roleName);
   }
 }
 
@@ -359,6 +398,7 @@ function clearRoleMenus(roleName) {
   if (confirm("Kosongkan semua menu untuk role " + roleName + "?")) {
     assignedMenus[roleName] = [];
     populateAssignedList(roleName);
+    updateAvailableMenuVisibility(roleName);
   }
 }
 
