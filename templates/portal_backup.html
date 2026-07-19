@@ -6,7 +6,7 @@
 <div class="d-flex align-items-center justify-content-between mb-4">
   <div class="d-flex align-items-center gap-2">
     <h5 class="fw-bold mb-0"><i class="bi bi-database-fill-gear text-primary me-1"></i>Backup Center</h5>
-    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 ms-1" style="font-size:.72rem">
+    <span class="badge bg-primary text-white ms-1" style="font-size:.72rem">
       System Backup & Scheduler
     </span>
   </div>
@@ -19,7 +19,7 @@
     <div class="card mb-4">
       <div class="card-header py-3 fw-bold d-flex align-items-center justify-content-between">
         <span><i class="bi bi-play-circle-fill text-success me-2"></i>Trigger Backup Manual</span>
-        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25" style="font-size: 0.75rem;">Instant Run</span>
+        <span class="badge bg-success text-white" style="font-size: 0.75rem;">Instant Run</span>
       </div>
       <div class="card-body">
         <form id="manualBackupForm">
@@ -199,7 +199,7 @@
           <div class="row g-3 align-items-center mb-3">
             <div class="col-md-6">
               <label class="form-label fw-bold mb-0">Lokasi Penyimpanan File Media:</label>
-              <div class="text-muted small">Pilih lokasi penyimpanan berkas media/unggahan di aplikasi. Jika menggunakan Object Storage, file akan disimpan di folder <code>upload/media/</code> dalam bucket S3 yang dikonfigurasi di atas.</div>
+              <div class="text-muted small">Pilih lokasi penyimpanan berkas media/unggahan di aplikasi. Jika menggunakan Object Storage, file akan disimpan di folder <code class="text-dark bg-light px-1 py-0.5 rounded">upload/media/</code> dalam bucket S3 yang dikonfigurasi di atas.</div>
             </div>
             <div class="col-md-6">
               <div class="form-check form-check-inline me-3">
@@ -264,7 +264,7 @@
   <div class="col-lg-4">
     <!-- Status Terakhir -->
     <div class="card mb-4 border-{{ 'success' if cfg.backup_last_status == 'Sukses' else 'danger' if cfg.backup_last_status == 'Gagal' else 'secondary' }}">
-      <div class="card-header py-3 fw-bold bg-{{ 'success' if cfg.backup_last_status == 'Sukses' else 'danger' if cfg.backup_last_status == 'Gagal' else 'secondary' }} bg-opacity-10 text-{{ 'success' if cfg.backup_last_status == 'Sukses' else 'danger' if cfg.backup_last_status == 'Gagal' else 'dark' }}">
+      <div class="card-header py-3 fw-bold bg-{{ 'success' if cfg.backup_last_status == 'Sukses' else 'danger' if cfg.backup_last_status == 'Gagal' else 'secondary' }} text-white">
         <i class="bi bi-info-circle-fill me-2"></i>Status Backup Terakhir
       </div>
       <div class="card-body">

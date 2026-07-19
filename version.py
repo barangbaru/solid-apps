@@ -1,7 +1,7 @@
-VERSION = "2.2.113"
+VERSION = "2.2.114"
 RELEASE_DATE = "2026-07-19"
 RELEASE_NOTES = (
-    "v2.2.113: Menambahkan kebijakan retensi backup otomatis pada penyimpanan S3 di mana file backup lama di bucket S3 akan otomatis dibersihkan apabila umurnya melebihi jumlah hari yang diatur di konfigurasi Retensi Backup. "
+    "v2.2.114: Meningkatkan kontras visual pada halaman Backup Center dengan mengganti latar belakang teks/badge redup menjadi solid (text-white) untuk kenyamanan dan kejelasan membaca status serta log backup. "
     "v2.2.106: Mengintegrasikan form self-assessment karyawan dengan 6 sesi refleksi terstruktur (dampak kinerja, inovasi, OKR, solusi mandiri, pencapaian utama, dan komitmen pengembangan) dengan penyimpanan data JSON dinamis, serta mendukung render data terstruktur pada ringkasan admin dan tampilan cetak PDF. "
     "v2.2.104: Memperbaiki isu double highlight pada menu navigasi sidebar dengan memperketat pencocokan url root aplikasi agar hanya aktif jika terjadi kecocokan tepat (exact match). "
     "v2.2.103: Menambahkan default akses aplikasi berupa AttendanceCore (role user) aktif secara otomatis saat user baru pertama kali terdaftar melalui login Google SSO, serta mendaftarkan role 'user' sebagai sistem role global. "
