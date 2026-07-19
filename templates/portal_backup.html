@@ -241,8 +241,8 @@
 
           <div class="row g-3 align-items-center mb-3">
             <div class="col-md-6">
-              <label class="form-label fw-bold mb-0">Retensi Backup Lokal di Server (Hari):</label>
-              <div class="text-muted small">File backup lokal yang lebih tua dari jumlah hari ini akan dihapus otomatis. Set 0 untuk unlimited.</div>
+              <label class="form-label fw-bold mb-0">Retensi Backup Lokal server dan s3 (Hari):</label>
+              <div class="text-muted small">File backup lokal & S3 yang lebih tua dari jumlah hari ini akan dihapus otomatis. Set 0 untuk unlimited.</div>
             </div>
             <div class="col-md-3">
               <input type="number" name="backup_retention_days" class="form-control form-control-sm"
@@ -328,6 +328,47 @@
         {% endif %}
       </div>
     </div>
+
+    <!-- Riwayat Backup S3 -->
+    {% if cfg.backup_dest_s3_enabled == '1' %}
+    <div class="card mt-4">
+      <div class="card-header py-3 fw-bold bg-light d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-cloud-check-fill text-primary me-2"></i>Daftar Backup S3 (Terbaru)</span>
+        <span class="badge bg-primary text-white" style="font-size: 0.7rem;">S3 Storage</span>
+      </div>
+      <div class="card-body p-0">
+        {% if s3_backup_files %}
+          <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+            {% for bf in s3_backup_files %}
+              <div class="list-group-item py-2 px-3">
+                <div class="d-flex align-items-center justify-content-between">
+                  <div class="text-truncate me-2" style="max-width: 180px;">
+                    <a href="/portal/backup/download-s3/{{ bf.filename }}" class="fw-semibold text-decoration-none text-dark small" title="{{ bf.filename }}">
+                      <i class="bi bi-cloud-arrow-down-fill text-primary me-1"></i>{{ bf.filename }}
+                    </a>
+                    <span class="d-block text-muted" style="font-size:0.7rem">{{ bf.created_at }}</span>
+                  </div>
+                  <div>
+                    <span class="badge bg-light text-dark border me-1 small" style="font-size:0.7rem">{{ bf.size }}</span>
+                    <a href="/portal/backup/download-s3/{{ bf.filename }}" class="btn btn-outline-primary btn-xs" title="Download dari S3">
+                      <i class="bi bi-download"></i>
+                    </a>
+                    <button class="btn btn-outline-danger btn-xs ms-1" onclick="deleteBackup('{{ bf.filename }}', true)" title="Hapus dari S3">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="p-4 text-center text-muted small">
+            <i class="bi bi-cloud-slash display-6 mb-2 d-block"></i> Belum ada file backup S3 yang terdeteksi.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -418,9 +459,11 @@ function testS3Connection() {
   });
 }
 
-function deleteBackup(filename) {
-  if (confirm("Apakah Anda yakin ingin menghapus file backup " + filename + "?")) {
-    fetch('/portal/backup/delete/' + filename, {
+function deleteBackup(filename, isS3 = false) {
+  const targetName = isS3 ? "S3 " : "";
+  if (confirm("Apakah Anda yakin ingin menghapus file backup " + targetName + filename + "?")) {
+    const url = '/portal/backup/delete/' + filename + (isS3 ? '?s3=1' : '');
+    fetch(url, {
       method: 'POST'
     })
     .then(res => res.json())

@@ -17131,7 +17131,49 @@ def portal_backup():
         backup_files.sort(key=lambda x: x['created_at'], reverse=True)
         backup_files = backup_files[:10]
         
-    return render_template('portal_backup.html', cfg=cfg, backup_files=backup_files, DB_TYPE=DB_TYPE)
+    # Get S3 backup files if S3 is enabled
+    s3_backup_files = []
+    if cfg.get('backup_dest_s3_enabled') == '1':
+        endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+        access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+        secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+        bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+        region = cfg.get('backup_dest_s3_region', '').strip()
+        if access_key and secret_key and bucket:
+            try:
+                import boto3
+                from botocore.config import Config
+                config = Config(
+                    region_name=region or 'us-east-1',
+                    signature_version='s3v4'
+                )
+                s3 = boto3.client(
+                    's3',
+                    endpoint_url=endpoint or None,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    config=config
+                )
+                paginator = s3.get_paginator('list_objects_v2')
+                for page in paginator.paginate(Bucket=bucket, Prefix='backups/'):
+                    if 'Contents' in page:
+                        for obj in page['Contents']:
+                            key = obj['Key']
+                            filename = os.path.basename(key)
+                            if filename.startswith('backup_hive_') and filename.endswith('.zip'):
+                                s3_backup_files.append({
+                                    'key': key,
+                                    'filename': filename,
+                                    'size': f"{obj['Size'] / (1024*1024):.2f} MB",
+                                    'created_at': obj['LastModified'].astimezone().strftime('%Y-%m-%d %H:%M:%S')
+                                })
+                s3_backup_files.sort(key=lambda x: x['created_at'], reverse=True)
+                s3_backup_files = s3_backup_files[:10]
+            except Exception as e:
+                import logging
+                logging.error(f"Error fetching S3 backups: {e}")
+                
+    return render_template('portal_backup.html', cfg=cfg, backup_files=backup_files, s3_backup_files=s3_backup_files, DB_TYPE=DB_TYPE)
 
 @app.route('/portal/backup/download/<filename>')
 @login_required
@@ -17252,6 +17294,38 @@ def delete_backup_file(filename):
     # Secure filename
     import werkzeug
     filename = werkzeug.utils.secure_filename(filename)
+    
+    is_s3 = request.args.get('s3') == '1'
+    if is_s3:
+        db = get_db()
+        cfg = get_settings(db)
+        if cfg.get('backup_dest_s3_enabled') == '1':
+            endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+            access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+            secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+            bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+            region = cfg.get('backup_dest_s3_region', '').strip()
+            if access_key and secret_key and bucket:
+                try:
+                    import boto3
+                    from botocore.config import Config
+                    config = Config(
+                        region_name=region or 'us-east-1',
+                        signature_version='s3v4'
+                    )
+                    s3 = boto3.client(
+                        's3',
+                        endpoint_url=endpoint or None,
+                        aws_access_key_id=access_key,
+                        aws_secret_access_key=secret_key,
+                        config=config
+                    )
+                    s3.delete_object(Bucket=bucket, Key=f"backups/{filename}")
+                    return jsonify({'ok': True, 'msg': f'File backup S3 {filename} berhasil dihapus.'})
+                except Exception as e:
+                    return jsonify({'ok': False, 'msg': f'Gagal menghapus dari S3: {str(e)}'})
+        return jsonify({'ok': False, 'msg': 'S3 tidak dikonfigurasi atau tidak aktif.'})
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
     backups_dir = os.path.join(base_dir, 'backups')
     filepath = os.path.join(backups_dir, filename)
@@ -17262,6 +17336,51 @@ def delete_backup_file(filename):
         except Exception as e:
             return jsonify({'ok': False, 'msg': str(e)})
     return jsonify({'ok': False, 'msg': 'File tidak ditemukan.'})
+
+@app.route('/portal/backup/download-s3/<filename>')
+@login_required
+def download_s3_backup(filename):
+    if not is_portal_admin():
+        flash('Akses ditolak.', 'danger')
+        return redirect(url_for('portal_backup'))
+    
+    import werkzeug
+    filename = werkzeug.utils.secure_filename(filename)
+    
+    db = get_db()
+    cfg = get_settings(db)
+    if cfg.get('backup_dest_s3_enabled') == '1':
+        endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+        access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+        secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+        bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+        region = cfg.get('backup_dest_s3_region', '').strip()
+        if access_key and secret_key and bucket:
+            try:
+                import boto3
+                from botocore.config import Config
+                config = Config(
+                    region_name=region or 'us-east-1',
+                    signature_version='s3v4'
+                )
+                s3 = boto3.client(
+                    's3',
+                    endpoint_url=endpoint or None,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    config=config
+                )
+                url = s3.generate_presigned_url(
+                    'get_object',
+                    Params={'Bucket': bucket, 'Key': f"backups/{filename}"},
+                    ExpiresIn=3600
+                )
+                return redirect(url)
+            except Exception as e:
+                flash(f'Gagal men-generate link unduh S3: {str(e)}', 'danger')
+                return redirect(url_for('portal_backup'))
+    flash('Pengaturan S3 tidak aktif.', 'danger')
+    return redirect(url_for('portal_backup'))
 
 @app.route('/portal/backup/test-s3', methods=['POST'])
 @login_required
