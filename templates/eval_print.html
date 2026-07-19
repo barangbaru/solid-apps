@@ -105,8 +105,52 @@
       </strong></td></tr>
   </table>
 
+  <!-- AKUMULASI EVALUASI -->
+  <h2>II. Akumulasi Review Evaluasi (5 Pilar)</h2>
+  <table>
+    <thead>
+      <tr style="background:#f5f5f5;">
+        <th style="text-align:left; width:50%;">Pilar Evaluasi</th>
+        <th style="text-align:center; width:25%;">Nilai / Persentase</th>
+        <th style="text-align:left; width:25%;">Keterangan</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1. Task Load (Data Task)</td>
+        <td style="text-align:center; font-weight:bold;">{{ '%.1f'|format(accumulated.task_score) }}%</td>
+        <td>Periode: {{ accumulated.date_from }} s/d {{ accumulated.date_to }}</td>
+      </tr>
+      <tr>
+        <td>2. Project Performance</td>
+        <td style="text-align:center; font-weight:bold;">{{ '%.1f'|format(accumulated.pp_total) }}%</td>
+        <td>Dari Project Performance Score</td>
+      </tr>
+      <tr>
+        <td>3. Training & Self-Improvement</td>
+        <td style="text-align:center; font-weight:bold;">{{ '%.1f'|format(accumulated.training_score) }}%</td>
+        <td>Berdasarkan improvement task selesai</td>
+      </tr>
+      <tr>
+        <td>4. Soft Skill (Kompetensi)</td>
+        <td style="text-align:center; font-weight:bold;">{{ '%.1f'|format(accumulated.soft_skill_score) }}%</td>
+        <td>Rata-rata tertimbang soft skill</td>
+      </tr>
+      <tr>
+        <td>5. Hard Skill (Keahlian)</td>
+        <td style="text-align:center; font-weight:bold;">{{ '%.1f'|format(accumulated.hs_total) }}%</td>
+        <td>Hard skill score</td>
+      </tr>
+      <tr style="background:#e8f0fe; font-size:10pt; font-weight:bold;">
+        <td>INDEKS AKUMULASI AKHIR</td>
+        <td style="text-align:center; font-size:11pt; color:#6f42c1;">{{ '%.2f'|format(accumulated.overall) }} / 100</td>
+        <td>Rata-rata 5 Pilar</td>
+      </tr>
+    </tbody>
+  </table>
+
   <!-- KPI SISTEM -->
-  <h2>II. Analisa Kinerja Sistem (Objektif)</h2>
+  <h2>III. Analisa Kinerja Sistem (Objektif)</h2>
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-val {% if perf.task_score >= 80 %}green{% elif perf.task_score >= 60 %}blue{% elif perf.task_score >= 40 %}orange{% else %}red{% endif %}">
@@ -177,7 +221,7 @@
 
   <!-- PEER REVIEW -->
   {% if peer_rows %}
-  <h2>III. Peer Review ({{ peer_rows|length }} Reviewer)</h2>
+  <h2>IV. Peer Review ({{ peer_rows|length }} Reviewer)</h2>
   {% set dims = [
     ('Kerjasama','dim_kerjasama'), ('Komunikasi','dim_komunikasi'),
     ('Keandalan','dim_keandalan'), ('Inisiatif','dim_inisiatif'), ('Kualitas','dim_kualitas')
@@ -214,7 +258,7 @@
   {% endif %}
 
   <!-- NILAI EVALUASI -->
-  <h2 class="page-break">IV. Rekap Nilai Evaluasi</h2>
+  <h2 class="page-break">V. Rekap Nilai Evaluasi</h2>
   <table>
     <tr>
       <th>Komponen</th><th>Bobot</th><th>Nilai</th>
@@ -254,7 +298,7 @@
 
   <!-- KOMPETENSI DIVISI -->
   {% if comp_rows %}
-  <h2>V. Kompetensi Divisi</h2>
+  <h2>VI. Kompetensi Divisi</h2>
   <table>
     <tr><th>Item Kompetensi</th><th>Bobot</th><th>Tipe</th><th>Rating</th></tr>
     {% for c in comp_rows %}
@@ -270,7 +314,7 @@
 
   <!-- SKILL -->
   {% if skill_rows %}
-  <h2>VI. Skill & Kompetensi</h2>
+  <h2>VII. Skill & Kompetensi</h2>
   <table>
     <tr><th>Kategori</th><th>Item</th><th>Skor</th></tr>
     {% for s in skill_rows %}
@@ -285,7 +329,7 @@
 
   <!-- PROYEK -->
   {% if proj_rows %}
-  <h2>VII. Daftar Proyek / Support / POC</h2>
+  <h2>VIII. Daftar Proyek / Support / POC</h2>
   <table>
     <tr><th>Jenis</th><th>Nama</th><th>Posisi</th><th>Periode</th><th>Status</th></tr>
     {% for p in proj_rows %}
@@ -302,7 +346,7 @@
 
   <!-- AI SUMMARY -->
   {% if ev.ai_summary or ev.ai_recommendation %}
-  <h2>VIII. Ringkasan & Rekomendasi AI</h2>
+  <h2>IX. Ringkasan & Rekomendasi AI</h2>
   {% if ev.ai_summary %}
   <h3>Ringkasan</h3>
   <div class="ai-box">{{ ev.ai_summary }}</div>
@@ -315,7 +359,7 @@
 
   <!-- GAJI REFERENSI -->
   {% if sal %}
-  <h2>IX. Referensi Gaji ({{ sal_year }})</h2>
+  <h2>X. Referensi Gaji ({{ sal_year }})</h2>
   <table>
     <tr><th>Komponen</th><th>Nilai</th></tr>
     {% if sal.base_salary %}<tr><td>Gaji Pokok</td><td>{{ '{:,.0f}'.format(sal.base_salary|float) }}</td></tr>{% endif %}
@@ -331,7 +375,7 @@
 
   <!-- REVIEW APPROVAL HISTORY -->
   {% if all_reviews %}
-  <h2>X. Riwayat Approval</h2>
+  <h2>XI. Riwayat Approval</h2>
   <table>
     <tr><th>Reviewer</th><th>Peran</th><th>Status</th><th>Waktu</th><th>Catatan</th></tr>
     {% for r in all_reviews %}
@@ -348,7 +392,7 @@
 
   <!-- TANDA TANGAN -->
   <div class="sign-area">
-    <h2>XI. Persetujuan</h2>
+    <h2>XII. Persetujuan</h2>
     <div class="sign-grid">
       <div class="sign-box">
         <div style="font-size:10pt;font-weight:bold;">Karyawan</div>

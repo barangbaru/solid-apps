@@ -3110,6 +3110,70 @@ def recalc(db, eval_id):
                (pp_total, hs_total, ability, comp, final, eval_id))
     db.commit()
 
+def calc_accumulated_metrics(db, ev, emp):
+    from datetime import date, timedelta, datetime as _dt
+    # 1. Fallback date range logic (3 months)
+    created_date_str = ev['created_at'][:10] if ev.get('created_at') else ''
+    if not created_date_str:
+        created_date_str = date.today().strftime('%Y-%m-%d')
+    
+    date_to = ev.get('task_date_to') or created_date_str
+    try:
+        d_to = _dt.strptime(date_to, '%Y-%m-%d')
+        d_from = d_to - timedelta(days=90)
+        default_from_str = d_from.strftime('%Y-%m-%d')
+    except:
+        default_from_str = ''
+    date_from = ev.get('task_date_from') or default_from_str
+    
+    bm = get_benchmark_for_emp(db, emp)
+    perf = calc_task_perf(db, emp['id'], date_from, date_to, bm)
+    task_score = perf.get('task_score', 0.0)
+    
+    # 2. Performance (Project Performance)
+    pp_score = ev.get('pp_score') or 0
+    pp_total = pp_score * 20.0
+    
+    # 3. Training / Self-Improvement
+    proj_rows = db.execute('SELECT * FROM project_entries WHERE eval_id=? AND entry_type=?', (ev['id'], 'improvement')).fetchall()
+    if proj_rows:
+        done_count = sum(1 for p in proj_rows if p['status'] == 'DONE')
+        training_score = round((done_count / len(proj_rows)) * 100.0, 2)
+    else:
+        training_score = 100.0
+        
+    # 4. Soft Skill
+    comp_rows = db.execute('''
+        SELECT ci.bobot, ci.is_hardskill, COALESCE(cs.rating, 0) AS rating
+        FROM competency_items ci
+        LEFT JOIN competency_scores cs ON cs.competency_item_id = ci.id AND cs.eval_id = ?
+        WHERE ci.divisi = ? AND ci.is_hardskill = 0
+    ''', (ev['id'], emp['divisi'])).fetchall()
+    if comp_rows:
+        sum_bobot = sum(c['bobot'] for c in comp_rows)
+        if sum_bobot > 0:
+            soft_skill_score = round(sum(c['rating'] * 20.0 * c['bobot'] for c in comp_rows) / sum_bobot, 2)
+        else:
+            soft_skill_score = 0.0
+    else:
+        soft_skill_score = 0.0
+        
+    # 5. Hard Skill
+    hs_total = ev.get('hs_total') or 0.0
+    
+    overall = round((task_score + pp_total + training_score + soft_skill_score + hs_total) / 5.0, 2)
+    
+    return {
+        'task_score': task_score,
+        'pp_total': pp_total,
+        'training_score': training_score,
+        'soft_skill_score': soft_skill_score,
+        'hs_total': hs_total,
+        'overall': overall,
+        'date_from': date_from,
+        'date_to': date_to
+    }
+
 def get_eval_or_404(db, eval_id):
     return db.execute('''SELECT e.*, emp.name AS emp_name, emp.jabatan, emp.divisi
                          FROM evaluations e JOIN employees emp ON emp.id = e.employee_id
@@ -8128,7 +8192,12 @@ def run_reminders_now():
 def eval_new(emp_id):
     db = get_db()
     periode = request.form.get('periode', str(date.today().year)).strip()
-    cur = db.execute('INSERT INTO evaluations(employee_id, periode) VALUES(?,?)', (emp_id, periode))
+    from datetime import date as _d, timedelta as _td
+    today = _d.today()
+    date_to = today.strftime('%Y-%m-%d')
+    date_from = (today - _td(days=90)).strftime('%Y-%m-%d')
+    cur = db.execute('INSERT INTO evaluations(employee_id, periode, task_date_from, task_date_to) VALUES(?,?,?,?)',
+                     (emp_id, periode, date_from, date_to))
     eval_id = cur.lastrowid
     for slot in range(1, 6):
         db.execute('INSERT INTO peer_reviews(eval_id, slot) VALUES(?,?)', (eval_id, slot))
@@ -8180,7 +8249,12 @@ def emp_trigger_review(emp_id):
         eval_id      = existing['id']
         created_new  = False
     else:
-        cur      = db.execute('INSERT INTO evaluations(employee_id, periode) VALUES(?,?)', (emp_id, periode))
+        from datetime import date as _d, timedelta as _td
+        today = _d.today()
+        date_to = today.strftime('%Y-%m-%d')
+        date_from = (today - _td(days=90)).strftime('%Y-%m-%d')
+        cur      = db.execute('INSERT INTO evaluations(employee_id, periode, task_date_from, task_date_to) VALUES(?,?,?,?)',
+                              (emp_id, periode, date_from, date_to))
         eval_id  = cur.lastrowid
         for slot in range(1, 6):
             db.execute('INSERT INTO peer_reviews(eval_id, slot) VALUES(?,?)', (eval_id, slot))
@@ -8793,10 +8867,11 @@ def eval_summary(eval_id):
         WHERE er.eval_id=? ORDER BY er.submitted_at''', (eval_id,)).fetchall()
     base_url = request.host_url.rstrip('/')
     self_link = f"{base_url}/assess/{eval_token['token']}" if eval_token else None
+    accumulated = calc_accumulated_metrics(db, ev, emp)
     return render_template('eval_summary.html', ev=ev, peers=peers, entries=entries,
                            competency_items=competency_items, emp=emp,
                            eval_token=eval_token, self_link=self_link,
-                           all_reviews=all_reviews)
+                           all_reviews=all_reviews, accumulated=accumulated)
 
 @app.route('/eval/<int:eval_id>/delete', methods=['POST'])
 @superadmin_required
@@ -8853,6 +8928,7 @@ def _build_eval_ai_prompt(db, eval_id):
 
     # Benchmark untuk divisi+level
     bm = get_benchmark_for_emp(db, emp)
+    acc = calc_accumulated_metrics(db, ev, emp)
 
     # Format prompt
     lines = [
@@ -8863,7 +8939,15 @@ def _build_eval_ai_prompt(db, eval_id):
         f"Periode   : {ev['periode']}",
         f"Status Karyawan: {'Kontrak' if emp['employment_type']=='kontrak' else 'Tetap'}",
         "",
-        f"=== SKOR KINERJA TASK (otomatis dari sistem) ===",
+        f"=== AKUMULASI EVALUASI KINERJA (5 PILAR) ===",
+        f"1. Task Load (Data Task)  : {acc['task_score']:.1f} / 100 (periode: {acc['date_from']} s/d {acc['date_to']})",
+        f"2. Project Performance     : {acc['pp_total']:.1f} / 100",
+        f"3. Self-Improvement/Train  : {acc['training_score']:.1f} / 100",
+        f"4. Soft Skill (Kompetensi) : {acc['soft_skill_score']:.1f} / 100",
+        f"5. Hard Skill (Keahlian)   : {acc['hs_total']:.1f} / 100",
+        f"NILAI INDEKS AKUMULASI     : {acc['overall']:.1f} / 100",
+        "",
+        f"=== DETAIL KINERJA TASK (otomatis dari sistem) ===",
         f"Task Score     : {perf['task_score']:.1f} / 100 (benchmark {bm} poin/bulan)",
         f"Total Poin Raw : {perf['total_raw']:.1f}",
         f"Durasi Periode : {perf['months']:.1f} bulan",
@@ -9402,6 +9486,7 @@ def _eval_export_data(db, eval_id):
     sal_dec  = _dec_sal_row(sal)      if sal      else {}
     sal_prev_dec = _dec_sal_row(sal_prev) if sal_prev else {}
 
+    accumulated = calc_accumulated_metrics(db, ev, emp)
     return {
         'ev': dict(ev), 'emp': dict(emp),
         'perf': perf, 'ana': ana, 'bm': bm,
@@ -9412,6 +9497,7 @@ def _eval_export_data(db, eval_id):
         'proj_rows': [dict(r) for r in proj_rows],
         'all_reviews': [dict(r) for r in all_reviews],
         'sal': sal_dec, 'sal_prev': sal_prev_dec, 'sal_year': sal_year,
+        'accumulated': accumulated,
     }
 
 

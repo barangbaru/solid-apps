@@ -1,6 +1,7 @@
-VERSION = "2.2.104"
-RELEASE_DATE = "2026-07-15"
+VERSION = "2.2.105"
+RELEASE_DATE = "2026-07-19"
 RELEASE_NOTES = (
+    "v2.2.105: Menambahkan kalkulasi otomatis rentang 3 bulan untuk evaluasi baru, verifikasi pengiriman link self-assessment karyawan, serta kalkulasi dan visualisasi Indeks Akumulasi 5 pilar (Task, Performance, Training, Soft Skill, Hard Skill) di summary dan cetak PDF. "
     "v2.2.104: Memperbaiki isu double highlight pada menu navigasi sidebar dengan memperketat pencocokan url root aplikasi agar hanya aktif jika terjadi kecocokan tepat (exact match). "
     "v2.2.103: Menambahkan default akses aplikasi berupa AttendanceCore (role user) aktif secara otomatis saat user baru pertama kali terdaftar melalui login Google SSO, serta mendaftarkan role 'user' sebagai sistem role global. "
     "v2.2.102: Modifikasi pengiriman link reset password agar dikirimkan ke semua kontak unik (email, Telegram, WhatsApp) baik yang ada di tabel user maupun data karyawan terhubung, serta memunculkan tombol reset di UI jika salah satunya terisi. "

@@ -39,6 +39,69 @@
       </div>
     </div>
 
+    <!-- Akumulasi Review Evaluasi (5 Pilar) -->
+    <div class="card mb-3 border-purple-subtle shadow-sm">
+      <div class="card-header py-2 fw-bold text-white" style="background: linear-gradient(135deg, #6f42c1, #4da8da);">
+        <i class="bi bi-pie-chart-fill"></i> Akumulasi Review Evaluasi (5 Pilar)
+      </div>
+      <div class="card-body py-3">
+        <div class="row align-items-center mb-0">
+          <div class="col-md-4 text-center border-end">
+            <div class="text-muted small fw-semibold mb-1">Indeks Akumulasi Akhir</div>
+            <div class="display-4 fw-bold text-purple" style="color: #6f42c1;">{{ '%.2f'|format(accumulated.overall) }}</div>
+            <div class="text-muted small mt-1">Periode analisis task:<br><strong class="text-dark">{{ accumulated.date_from }}</strong> s/d <strong class="text-dark">{{ accumulated.date_to }}</strong></div>
+          </div>
+          <div class="col-md-8">
+            <div class="mb-2">
+              <div class="d-flex justify-content-between mb-1 small">
+                <span><i class="bi bi-cpu me-1 text-primary"></i> 1. Task (Load / Poin)</span>
+                <span class="fw-bold text-primary">{{ '%.1f'|format(accumulated.task_score) }}%</span>
+              </div>
+              <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-primary" role="progressbar" style="width: {{ accumulated.task_score }}%"></div>
+              </div>
+            </div>
+            <div class="mb-2">
+              <div class="d-flex justify-content-between mb-1 small">
+                <span><i class="bi bi-kanban me-1 text-success"></i> 2. Project Performance</span>
+                <span class="fw-bold text-success">{{ '%.1f'|format(accumulated.pp_total) }}%</span>
+              </div>
+              <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-success" role="progressbar" style="width: {{ accumulated.pp_total }}%"></div>
+              </div>
+            </div>
+            <div class="mb-2">
+              <div class="d-flex justify-content-between mb-1 small">
+                <span><i class="bi bi-award me-1 text-info"></i> 3. Training & Self-Improvement</span>
+                <span class="fw-bold text-info">{{ '%.1f'|format(accumulated.training_score) }}%</span>
+              </div>
+              <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-info" role="progressbar" style="width: {{ accumulated.training_score }}%"></div>
+              </div>
+            </div>
+            <div class="mb-2">
+              <div class="d-flex justify-content-between mb-1 small">
+                <span><i class="bi bi-chat-heart me-1 text-warning"></i> 4. Soft Skill (Kompetensi)</span>
+                <span class="fw-bold text-warning">{{ '%.1f'|format(accumulated.soft_skill_score) }}%</span>
+              </div>
+              <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-warning" role="progressbar" style="width: {{ accumulated.soft_skill_score }}%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="d-flex justify-content-between mb-1 small">
+                <span><i class="bi bi-tools me-1 text-secondary"></i> 5. Hard Skill (Keahlian)</span>
+                <span class="fw-bold text-secondary">{{ '%.1f'|format(accumulated.hs_total) }}%</span>
+              </div>
+              <div class="progress" style="height: 6px;">
+                <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ accumulated.hs_total }}%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Score Summary Table -->
     <div class="card mb-3">
       <div class="card-header py-2 fw-bold"><i class="bi bi-table"></i> Rekapitulasi Nilai</div>
