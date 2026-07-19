@@ -1,7 +1,7 @@
-VERSION = "2.2.112"
+VERSION = "2.2.113"
 RELEASE_DATE = "2026-07-19"
 RELEASE_NOTES = (
-    "v2.2.112: Memperbaiki kendala login lockout di jaringan privat atau lokal dengan menambahkan mekanisme fallback sukses (score 1.0) pada verifikasi reCAPTCHA apabila API Google recaptcha tidak dapat dihubungi (connection timeout/error). "
+    "v2.2.113: Menambahkan kebijakan retensi backup otomatis pada penyimpanan S3 di mana file backup lama di bucket S3 akan otomatis dibersihkan apabila umurnya melebihi jumlah hari yang diatur di konfigurasi Retensi Backup. "
     "v2.2.106: Mengintegrasikan form self-assessment karyawan dengan 6 sesi refleksi terstruktur (dampak kinerja, inovasi, OKR, solusi mandiri, pencapaian utama, dan komitmen pengembangan) dengan penyimpanan data JSON dinamis, serta mendukung render data terstruktur pada ringkasan admin dan tampilan cetak PDF. "
     "v2.2.104: Memperbaiki isu double highlight pada menu navigasi sidebar dengan memperketat pencocokan url root aplikasi agar hanya aktif jika terjadi kecocokan tepat (exact match). "
     "v2.2.103: Menambahkan default akses aplikasi berupa AttendanceCore (role user) aktif secara otomatis saat user baru pertama kali terdaftar melalui login Google SSO, serta mendaftarkan role 'user' sebagai sistem role global. "

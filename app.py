@@ -16788,6 +16788,8 @@ def run_backup_housekeeping(retention_days):
             return
         retention_sec = days * 24 * 60 * 60
         now = time.time()
+        
+        # 1. Housekeeping local backups
         base_dir = os.path.dirname(os.path.abspath(__file__))
         backups_dir = os.path.join(base_dir, 'backups')
         if os.path.exists(backups_dir):
@@ -16800,6 +16802,50 @@ def run_backup_housekeeping(retention_days):
                             os.remove(fpath)
                         except Exception:
                             pass
+                            
+        # 2. Housekeeping S3 backups
+        db = _get_raw_db()
+        cfg = get_settings(db)
+        db.close()
+        
+        if cfg.get('backup_dest_s3_enabled') == '1':
+            endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+            access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+            secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+            bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+            region = cfg.get('backup_dest_s3_region', '').strip()
+            
+            if access_key and secret_key and bucket:
+                import boto3
+                from botocore.config import Config
+                from datetime import datetime as _dt, timezone as _tz
+                
+                config = Config(
+                    region_name=region or 'us-east-1',
+                    signature_version='s3v4'
+                )
+                s3 = boto3.client(
+                    's3',
+                    endpoint_url=endpoint or None,
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    config=config
+                )
+                
+                paginator = s3.get_paginator('list_objects_v2')
+                for page in paginator.paginate(Bucket=bucket, Prefix='backups/'):
+                    if 'Contents' in page:
+                        for obj in page['Contents']:
+                            key = obj['Key']
+                            filename = os.path.basename(key)
+                            if filename.startswith('backup_hive_') and filename.endswith('.zip'):
+                                last_modified = obj['LastModified']
+                                age_sec = (_dt.now(_tz.utc) - last_modified).total_seconds()
+                                if age_sec > retention_sec:
+                                    try:
+                                        s3.delete_object(Bucket=bucket, Key=key)
+                                    except Exception:
+                                        pass
     except Exception:
         pass
 
