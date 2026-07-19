@@ -3,6 +3,64 @@
 {% block page_title %}<span class="breadcrumb-page">Audit Trail</span>{% endblock %}
 
 {% block content %}
+<style>
+  /* Custom Tabs as modern Segmented Control */
+  .audit-tabs {
+    background: #eef2f6;
+    padding: 4px;
+    border-radius: 10px;
+    display: inline-flex;
+    margin-bottom: 1.25rem;
+    gap: 4px;
+    border: none;
+    list-style: none;
+  }
+  .audit-tabs .nav-item {
+    margin: 0;
+  }
+  .audit-tabs .nav-link {
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 8px 18px;
+    font-size: 0.85rem;
+    color: #4b5563;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+  }
+  .audit-tabs .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+    color: #1f2937;
+  }
+  .audit-tabs .nav-link.active {
+    background-color: #ffffff !important;
+    color: #6f42c1 !important;
+    box-shadow: 0 2px 6px rgba(111, 66, 193, 0.15);
+    font-weight: 600;
+  }
+
+  /* Table Customizations for Premium Aesthetics and Readability */
+  .audit-table thead th {
+    background-color: #6f42c1 !important;
+    color: #ffffff !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.76rem;
+    letter-spacing: 0.5px;
+    padding: 10px 12px;
+    border: none;
+  }
+  .audit-table tbody tr:hover {
+    background-color: rgba(111, 66, 193, 0.03) !important;
+  }
+  .audit-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+</style>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <h5 class="fw-bold mb-0"><i class="bi bi-shield-check text-primary me-2"></i>Audit Trail</h5>
@@ -62,7 +120,7 @@
 </form>
 
 {# ── Tabs ── #}
-<ul class="nav nav-tabs mb-0" style="border-bottom:none">
+<ul class="audit-tabs">
   <li class="nav-item">
     <a class="nav-link {{ 'active fw-semibold' if tab=='activity' }}"
        href="/portal/audit?tab=activity&app={{ app_filter }}&from={{ date_from }}&to={{ date_to }}">
@@ -83,13 +141,13 @@
   </li>
 </ul>
 
-<div class="card border-0 shadow-sm" style="border-radius:0 0 .5rem .5rem">
+<div class="card border-0 shadow-sm">
   <div class="card-body p-0">
 
     {# ── TAB: Aktivitas User ── #}
     {% if tab == 'activity' %}
-    <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
-      <thead class="table-light">
+    <table class="table table-hover table-sm mb-0 align-middle audit-table" style="font-size:.82rem">
+      <thead>
         <tr>
           <th class="ps-3" style="width:140px">Waktu</th>
           <th style="width:80px">Aplikasi</th>
@@ -153,8 +211,8 @@
       </div>
       <span class="ms-auto text-muted small"><i class="bi bi-info-circle me-1"></i>Pengaturan tersimpan otomatis</span>
     </div>
-    <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
-      <thead class="table-light">
+    <table class="table table-hover table-sm mb-0 align-middle audit-table" style="font-size:.82rem">
+      <thead>
         <tr>
           <th class="ps-3" style="width:140px">Waktu</th>
           <th style="width:80px">Aplikasi</th>
@@ -226,8 +284,8 @@
 
     {# ── TAB: Log Notifikasi ── #}
     {% else %}
-    <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.82rem">
-      <thead class="table-light">
+    <table class="table table-hover table-sm mb-0 align-middle audit-table" style="font-size:.82rem">
+      <thead>
         <tr>
           <th class="ps-3" style="width:140px">Waktu</th>
           <th style="width:80px">Aplikasi</th>
