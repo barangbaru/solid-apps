@@ -17297,16 +17297,16 @@ def delete_backup_file(filename):
     
     is_s3 = request.args.get('s3') == '1'
     if is_s3:
-        db = get_db()
-        cfg = get_settings(db)
-        if cfg.get('backup_dest_s3_enabled') == '1':
-            endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
-            access_key = cfg.get('backup_dest_s3_access_key', '').strip()
-            secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
-            bucket = cfg.get('backup_dest_s3_bucket', '').strip()
-            region = cfg.get('backup_dest_s3_region', '').strip()
-            if access_key and secret_key and bucket:
-                try:
+        try:
+            db = get_db()
+            cfg = get_settings(db)
+            if cfg.get('backup_dest_s3_enabled') == '1':
+                endpoint = cfg.get('backup_dest_s3_endpoint', '').strip()
+                access_key = cfg.get('backup_dest_s3_access_key', '').strip()
+                secret_key = cfg.get('backup_dest_s3_secret_key', '').strip()
+                bucket = cfg.get('backup_dest_s3_bucket', '').strip()
+                region = cfg.get('backup_dest_s3_region', '').strip()
+                if access_key and secret_key and bucket:
                     import boto3
                     from botocore.config import Config
                     config = Config(
@@ -17322,9 +17322,11 @@ def delete_backup_file(filename):
                     )
                     s3.delete_object(Bucket=bucket, Key=f"backups/{filename}")
                     return jsonify({'ok': True, 'msg': f'File backup S3 {filename} berhasil dihapus.'})
-                except Exception as e:
-                    return jsonify({'ok': False, 'msg': f'Gagal menghapus dari S3: {str(e)}'})
-        return jsonify({'ok': False, 'msg': 'S3 tidak dikonfigurasi atau tidak aktif.'})
+                else:
+                    return jsonify({'ok': False, 'msg': 'Kredensial S3 tidak lengkap.'})
+            return jsonify({'ok': False, 'msg': 'S3 tidak dikonfigurasi atau tidak aktif.'})
+        except Exception as e:
+            return jsonify({'ok': False, 'msg': f'Gagal menghapus dari S3: {str(e)}'})
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     backups_dir = os.path.join(base_dir, 'backups')
