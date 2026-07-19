@@ -1,7 +1,7 @@
-VERSION = "2.2.109"
+VERSION = "2.2.110"
 RELEASE_DATE = "2026-07-19"
 RELEASE_NOTES = (
-    "v2.2.109: Menerapkan skema warna kontras tinggi (high contrast) pada seluruh badge aksi (action), channel notifikasi, dan status log terkirim/gagal di menu Audit Trail untuk memastikan keterbacaan teks yang sempurna terhadap warna latar belakang. "
+    "v2.2.110: Mengintegrasikan PortalCore ke dalam tab aplikasi di konfigurasi Role & Permission, serta memfilter (menyembunyikan) menu bernilai izin kritis seperti Gaji (Salary) dari daftar setup jika pengubah role bukan seorang superadmin. "
     "v2.2.106: Mengintegrasikan form self-assessment karyawan dengan 6 sesi refleksi terstruktur (dampak kinerja, inovasi, OKR, solusi mandiri, pencapaian utama, dan komitmen pengembangan) dengan penyimpanan data JSON dinamis, serta mendukung render data terstruktur pada ringkasan admin dan tampilan cetak PDF. "
     "v2.2.104: Memperbaiki isu double highlight pada menu navigasi sidebar dengan memperketat pencocokan url root aplikasi agar hanya aktif jika terjadi kecocokan tepat (exact match). "
     "v2.2.103: Menambahkan default akses aplikasi berupa AttendanceCore (role user) aktif secara otomatis saat user baru pertama kali terdaftar melalui login Google SSO, serta mendaftarkan role 'user' sebagai sistem role global. "

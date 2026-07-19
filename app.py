@@ -1709,6 +1709,10 @@ LEVEL_CHOICES = ['Staff', 'Senior Staff', 'Co-Leader', 'Leader', 'Manager', 'Sen
 
 # Permissions per-app. Portal-level (manage_users, manage_roles) dikelola via superadmin.
 APP_PERMISSIONS = {
+    'portal': {
+        'manage_users':  'Kelola pengguna (tambah/edit/hapus)',
+        'manage_roles':  'Kelola role dan permission',
+    },
     'evaluasi': {
         'manage_settings':    'Pengaturan notifikasi sistem',
         'manage_template':    'Edit template evaluasi (skill/kompetensi/ability)',
@@ -5793,18 +5797,25 @@ def portal_roles():
             flash(f'Menu dan Hak Akses role "{rname}" diperbarui', 'success')
         return redirect(url_for('portal_roles', app=active_app))
 
-    apps_list     = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    apps_raw      = db.execute('SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order').fetchall()
+    apps_list     = [{'slug': 'portal', 'name': 'PortalCore'}] + [dict(r) for r in apps_raw]
     roles         = db.execute("SELECT * FROM roles WHERE app_slug=? OR app_slug='' ORDER BY is_system DESC, name",
                                (active_app,)).fetchall()
     perms_by_role = {r['name']: get_role_permissions(db, r['name']) for r in roles}
     app_perms     = APP_PERMISSIONS.get(active_app, {})
     
     # Load menus of active app hierarchically
-    all_app_menus = db.execute('SELECT * FROM app_menus WHERE app_slug=? ORDER BY sort_order, id', (active_app,)).fetchall()
+    all_app_menus_raw = db.execute('SELECT * FROM app_menus WHERE app_slug=? ORDER BY sort_order, id', (active_app,)).fetchall()
+    all_app_menus = []
+    for r in all_app_menus_raw:
+        m = dict(r)
+        if m['required_permission'] in CRITICAL_PERMISSIONS and not superadmin:
+            continue
+        all_app_menus.append(m)
+
     app_menu_tree = []
     children_by_parent = {}
-    for row in all_app_menus:
-        m = dict(row)
+    for m in all_app_menus:
         if m['parent_id'] is None:
             app_menu_tree.append(m)
         else:
