@@ -360,26 +360,117 @@
         </div>
 
         <!-- Self-assessment content (if filled) -->
-        {% if ev.self_achievements or ev.self_notes or ev.self_improvements %}
-        <div class="border rounded p-2 bg-light mb-3 small">
-          <div class="fw-semibold text-primary mb-2"><i class="bi bi-person-fill me-1"></i>Isian Karyawan</div>
-          {% if ev.self_achievements %}
-          <div class="mb-2">
-            <span class="text-muted">Pencapaian:</span>
-            <div style="white-space:pre-wrap">{{ ev.self_achievements }}</div>
-          </div>
-          {% endif %}
-          {% if ev.self_notes %}
-          <div class="mb-2">
-            <span class="text-muted">Tantangan:</span>
-            <div style="white-space:pre-wrap">{{ ev.self_notes }}</div>
-          </div>
-          {% endif %}
-          {% if ev.self_improvements %}
-          <div>
-            <span class="text-muted">Pengembangan:</span>
-            <div style="white-space:pre-wrap">{{ ev.self_improvements }}</div>
-          </div>
+        {% if ev.self_achievements or ev.self_notes or ev.self_improvements or self_data %}
+        <div class="border rounded p-3 bg-light mb-3 small">
+          <div class="fw-semibold text-primary mb-3 fs-6"><i class="bi bi-person-bounding-box me-1"></i>Hasil Self-Assessment Karyawan</div>
+          
+          {% if self_data %}
+            <!-- Sesi 1 -->
+            <div class="mb-3 p-2 bg-white rounded border-start border-primary border-3">
+              <div class="fw-bold text-primary mb-1"><i class="bi bi-chat-left-text"></i> Sesi 1 — Evaluasi Dampak Kinerja (Refleksi)</div>
+              <div class="mb-1"><strong>1. Mitigasi Hambatan:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s1_q1 or '—' }}</div>
+              <div class="mb-1"><strong>2. OKR vs Target:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s1_q2 or '—' }}</div>
+              <div class="mb-1"><strong>3. Hambatan Terbesar & Solusi:</strong></div>
+              <div class="text-muted" style="white-space:pre-wrap">{{ self_data.s1_q3 or '—' }}</div>
+            </div>
+
+            <!-- Sesi 2 -->
+            <div class="mb-3 p-2 bg-white rounded border-start border-success border-3">
+              <div class="fw-bold text-success mb-1"><i class="bi bi-lightbulb"></i> Sesi 2 — Hasil Kerja & Inovasi</div>
+              <div class="mb-1"><strong>Hambatan diatasi:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s2_hambatan or '—' }}</div>
+              <div class="mb-1"><strong>Inovasi/Efisiensi:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s2_inovasi or '—' }}</div>
+              <div class="mb-1"><strong>Praktik Baik:</strong></div>
+              <div class="text-muted" style="white-space:pre-wrap">{{ self_data.s2_praktik or '—' }}</div>
+            </div>
+
+            <!-- Sesi 3 -->
+            <div class="mb-3 p-2 bg-white rounded border-start border-info border-3">
+              <div class="fw-bold text-info mb-1"><i class="bi bi-bullseye"></i> Sesi 3 — Pencapaian vs OKR</div>
+              <table class="table table-sm table-bordered mt-1 mb-0 small">
+                <thead>
+                  <tr class="table-light"><th>Objective & Key Results (OKR)</th><th>Target</th><th>Pencapaian</th></tr>
+                </thead>
+                <tbody>
+                  {% for i in range(1, 4) %}
+                  <tr>
+                    <td>{{ self_data['s3_okr_' ~ i] or '—' }}</td>
+                    <td>{{ self_data['s3_target_' ~ i] or '—' }}</td>
+                    <td>{{ self_data['s3_pencapaian_' ~ i] or '—' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Sesi 4 -->
+            <div class="mb-3 p-2 bg-white rounded border-start border-danger border-3">
+              <div class="fw-bold text-danger mb-1"><i class="bi bi-shield-lock"></i> Sesi 4 — Hambatan & Solusi Mandiri</div>
+              <div class="mb-1"><strong>Process (Alur Kerja):</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s4_process or '—' }}</div>
+              <div class="mb-1"><strong>Tools & Tech Stack:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s4_tools or '—' }}</div>
+              <div class="mb-1"><strong>Skill & Knowledge Gaps:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s4_skills or '—' }}</div>
+              <div class="mb-1"><strong>Communication / Collaboration:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s4_comm or '—' }}</div>
+              <div class="mb-1"><strong>Leadership Support:</strong></div>
+              <div class="text-muted mb-2" style="white-space:pre-wrap">{{ self_data.s4_support or '—' }}</div>
+              <div class="mt-2 border-top pt-2">
+                <strong>Inisiatif Peer-to-Peer Mulai Minggu Depan:</strong>
+                <div class="text-muted mt-1" style="white-space:pre-wrap">{{ self_data.s4_q2 or '—' }}</div>
+              </div>
+            </div>
+
+            <!-- Sesi 5 -->
+            <div class="mb-3 p-2 bg-white rounded border-start border-warning border-3">
+              <div class="fw-bold text-warning mb-1"><i class="bi bi-star"></i> Sesi 5 — Rekapitulasi Pencapaian Utama</div>
+              <table class="table table-sm table-bordered mt-1 mb-0 small">
+                <thead>
+                  <tr class="table-light"><th>Action Nyata</th><th>Kolaborator</th><th>Hasil Akhir</th></tr>
+                </thead>
+                <tbody>
+                  {% for i in range(1, 4) %}
+                  <tr>
+                    <td>{{ self_data['s5_action_' ~ i] or '—' }}</td>
+                    <td>{{ self_data['s5_collab_' ~ i] or '—' }}</td>
+                    <td>{{ self_data['s5_hasil_' ~ i] or '—' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Sesi 6 -->
+            <div class="p-2 bg-white rounded border-start border-purple border-3" style="border-left-color: #6f42c1 !important;">
+              <div class="fw-bold text-purple mb-1" style="color: #6f42c1;"><i class="bi bi-bookmark-star"></i> Sesi 6 — Komitmen Pengembangan Tahun Berikutnya</div>
+              <div class="fst-italic">"Untuk mendukung pertumbuhan perusahaan di tahun depan, saya berkomitmen untuk mengembangkan diri dalam hal..."</div>
+              <div class="text-muted mt-1 fw-semibold" style="white-space:pre-wrap">{{ self_data.s6_komitmen or '—' }}</div>
+            </div>
+
+          {% else %}
+            <!-- Legacy Fallback -->
+            {% if ev.self_achievements %}
+            <div class="mb-2">
+              <span class="text-muted">Pencapaian:</span>
+              <div style="white-space:pre-wrap">{{ ev.self_achievements }}</div>
+            </div>
+            {% endif %}
+            {% if ev.self_notes %}
+            <div class="mb-2">
+              <span class="text-muted">Tantangan:</span>
+              <div style="white-space:pre-wrap">{{ ev.self_notes }}</div>
+            </div>
+            {% endif %}
+            {% if ev.self_improvements %}
+            <div>
+              <span class="text-muted">Pengembangan:</span>
+              <div style="white-space:pre-wrap">{{ ev.self_improvements }}</div>
+            </div>
+            {% endif %}
           {% endif %}
         </div>
         {% endif %}

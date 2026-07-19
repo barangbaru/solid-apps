@@ -1432,6 +1432,7 @@ MIGRATIONS = [
     ('evaluations', 'self_notes',        "TEXT DEFAULT ''"),
     ('evaluations', 'self_achievements', "TEXT DEFAULT ''"),
     ('evaluations', 'self_improvements', "TEXT DEFAULT ''"),
+    ('evaluations', 'self_assessment_json', "TEXT DEFAULT ''"),
     ('evaluations', 'review_status',     "TEXT DEFAULT 'draft'"),
     ('evaluations', 'reviewed_by',       'INTEGER DEFAULT NULL'),
     ('evaluations', 'reviewed_at',       "TEXT DEFAULT ''"),
@@ -8868,10 +8869,18 @@ def eval_summary(eval_id):
     base_url = request.host_url.rstrip('/')
     self_link = f"{base_url}/assess/{eval_token['token']}" if eval_token else None
     accumulated = calc_accumulated_metrics(db, ev, emp)
+    import json as _json
+    self_data = {}
+    if ev.get('self_assessment_json'):
+        try:
+            self_data = _json.loads(ev['self_assessment_json'])
+        except:
+            pass
     return render_template('eval_summary.html', ev=ev, peers=peers, entries=entries,
                            competency_items=competency_items, emp=emp,
                            eval_token=eval_token, self_link=self_link,
-                           all_reviews=all_reviews, accumulated=accumulated)
+                           all_reviews=all_reviews, accumulated=accumulated,
+                           self_data=self_data)
 
 @app.route('/eval/<int:eval_id>/delete', methods=['POST'])
 @superadmin_required
@@ -9233,19 +9242,39 @@ def self_assess(token):
         if not ev_row:
             return render_template('eval_self.html', error='Data evaluasi tidak ditemukan.')
 
+        import json as _json
+        self_data = {}
+        if ev_row.get('self_assessment_json'):
+            try:
+                self_data = _json.loads(ev_row['self_assessment_json'])
+            except:
+                self_data = {}
+
         if tok['status'] == 'submitted':
-            return render_template('eval_self.html', ev=ev_row, already_submitted=True)
+            return render_template('eval_self.html', ev=ev_row, already_submitted=True, self_data=self_data)
 
         if request.method == 'POST':
             now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ans_dict = {}
+            for key in request.form.keys():
+                if key.startswith(('s1_', 's2_', 's3_', 's4_', 's5_', 's6_')):
+                    ans_dict[key] = request.form.get(key, '').strip()
+            
+            # Map to standard fields for backward compatibility
+            self_ach = f"Pencapaian OKR:\n{request.form.get('s1_q2', '')}\n\nInovasi & Efisiensi:\n{request.form.get('s2_inovasi', '')}"
+            self_nt  = request.form.get('s1_q3', '')
+            self_imp = request.form.get('s6_komitmen', '')
+            json_str = _json.dumps(ans_dict)
+
             db.execute('''UPDATE evaluations SET self_achievements=?, self_notes=?,
-                          self_improvements=?,
+                          self_improvements=?, self_assessment_json=?,
                           review_status=CASE WHEN review_status='pending_self' THEN 'self_filled'
                                              ELSE review_status END
                           WHERE id=?''', (
-                request.form.get('self_achievements','').strip(),
-                request.form.get('self_notes','').strip(),
-                request.form.get('self_improvements','').strip(),
+                self_ach,
+                self_nt,
+                self_imp,
+                json_str,
                 tok['eval_id']
             ))
             db.execute("UPDATE eval_tokens SET status='submitted', submitted_at=? WHERE id=?",
@@ -9263,13 +9292,13 @@ def self_assess(token):
                         db.execute('''INSERT OR IGNORE INTO eval_reviews(eval_id,reviewer_user_id,reviewer_role)
                                       VALUES(?,?,?)''', (tok['eval_id'], rev_emp['user_id'], role))
             db.commit()
-            return render_template('eval_self.html', ev=ev_row, submitted=True)
+            return render_template('eval_self.html', ev=ev_row, submitted=True, self_data=ans_dict)
 
         if not tok['accessed_at']:
             db.execute('UPDATE eval_tokens SET accessed_at=? WHERE id=?',
                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), tok['id']))
             db.commit()
-        return render_template('eval_self.html', ev=ev_row, token=token)
+        return render_template('eval_self.html', ev=ev_row, token=token, self_data=self_data)
     finally:
         db.close()
 
@@ -9487,6 +9516,13 @@ def _eval_export_data(db, eval_id):
     sal_prev_dec = _dec_sal_row(sal_prev) if sal_prev else {}
 
     accumulated = calc_accumulated_metrics(db, ev, emp)
+    import json as _json
+    self_data = {}
+    if ev.get('self_assessment_json'):
+        try:
+            self_data = _json.loads(ev['self_assessment_json'])
+        except:
+            pass
     return {
         'ev': dict(ev), 'emp': dict(emp),
         'perf': perf, 'ana': ana, 'bm': bm,
@@ -9498,6 +9534,7 @@ def _eval_export_data(db, eval_id):
         'all_reviews': [dict(r) for r in all_reviews],
         'sal': sal_dec, 'sal_prev': sal_prev_dec, 'sal_year': sal_year,
         'accumulated': accumulated,
+        'self_data': self_data,
     }
 
 

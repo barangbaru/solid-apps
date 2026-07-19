@@ -7,9 +7,18 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
-    body { background: linear-gradient(135deg,#0d6efd15,#19875420); min-height:100vh; font-size:.93rem; }
-    .form-card { max-width:720px; margin:2rem auto; }
-    .section-label { font-size:.78rem; text-transform:uppercase; letter-spacing:.5px; color:#6c757d; font-weight:600; }
+    body { background: linear-gradient(135deg, #f3f0f7, #eef5fc); min-height: 100vh; font-size: .93rem; font-family: 'Inter', sans-serif; color: #333; }
+    .form-card { max-width: 820px; margin: 2rem auto; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(108, 92, 231, 0.08); overflow: hidden; }
+    .card-header { background: linear-gradient(135deg, #6f42c1, #4da8da); color: white; font-weight: bold; border: none; padding: 1rem 1.25rem; }
+    .section-title { font-size: 1.1rem; font-weight: 700; color: #52309e; border-bottom: 2px solid #6f42c1; padding-bottom: 5px; margin-bottom: 1.2rem; display: flex; align-items: center; gap: 8px; }
+    .form-label { font-weight: 600; font-size: 0.9rem; color: #444; }
+    .table th { background-color: #f8f9fa; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; color: #666; }
+    .required-star { color: #dc3545; }
+    textarea.form-control { border-radius: 8px; border: 1px solid #ced4da; transition: all 0.2s ease; }
+    textarea.form-control:focus { border-color: #6f42c1; box-shadow: 0 0 0 0.25rem rgba(111, 66, 193, 0.15); }
+    .btn-submit { background: linear-gradient(135deg, #6f42c1, #52309e); border: none; font-weight: 600; border-radius: 8px; transition: all 0.3s ease; }
+    .btn-submit:hover { opacity: 0.95; transform: translateY(-1px); }
   </style>
 </head>
 <body>
@@ -28,32 +37,32 @@
     <h4 class="mt-3">{{ 'Self-Assessment Berhasil Dikirim!' if submitted else 'Sudah Diisi Sebelumnya' }}</h4>
     {% if ev %}
     <p class="text-muted mb-1">Terima kasih, <strong>{{ ev.emp_name }}</strong>.</p>
-    <p class="text-muted">Penilaian diri untuk periode <strong>{{ ev.periode }}</strong> sudah tercatat.<br>
-    Tim HR/evaluator akan melanjutkan proses review.</p>
+    <p class="text-muted">Penilaian diri terstruktur untuk periode <strong>{{ ev.periode }}</strong> telah tercatat.<br>
+    Evaluator Anda akan meninjau jawaban lengkap Anda di halaman Summary.</p>
     {% endif %}
     <div class="mt-3"><span class="badge bg-success fs-6 px-4 py-2"><i class="bi bi-check2"></i> Selesai</span></div>
   </div>
 
   {% else %}
   <!-- Header -->
-  <div class="card shadow-sm mt-4 mb-3">
+  <div class="card shadow-sm mt-4 mb-4">
     <div class="card-body py-3">
       <div class="d-flex align-items-center gap-3">
         <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center text-white"
-             style="width:48px;height:48px;font-size:1.4rem">
-          <i class="bi bi-clipboard2-check"></i>
+             style="width:48px;height:48px;font-size:1.4rem; background: linear-gradient(135deg, #6f42c1, #0d6efd) !important;">
+          <i class="bi bi-clipboard2-pulse-fill"></i>
         </div>
         <div>
-          <h5 class="mb-0 fw-bold">TalentCore Self-Assessment</h5>
+          <h5 class="mb-0 fw-bold">Personal Evaluation & Self-Assessment</h5>
           <div class="text-muted small">Periode <strong>{{ ev.periode }}</strong> •
-            <span class="badge bg-primary">{{ ev.divisi }}</span>
+            <span class="badge bg-primary" style="background-color: #6f42c1 !important;">{{ ev.divisi }}</span>
           </div>
         </div>
       </div>
       <hr class="my-2">
       <div class="row g-2 small">
         <div class="col-sm-4">
-          <span class="text-muted">Nama:</span> <strong>{{ ev.emp_name }}</strong>
+          <span class="text-muted">Nama Karyawan:</span> <strong>{{ ev.emp_name }}</strong>
         </div>
         <div class="col-sm-4">
           <span class="text-muted">Jabatan:</span> {{ ev.jabatan or '—' }}
@@ -65,56 +74,172 @@
     </div>
   </div>
 
-  <div class="alert alert-info py-2 small mb-3">
-    <i class="bi bi-info-circle me-1"></i>
-    Isilah form ini dengan jujur dan objektif. Data ini akan digunakan sebagai referensi
-    oleh atasan dalam proses TalentCore Anda.
+  <div class="alert alert-info py-2 small mb-4 shadow-sm border-0 bg-white" style="border-left: 4px solid #6f42c1 !important;">
+    <i class="bi bi-info-circle text-primary me-2"></i>
+    Silakan isi setiap sesi evaluasi dampak kinerja Anda secara lengkap dan objektif untuk didiskusikan bersama atasan.
   </div>
 
   <form method="post">
-    <!-- Pencapaian -->
-    <div class="card shadow-sm mb-3">
+    <!-- SESI 1 -->
+    <div class="card shadow-sm mb-4">
       <div class="card-body">
-        <div class="section-label mb-1"><i class="bi bi-trophy me-1"></i>Pencapaian & Kontribusi</div>
-        <label class="form-label fw-semibold">
-          Apa saja pencapaian dan kontribusi terbaik Anda selama periode ini?
-          <span class="text-danger">*</span>
-        </label>
-        <textarea name="self_achievements" class="form-control" rows="5" required
-                  placeholder="Contoh: Menyelesaikan project X tepat waktu, berhasil meningkatkan performa sistem Y sebesar Z%...">{{ ev.self_achievements or '' }}</textarea>
-        <div class="form-text">Sebutkan minimal 3 pencapaian konkret, lengkap dengan dampaknya.</div>
+        <div class="section-title"><i class="bi bi-chat-left-text-fill"></i> Sesi 1 — Evaluasi Dampak Kinerja (Refleksi)</div>
+        
+        <div class="mb-3">
+          <label class="form-label">1. Apa kontribusi nyata Anda dalam mitigasi hambatan operasional tahun ini? <span class="required-star">*</span></label>
+          <textarea name="s1_q1" class="form-control" rows="3" required placeholder="Tuliskan tindakan konkret mitigasi Anda...">{{ self_data.s1_q1 or '' }}</textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">2. Pencapaian OKR tahun ini vs Target <span class="required-star">*</span></label>
+          <textarea name="s1_q2" class="form-control" rows="3" required placeholder="Jelaskan perbandingan pencapaian vs target Anda...">{{ self_data.s1_q2 or '' }}</textarea>
+        </div>
+
+        <div class="mb-0">
+          <label class="form-label">3. Hambatan terbesar dan cara Anda mengatasinya <span class="required-star">*</span></label>
+          <textarea name="s1_q3" class="form-control" rows="3" required placeholder="Jelaskan hambatan utama dan cara penyelesaiannya...">{{ self_data.s1_q3 or '' }}</textarea>
+        </div>
       </div>
     </div>
 
-    <!-- Tantangan & Kendala -->
-    <div class="card shadow-sm mb-3">
+    <!-- SESI 2 -->
+    <div class="card shadow-sm mb-4">
       <div class="card-body">
-        <div class="section-label mb-1"><i class="bi bi-exclamation-diamond me-1"></i>Tantangan & Kendala</div>
-        <label class="form-label fw-semibold">
-          Tantangan atau kendala apa yang Anda hadapi? Bagaimana cara mengatasinya?
-        </label>
-        <textarea name="self_notes" class="form-control" rows="4"
-                  placeholder="Contoh: Terdapat perubahan requirement yang mendadak, diatasi dengan...">{{ ev.self_notes or '' }}</textarea>
+        <div class="section-title"><i class="bi bi-lightbulb-fill"></i> Sesi 2 — Hasil Kerja & Inovasi</div>
+        
+        <div class="mb-3">
+          <label class="form-label">Hambatan yang berhasil diatasi <span class="required-star">*</span></label>
+          <textarea name="s2_hambatan" class="form-control" rows="2" required placeholder="Hambatan operasional/teknis...">{{ self_data.s2_hambatan or '' }}</textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Inovasi/Efisiensi yang diimplementasikan <span class="required-star">*</span></label>
+          <textarea name="s2_inovasi" class="form-control" rows="2" required placeholder="Inovasi metode, script, simplifikasi alur kerja...">{{ self_data.s2_inovasi or '' }}</textarea>
+        </div>
+
+        <div class="mb-0">
+          <label class="form-label">Praktik baik yang dipertahankan <span class="required-star">*</span></label>
+          <textarea name="s2_praktik" class="form-control" rows="2" required placeholder="Pola kerja baik yang terbukti efisien...">{{ self_data.s2_praktik or '' }}</textarea>
+        </div>
       </div>
     </div>
 
-    <!-- Rencana Pengembangan -->
-    <div class="card shadow-sm mb-3">
+    <!-- SESI 3 -->
+    <div class="card shadow-sm mb-4">
       <div class="card-body">
-        <div class="section-label mb-1"><i class="bi bi-graph-up-arrow me-1"></i>Area Pengembangan Diri</div>
-        <label class="form-label fw-semibold">
-          Skill atau kompetensi apa yang ingin Anda kembangkan ke depannya?
-          Dukungan apa yang Anda harapkan?
-        </label>
-        <textarea name="self_improvements" class="form-control" rows="4"
-                  placeholder="Contoh: Ingin lebih mendalami cloud computing, berharap ada training/sertifikasi...">{{ ev.self_improvements or '' }}</textarea>
+        <div class="section-title"><i class="bi bi-bullseye"></i> Sesi 3 — Pencapaian vs OKR</div>
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle">
+            <thead>
+              <tr>
+                <th style="width: 40%;">Objective & Key Results (OKR)</th>
+                <th style="width: 30%;">Target (Angka/Metrik)</th>
+                <th style="width: 30%;">Pencapaian Nyata</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for i in range(1, 4) %}
+              {% set okr_k = 's3_okr_' ~ i %}
+              {% set target_k = 's3_target_' ~ i %}
+              {% set real_k = 's3_pencapaian_' ~ i %}
+              <tr>
+                <td><input type="text" name="{{ okr_k }}" class="form-control form-control-sm" value="{{ self_data[okr_k] or '' }}" placeholder="OKR {{ i }}"></td>
+                <td><input type="text" name="{{ target_k }}" class="form-control form-control-sm" value="{{ self_data[target_k] or '' }}" placeholder="Target metrik"></td>
+                <td><input type="text" name="{{ real_k }}" class="form-control form-control-sm" value="{{ self_data[real_k] or '' }}" placeholder="Realisasi"></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SESI 4 -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <div class="section-title"><i class="bi bi-shield-lock-fill"></i> Sesi 4 — Hambatan & Solusi Mandiri</div>
+        <p class="small text-muted mb-3">1. Deskripsikan bagaimana cara Anda secara mandiri mengatasi masalah operasional di kategori berikut:</p>
+        
+        <div class="mb-3">
+          <label class="form-label">Process (Alur Kerja) <span class="required-star">*</span></label>
+          <textarea name="s4_process" class="form-control" rows="2" required placeholder="Solusi mandiri terkait alur kerja...">{{ self_data.s4_process or '' }}</textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Tools & Tech Stack <span class="required-star">*</span></label>
+          <textarea name="s4_tools" class="form-control" rows="2" required placeholder="Pemanfaatan atau pemecahan masalah teknologi/alat...">{{ self_data.s4_tools or '' }}</textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Skill & Knowledge Gaps <span class="required-star">*</span></label>
+          <textarea name="s4_skills" class="form-control" rows="2" required placeholder="Cara mengatasi keterbatasan keahlian...">{{ self_data.s4_skills or '' }}</textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Communication / Collaboration <span class="required-star">*</span></label>
+          <textarea name="s4_comm" class="form-control" rows="2" required placeholder="Solusi atas hambatan koordinasi tim...">{{ self_data.s4_comm or '' }}</textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Leadership Support (Amanah Atasan) <span class="required-star">*</span></label>
+          <textarea name="s4_support" class="form-control" rows="2" required placeholder="Penyelesaian arahan/amanah pimpinan...">{{ self_data.s4_support or '' }}</textarea>
+        </div>
+
+        <div class="mb-0">
+          <label class="form-label">2. Dari daftar di atas, koordinasi atau perbaikan kecil apa yang bisa kita inisiasi bersama rekan sejawat (peer-to-peer) mulai minggu depan tanpa harus menunggu instruksi manajemen atas? <span class="required-star">*</span></label>
+          <textarea name="s4_q2" class="form-control" rows="2" required placeholder="Rencana inisiatif kolaborasi kecil mulai minggu depan...">{{ self_data.s4_q2 or '' }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- SESI 5 -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <div class="section-title"><i class="bi bi-star-fill"></i> Sesi 5 — Rekapitulasi Pencapaian Utama</div>
+        <p class="small text-muted mb-3">Rangkuman pencapaian terbesar yang memberikan dampak langsung pada efisiensi atau kualitas:</p>
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle">
+            <thead>
+              <tr>
+                <th style="width: 40%;">Action Nyata (Specific & Measurable)</th>
+                <th style="width: 25%;">Kolaborator (Rekan/Tim)</th>
+                <th style="width: 35%;">Hasil Akhir (Success Indicator)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for i in range(1, 4) %}
+              {% set act_k = 's5_action_' ~ i %}
+              {% set col_k = 's5_collab_' ~ i %}
+              {% set res_k = 's5_hasil_' ~ i %}
+              <tr>
+                <td><input type="text" name="{{ act_k }}" class="form-control form-control-sm" value="{{ self_data[act_k] or '' }}" placeholder="Tindakan nyata"></td>
+                <td><input type="text" name="{{ col_k }}" class="form-control form-control-sm" value="{{ self_data[col_k] or '' }}" placeholder="Kolaborator"></td>
+                <td><input type="text" name="{{ res_k }}" class="form-control form-control-sm" value="{{ self_data[res_k] or '' }}" placeholder="Indikator keberhasilan"></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SESI 6 -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <div class="section-title"><i class="bi bi-bookmark-star-fill"></i> Sesi 6 — Komitmen Pengembangan Tahun Berikutnya</div>
+        <div class="mb-0">
+          <label class="form-label">
+            "Untuk mendukung pertumbuhan perusahaan di tahun depan, saya berkomitmen untuk mengembangkan diri dalam hal..." <span class="required-star">*</span>
+          </label>
+          <textarea name="s6_komitmen" class="form-control" rows="3" required placeholder="Komitmen pengembangan kompetensi diri Anda...">{{ self_data.s6_komitmen or '' }}</textarea>
+        </div>
       </div>
     </div>
 
     <div class="d-grid mb-5">
-      <button type="submit" class="btn btn-primary btn-lg"
+      <button type="submit" class="btn btn-primary btn-lg btn-submit text-white"
               onclick="return confirm('Yakin ingin mengirim self-assessment? Data tidak dapat diubah setelah dikirim.')">
-        <i class="bi bi-send-fill me-2"></i> Kirim Self-Assessment
+        <i class="bi bi-send-fill me-2"></i> Kirim Self-Assessment Terstruktur
       </button>
     </div>
   </form>

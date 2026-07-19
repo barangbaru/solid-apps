@@ -373,9 +373,85 @@
   {% endif %}
   {% endif %}
 
+  <!-- SELF-ASSESSMENT KARYAWAN -->
+  {% if ev.self_achievements or ev.self_notes or ev.self_improvements or self_data %}
+  <h2>XI. Hasil Self-Assessment Karyawan</h2>
+  {% if self_data %}
+    <div style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:8px;">
+      <h3 style="color:#6f42c1; margin-top:5px; font-size:10.5pt; font-weight:bold;">Sesi 1 — Evaluasi Dampak Kinerja (Refleksi)</h3>
+      <p><strong>1. Mitigasi Hambatan:</strong> {{ self_data.s1_q1 or '—' }}</p>
+      <p><strong>2. OKR vs Target:</strong> {{ self_data.s1_q2 or '—' }}</p>
+      <p><strong>3. Hambatan Terbesar & Solusi:</strong> {{ self_data.s1_q3 or '—' }}</p>
+    </div>
+
+    <div style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:8px;">
+      <h3 style="color:#28a745; margin-top:5px; font-size:10.5pt; font-weight:bold;">Sesi 2 — Hasil Kerja & Inovasi</h3>
+      <p><strong>Hambatan diatasi:</strong> {{ self_data.s2_hambatan or '—' }}</p>
+      <p><strong>Inovasi/Efisiensi:</strong> {{ self_data.s2_inovasi or '—' }}</p>
+      <p><strong>Praktik Baik:</strong> {{ self_data.s2_praktik or '—' }}</p>
+    </div>
+
+    <div style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:8px;">
+      <h3 style="color:#17a2b8; margin-top:5px; font-size:10.5pt; font-weight:bold;">Sesi 3 — Pencapaian vs OKR</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:9pt; margin-top:5px;">
+        <thead>
+          <tr style="background:#f8f9fa;"><th>Objective & Key Results (OKR)</th><th>Target</th><th>Pencapaian</th></tr>
+        </thead>
+        <tbody>
+          {% for i in range(1, 4) %}
+          <tr>
+            <td>{{ self_data['s3_okr_' ~ i] or '—' }}</td>
+            <td>{{ self_data['s3_target_' ~ i] or '—' }}</td>
+            <td>{{ self_data['s3_pencapaian_' ~ i] or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:8px;">
+      <h3 style="color:#dc3545; margin-top:5px; font-size:10.5pt; font-weight:bold;">Sesi 4 — Hambatan & Solusi Mandiri</h3>
+      <p><strong>Process (Alur Kerja):</strong> {{ self_data.s4_process or '—' }}</p>
+      <p><strong>Tools & Tech Stack:</strong> {{ self_data.s4_tools or '—' }}</p>
+      <p><strong>Skill Gaps:</strong> {{ self_data.s4_skills or '—' }}</p>
+      <p><strong>Communication:</strong> {{ self_data.s4_comm or '—' }}</p>
+      <p><strong>Leadership Support:</strong> {{ self_data.s4_support or '—' }}</p>
+      <p style="margin-top:8px;"><strong>Inisiatif Peer-to-Peer Mulai Minggu Depan:</strong> {{ self_data.s4_q2 or '—' }}</p>
+    </div>
+
+    <div style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:8px;">
+      <h3 style="color:#ffc107; margin-top:5px; font-size:10.5pt; font-weight:bold;">Sesi 5 — Rekapitulasi Pencapaian Utama</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:9pt; margin-top:5px;">
+        <thead>
+          <tr style="background:#f8f9fa;"><th>Action Nyata</th><th>Kolaborator</th><th>Hasil Akhir</th></tr>
+        </thead>
+        <tbody>
+          {% for i in range(1, 4) %}
+          <tr>
+            <td>{{ self_data['s5_action_' ~ i] or '—' }}</td>
+            <td>{{ self_data['s5_collab_' ~ i] or '—' }}</td>
+            <td>{{ self_data['s5_hasil_' ~ i] or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-bottom:15px; padding-bottom:8px;">
+      <h3 style="color:#6f42c1; margin-top:5px; font-size:10.5pt; font-weight:bold;">Sesi 6 — Komitmen Pengembangan Tahun Berikutnya</h3>
+      <p><em>"Untuk mendukung pertumbuhan perusahaan di tahun depan, saya berkomitmen untuk mengembangkan diri dalam hal..."</em></p>
+      <p style="font-weight:bold; margin-top:5px;">{{ self_data.s6_komitmen or '—' }}</p>
+    </div>
+  {% else %}
+    {% if ev.self_achievements %}<p><strong>Pencapaian:</strong><br>{{ ev.self_achievements }}</p>{% endif %}
+    {% if ev.self_notes %}<p><strong>Tantangan:</strong><br>{{ ev.self_notes }}</p>{% endif %}
+    {% if ev.self_improvements %}<p><strong>Pengembangan:</strong><br>{{ ev.self_improvements }}</p>{% endif %}
+  {% endif %}
+  {% endif %}
+
   <!-- REVIEW APPROVAL HISTORY -->
   {% if all_reviews %}
-  <h2>XI. Riwayat Approval</h2>
+  <h2>XII. Riwayat Approval</h2>
   <table>
     <tr><th>Reviewer</th><th>Peran</th><th>Status</th><th>Waktu</th><th>Catatan</th></tr>
     {% for r in all_reviews %}
@@ -392,7 +468,7 @@
 
   <!-- TANDA TANGAN -->
   <div class="sign-area">
-    <h2>XII. Persetujuan</h2>
+    <h2>XIII. Persetujuan</h2>
     <div class="sign-grid">
       <div class="sign-box">
         <div style="font-size:10pt;font-weight:bold;">Karyawan</div>
