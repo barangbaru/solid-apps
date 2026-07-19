@@ -4526,12 +4526,20 @@ def start_scheduler():
 
 def _verify_recaptcha(token, secret_key):
     """Verify reCAPTCHA v3 token, return score (0.0–1.0) or None on failure."""
+    import requests as req_lib
     try:
         resp = req_lib.post('https://www.google.com/recaptcha/api/siteverify',
                             data={'secret': secret_key, 'response': token}, timeout=5)
         data = resp.json()
         if data.get('success'):
             return data.get('score', 0.0)
+        else:
+            return 0.0
+    except req_lib.exceptions.RequestException as e:
+        # Fallback if Google API is unreachable (private network, firewall, proxy, offline dev)
+        import logging
+        logging.warning(f"reCAPTCHA API connection error: {e}. Fallback to score 1.0.")
+        return 1.0
     except Exception:
         pass
     return None
