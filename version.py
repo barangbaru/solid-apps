@@ -1,6 +1,7 @@
-VERSION = "2.2.106"
+VERSION = "2.2.107"
 RELEASE_DATE = "2026-07-19"
 RELEASE_NOTES = (
+    "v2.2.107: Memperbaiki psycopg2.errors.InvalidTextRepresentation (syntax error integer) akibat pergeseran urutan parameter placeholder di query project_impl dan project_member saat parameter rentang tanggal pencarian terisi. "
     "v2.2.106: Mengintegrasikan form self-assessment karyawan dengan 6 sesi refleksi terstruktur (dampak kinerja, inovasi, OKR, solusi mandiri, pencapaian utama, dan komitmen pengembangan) dengan penyimpanan data JSON dinamis, serta mendukung render data terstruktur pada ringkasan admin dan tampilan cetak PDF. "
     "v2.2.104: Memperbaiki isu double highlight pada menu navigasi sidebar dengan memperketat pencocokan url root aplikasi agar hanya aktif jika terjadi kecocokan tepat (exact match). "
     "v2.2.103: Menambahkan default akses aplikasi berupa AttendanceCore (role user) aktif secara otomatis saat user baru pertama kali terdaftar melalui login Google SSO, serta mendaftarkan role 'user' sebagai sistem role global. "

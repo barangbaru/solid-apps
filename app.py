@@ -3913,7 +3913,7 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
     # ── 2. Project (sebagai Implementor) ────────────────────────────────────────
     if 'project_impl' in cfg:
         c = cfg['project_impl']
-        p = [emp_id, emp_id]
+        p = [emp_id, emp_id, emp_id]
         dw = _date_where('p.end_date', p)
         rows = db.execute(f'''
             SELECT p.code, p.name, p.end_date
@@ -3921,7 +3921,7 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
             WHERE (p.implementor_id=? OR p.co_leader_id=?)
               AND p.pic_id != ? AND p.deleted_at IS NULL
               AND p.status IN ('done','closed','selesai'){dw}
-        ''', p + [emp_id]).fetchall()
+        ''', p).fetchall()
         for r in rows:
             pts = round(float(c['base_points']) * _mult_ontime(c, r['end_date'], r['end_date']), 2)
             _add('project_impl', c['label'], f"Project: {r['name']}", pts)
@@ -3929,7 +3929,7 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
     # ── 3. Project (sebagai Member Tim) ─────────────────────────────────────────
     if 'project_member' in cfg:
         c = cfg['project_member']
-        p = [emp_id]
+        p = [emp_id, emp_id, emp_id, emp_id]
         dw = _date_where('p.end_date', p)
         rows = db.execute(f'''
             SELECT p.code, p.name, p.end_date
@@ -3939,7 +3939,7 @@ def calc_task_perf(db, emp_id, date_from='', date_to='', benchmark_per_month=100
               AND p.status IN ('done','closed','selesai')
               AND p.pic_id != ? AND p.implementor_id != ?
               AND (p.co_leader_id IS NULL OR p.co_leader_id != ?){dw}
-        ''', p + [emp_id, emp_id, emp_id]).fetchall()
+        ''', p).fetchall()
         for r in rows:
             pts = round(float(c['base_points']) * _mult_ontime(c, r['end_date'], r['end_date']), 2)
             _add('project_member', c['label'], f"Project: {r['name']}", pts)
