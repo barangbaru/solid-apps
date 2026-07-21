@@ -14981,7 +14981,7 @@ def validate_and_override_location(lat, lng):
     
     dist = R * c
     if dist <= 300.0:
-        return True, "-6.232601981394593, 106.85671715811097"
+        return True, "PT. Mitra Mandiri Informatika, Jl. Tebet Timur Dalam Raya No. 43, Jakarta Selatan (-6.232601981394593, 106.85671715811097)"
     return False, None
 
 @app.route('/attendance/clock', methods=['POST'])
