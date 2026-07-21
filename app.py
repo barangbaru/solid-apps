@@ -6667,6 +6667,154 @@ def karyawan():
 def contracts():
     return redirect(url_for('karyawan'))
 
+@app.route('/karyawan/merge', methods=['POST'])
+@login_required
+def karyawan_merge():
+    # Only allow superadmin to merge
+    if session.get('user_role') != 'superadmin':
+        flash('Akses ditolak', 'danger')
+        return redirect(url_for('karyawan'))
+        
+    db = get_db()
+    source_id = request.form.get('source_id')
+    target_id = request.form.get('target_id')
+    
+    if not source_id or not target_id:
+        flash('Harap pilih karyawan asal dan tujuan.', 'danger')
+        return redirect(url_for('karyawan'))
+        
+    if source_id == target_id:
+        flash('Karyawan asal dan tujuan tidak boleh sama.', 'danger')
+        return redirect(url_for('karyawan'))
+        
+    try:
+        source_emp = db.execute('SELECT * FROM employees WHERE id = ?', (source_id,)).fetchone()
+        target_emp = db.execute('SELECT * FROM employees WHERE id = ?', (target_id,)).fetchone()
+        
+        if not source_emp:
+            flash('Karyawan asal tidak ditemukan.', 'danger')
+            return redirect(url_for('karyawan'))
+        if not target_emp:
+            flash('Karyawan tujuan tidak ditemukan.', 'danger')
+            return redirect(url_for('karyawan'))
+            
+        source_name = source_emp['name']
+        target_name = target_emp['name']
+        
+        source_uid = source_emp['user_id']
+        target_uid = target_emp['user_id']
+        
+        # Start transaction / savepoint
+        db.execute('SAVEPOINT merge_savepoint')
+        
+        # 1. Update target's telegram_id with source's telegram_id if source has one
+        if source_emp['telegram_id']:
+            db.execute('UPDATE employees SET telegram_id = ? WHERE id = ?', (source_emp['telegram_id'], target_id))
+            
+        # 2. Inherit user_id if target doesn't have one
+        if not target_uid and source_uid:
+            db.execute('UPDATE employees SET user_id = ? WHERE id = ?', (source_uid, target_id))
+            target_uid = source_uid
+            # Disassociate source from user_id so deleting source doesn't cascade delete user
+            db.execute('UPDATE employees SET user_id = NULL WHERE id = ?', (source_id,))
+            source_uid = None
+            
+        # 3. Re-associate user-related records if both have user_id
+        if source_uid and target_uid and source_uid != target_uid:
+            # attendance
+            db.execute('UPDATE attendance SET user_id = ? WHERE user_id = ?', (target_uid, source_uid))
+            # audit tables
+            db.execute('UPDATE audit_activity SET user_id = ? WHERE user_id = ?', (target_uid, source_uid))
+            db.execute('UPDATE audit_errors SET user_id = ? WHERE user_id = ?', (target_uid, source_uid))
+            db.execute('UPDATE audit_notifications SET user_id = ? WHERE user_id = ?', (target_uid, source_uid))
+            
+            # eval_reviews (UNIQUE on eval_id, reviewer_user_id)
+            eval_reviews = db.execute('SELECT id, eval_id FROM eval_reviews WHERE reviewer_user_id = ?', (source_uid,)).fetchall()
+            for er in eval_reviews:
+                exists = db.execute('SELECT id FROM eval_reviews WHERE eval_id = ? AND reviewer_user_id = ?', (er['eval_id'], target_uid)).fetchone()
+                if exists:
+                    db.execute('DELETE FROM eval_reviews WHERE id = ?', (er['id'],))
+                else:
+                    db.execute('UPDATE eval_reviews SET reviewer_user_id = ? WHERE id = ?', (target_uid, er['id']))
+            
+            # Delete source user and their app access
+            db.execute('DELETE FROM user_app_access WHERE user_id = ?', (source_uid,))
+            db.execute('DELETE FROM users WHERE id = ?', (source_uid,))
+            
+        # 4. Re-associate employee references in other tables
+        # evaluations
+        db.execute('UPDATE evaluations SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # reminder_logs
+        db.execute('UPDATE reminder_logs SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # ac_assets
+        db.execute('UPDATE ac_assets SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # ac_asset_history
+        db.execute('UPDATE ac_asset_history SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # ac_license_assignments
+        db.execute('UPDATE ac_license_assignments SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # ac_software_requests
+        db.execute('UPDATE ac_software_requests SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # ac_tool_requests
+        db.execute('UPDATE ac_tool_requests SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # pc_projects
+        db.execute('UPDATE pc_projects SET pic_id = ? WHERE pic_id = ?', (target_id, source_id))
+        db.execute('UPDATE pc_projects SET implementor_id = ? WHERE implementor_id = ?', (target_id, source_id))
+        db.execute('UPDATE pc_projects SET co_leader_id = ? WHERE co_leader_id = ?', (target_id, source_id))
+        # pc_members
+        db.execute('UPDATE pc_members SET employee_id = ? WHERE employee_id = ?', (target_id, source_id))
+        # pc_issues
+        db.execute('UPDATE pc_issues SET pic_programmer_id = ? WHERE pic_programmer_id = ?', (target_id, source_id))
+        db.execute('UPDATE pc_issues SET pic_tester_id = ? WHERE pic_tester_id = ?', (target_id, source_id))
+        
+        # employee_salary
+        salaries = db.execute('SELECT id, year FROM employee_salary WHERE employee_id = ?', (source_id,)).fetchall()
+        for sal in salaries:
+            exists = db.execute('SELECT id FROM employee_salary WHERE employee_id = ? AND year = ?', (target_id, sal['year'])).fetchone()
+            if exists:
+                db.execute('DELETE FROM employee_salary WHERE id = ?', (sal['id'],))
+            else:
+                db.execute('UPDATE employee_salary SET employee_id = ? WHERE id = ?', (target_id, sal['id']))
+                
+        # sc_ticket_assignees
+        ticket_assigns = db.execute('SELECT id, ticket_id FROM sc_ticket_assignees WHERE employee_id = ?', (source_id,)).fetchall()
+        for ta in ticket_assigns:
+            exists = db.execute('SELECT id FROM sc_ticket_assignees WHERE ticket_id = ? AND employee_id = ?', (ta['ticket_id'], target_id)).fetchone()
+            if exists:
+                db.execute('DELETE FROM sc_ticket_assignees WHERE id = ?', (ta['id'],))
+            else:
+                db.execute('UPDATE sc_ticket_assignees SET employee_id = ? WHERE id = ?', (target_id, ta['id']))
+                
+        # sc_presales_assignees
+        presales_assigns = db.execute('SELECT id, request_id FROM sc_presales_assignees WHERE employee_id = ?', (source_id,)).fetchall()
+        for pa in presales_assigns:
+            exists = db.execute('SELECT id FROM sc_presales_assignees WHERE request_id = ? AND employee_id = ?', (pa['request_id'], target_id)).fetchone()
+            if exists:
+                db.execute('DELETE FROM sc_presales_assignees WHERE id = ?', (pa['id'],))
+            else:
+                db.execute('UPDATE sc_presales_assignees SET employee_id = ? WHERE id = ?', (target_id, pa['id']))
+                
+        # pc_task_assignees
+        task_assigns = db.execute('SELECT id, task_id FROM pc_task_assignees WHERE employee_id = ?', (source_id,)).fetchall()
+        for pta in task_assigns:
+            exists = db.execute('SELECT id FROM pc_task_assignees WHERE task_id = ? AND employee_id = ?', (pta['task_id'], target_id)).fetchone()
+            if exists:
+                db.execute('DELETE FROM pc_task_assignees WHERE id = ?', (pta['id'],))
+            else:
+                db.execute('UPDATE pc_task_assignees SET employee_id = ? WHERE id = ?', (target_id, pta['id']))
+                
+        # 5. Delete source employee
+        db.execute('DELETE FROM employees WHERE id = ?', (source_id,))
+        
+        db.execute('RELEASE SAVEPOINT merge_savepoint')
+        db.commit()
+        
+        flash(f"Sukses! Karyawan '{source_name}' (Telegram Core) berhasil di-merge ke '{target_name}'.", 'success')
+    except Exception as ex:
+        db.execute('ROLLBACK TO SAVEPOINT merge_savepoint')
+        flash(f"Gagal melakukan merge karyawan: {str(ex)}", 'danger')
+        
+    return redirect(url_for('karyawan'))
+
 @app.route('/contracts/remind/<int:emp_id>', methods=['POST'])
 @login_required
 def contract_remind_one(emp_id):

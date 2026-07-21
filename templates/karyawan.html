@@ -490,6 +490,11 @@
                     <i class="bi bi-{% if ev_tc %}arrow-repeat{% else %}clipboard-plus{% endif %}"></i>
                   </button>
                   {% if current_user and current_user.role == 'superadmin' %}
+                  <button type="button" class="btn btn-xs btn-outline-warning"
+                          style="padding:.2rem .5rem;font-size:.75rem" title="Merge Karyawan"
+                          onclick="openMergeModal({{ emp.id }}, '{{ emp.name | e }}')">
+                    <i class="bi bi-union"></i>
+                  </button>
                   <form action="/emp/{{ emp.id }}/delete" method="post" class="d-inline"
                         data-confirm="Nonaktifkan {{ emp.name | e }}?" onsubmit="return confirm(this.dataset.confirm)">
                     <button type="submit" class="btn btn-xs btn-outline-danger"
@@ -742,12 +747,71 @@ function openPromote(empId, name, username, role) {
   </div>
 </div>
 
+<!-- Modal: Merge Karyawan -->
+{% if current_user and current_user.role == 'superadmin' %}
+<div class="modal fade" id="mergeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form action="/karyawan/merge" method="post">
+        <div class="modal-header py-2 bg-warning text-dark">
+          <h6 class="modal-title fw-bold">
+            <i class="bi bi-union me-1"></i> Merge Karyawan (Telegram Core)
+          </h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="source_id" id="merge-source-id">
+          
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Karyawan Asal (Telegram Core)</label>
+            <input type="text" id="merge-source-name" class="form-control form-control-sm bg-light" readonly>
+            <div class="form-text small text-muted">ID Telegram dan riwayat kehadiran/tugas dari karyawan asal ini akan digabungkan ke karyawan tujuan.</div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Pilih Karyawan Tujuan (Penerima)</label>
+            <select name="target_id" class="form-select form-select-sm" required>
+              <option value="" disabled selected>-- Pilih Karyawan Tujuan --</option>
+              <optgroup label="Karyawan Tetap">
+                {% for emp in tetap %}
+                <option value="{{ emp.id }}">{{ emp.name }} [{{ emp.divisi }} - {{ emp.jabatan or 'Staff' }}]</option>
+                {% endfor %}
+              </optgroup>
+              <optgroup label="Karyawan Kontrak">
+                {% for emp in kontrak %}
+                <option value="{{ emp.id }}">{{ emp.name }} [{{ emp.divisi }} - {{ emp.jabatan or 'Staff' }}]</option>
+                {% endfor %}
+              </optgroup>
+            </select>
+            <div class="form-text text-danger small mt-2">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i> Peringatan: Setelah proses merge selesai, karyawan asal (Telegram Core) akan dihapus secara permanen dari sistem. Tindakan ini tidak dapat dibatalkan.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-warning btn-sm fw-bold text-dark" onclick="return confirm('Apakah Anda yakin ingin menggabungkan karyawan ini? Tindakan ini akan menghapus data karyawan asal secara permanen.')">
+            <i class="bi bi-union me-1"></i> Proses Merge
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script>
 function openTriggerReview(empId, empName, defaultPeriode) {
   document.getElementById('triggerEmpName').textContent = empName;
   document.getElementById('triggerPeriode').value = defaultPeriode || new Date().getFullYear();
   document.getElementById('formTriggerReview').action = '/emp/' + empId + '/trigger-review';
   new bootstrap.Modal(document.getElementById('triggerReviewModal')).show();
+}
+
+function openMergeModal(id, name) {
+  document.getElementById('merge-source-id').value = id;
+  document.getElementById('merge-source-name').value = name;
+  new bootstrap.Modal(document.getElementById('mergeModal')).show();
 }
 
 function toggleSelectAll(tabType) {
