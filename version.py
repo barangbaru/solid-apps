@@ -1,6 +1,7 @@
-VERSION = "2.2.116"
-RELEASE_DATE = "2026-07-19"
+VERSION = "2.2.117"
+RELEASE_DATE = "2026-07-21"
 RELEASE_NOTES = (
+    "v2.2.117: Menambahkan pembatasan radius presensi harian maksimal 300m dari koordinat target pada Web, Telegram, dan WhatsApp, serta menstandarkan lokasi presensi tepat ke koordinat target. "
     "v2.2.116: Memperbaiki issue SyntaxError saat menghapus backup di S3 dengan membungkus seluruh inisialisasi client boto3 dan pemrosesan objek dalam try-except agar selalu mengembalikan response JSON yang valid. "
     "v2.2.106: Mengintegrasikan form self-assessment karyawan dengan 6 sesi refleksi terstruktur (dampak kinerja, inovasi, OKR, solusi mandiri, pencapaian utama, dan komitmen pengembangan) dengan penyimpanan data JSON dinamis, serta mendukung render data terstruktur pada ringkasan admin dan tampilan cetak PDF. "
     "v2.2.104: Memperbaiki isu double highlight pada menu navigasi sidebar dengan memperketat pencocokan url root aplikasi agar hanya aktif jika terjadi kecocokan tepat (exact match). "

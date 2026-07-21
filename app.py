@@ -14946,6 +14946,44 @@ def at_map_telegram():
         
     return redirect(url_for('at_index'))
 
+def validate_and_override_location(lat, lng):
+    """
+    Checks if coordinates are within 300 meters from the target location:
+    Latitude: -6.232601981394593
+    Longitude: 106.85671715811097
+    
+    If within 300m, returns (True, "-6.232601981394593, 106.85671715811097")
+    If outside 300m, returns (False, None)
+    """
+    if not lat or not lng:
+        return False, None
+    try:
+        lat_f = float(lat)
+        lng_f = float(lng)
+    except (ValueError, TypeError):
+        return False, None
+        
+    target_lat = -6.232601981394593
+    target_lng = 106.85671715811097
+    
+    import math
+    # Haversine formula
+    R = 6371000.0  # Earth radius in meters
+    phi1 = math.radians(lat_f)
+    phi2 = math.radians(target_lat)
+    delta_phi = math.radians(target_lat - lat_f)
+    delta_lambda = math.radians(target_lng - lng_f)
+    
+    a = math.sin(delta_phi / 2.0) ** 2 + \
+        math.cos(phi1) * math.cos(phi2) * \
+        math.sin(delta_lambda / 2.0) ** 2
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    
+    dist = R * c
+    if dist <= 300.0:
+        return True, "-6.232601981394593, 106.85671715811097"
+    return False, None
+
 @app.route('/attendance/clock', methods=['POST'])
 @login_required
 def at_clock():
@@ -14958,7 +14996,11 @@ def at_clock():
     notes = request.form.get('notes', '').strip()
     lat = request.form.get('lat', '').strip()
     lng = request.form.get('lng', '').strip()
-    loc = f"{lat},{lng}" if (lat and lng) else "Web Browser"
+    
+    is_valid, loc_override = validate_and_override_location(lat, lng)
+    if not is_valid:
+        return jsonify({'ok': False, 'msg': 'Clock In/Out GAGAL! Anda berada di luar radius presensi (maksimal 300m dari lokasi kantor) atau lokasi tidak terdeteksi.'})
+    loc = loc_override
     
     now_time = datetime.now().strftime('%H:%M:%S')
     today = datetime.now().strftime('%Y-%m-%d')
@@ -15994,26 +16036,16 @@ def telegram_webhook():
                 (uid, today)
             ).fetchone()
             
-            # Check GPS location validity
-            if not lat or not lng:
+            # Check GPS location validity and radius
+            is_valid, loc_override = validate_and_override_location(lat, lng)
+            if not is_valid:
                 reply(
                     f"❌ {user_display}\n"
-                    "Lokasi GPS tidak valid. Harap gunakan fitur Kirim Lokasi pada Telegram."
+                    "Clock In/Out GAGAL! Anda berada di luar radius presensi (maksimal 300m dari lokasi kantor) atau lokasi tidak terdeteksi."
                 )
                 return 'OK', 200
-
-            # Reverse geocode using OpenStreetMap Nominatim API
-            resolved_address = ""
-            try:
-                osm_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
-                osm_headers = {"User-Agent": "HIVE-Attendance-Bot/2.0 (md@workspace)"}
-                osm_resp = req_lib.get(osm_url, headers=osm_headers, timeout=5)
-                if osm_resp.status_code == 200:
-                    resolved_address = osm_resp.json().get('display_name', '')
-            except Exception as osm_ex:
-                print(f"[OSM Nominatim Error] {osm_ex}")
             
-            loc = f"{resolved_address} ({lat},{lng})" if resolved_address else f"{lat},{lng}"
+            loc = loc_override
 
             if not today_att:
                 status = 'present'
@@ -16501,20 +16533,11 @@ def whatsapp_webhook():
                 (uid, today)
             ).fetchone()
 
-            if not lat or not lng:
-                reply(f"❌ {user_display}\nLokasi GPS tidak valid.")
+            is_valid, loc_override = validate_and_override_location(lat, lng)
+            if not is_valid:
+                reply(f"❌ {user_display}\nClock In/Out GAGAL! Anda berada di luar radius presensi (maksimal 300m dari lokasi kantor) atau lokasi tidak terdeteksi.")
                 return 'OK', 200
-
-            resolved_address = ""
-            try:
-                osm_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
-                osm_headers = {"User-Agent": "HIVE-Attendance-Bot/2.0 (md@workspace)"}
-                osm_resp = req_lib.get(osm_url, headers=osm_headers, timeout=5)
-                if osm_resp.status_code == 200:
-                    resolved_address = osm_resp.json().get('display_name', '')
-            except Exception as osm_ex:
-                print(f"[OSM Nominatim WA Error] {osm_ex}")
-            loc = f"{resolved_address} ({lat},{lng})" if resolved_address else f"{lat},{lng}"
+            loc = loc_override
 
             if not today_att:
                 status = 'present'
