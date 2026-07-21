@@ -1,6 +1,7 @@
-VERSION = "2.2.119"
+VERSION = "2.2.120"
 RELEASE_DATE = "2026-07-21"
 RELEASE_NOTES = (
+    "v2.2.120: Memperbaiki bug error query merge karyawan dengan menghapus update ke tabel audit_notifications karena kolom user_id tidak ada di skema tabel tersebut. "
     "v2.2.119: Implementasi fitur merge karyawan dari Telegram Core ke Karyawan Tetap/Kontrak beserta relasi tugas (task) dan riwayat presensi (attendance) secara transaksional. "
     "v2.2.118: Menerjemahkan koordinat target presensi menjadi representasi alamat lengkap PT. Mitra Mandiri Informatika saat tagging berhasil disimpan. "
     "v2.2.117: Menambahkan pembatasan radius presensi harian maksimal 300m dari koordinat target pada Web, Telegram, dan WhatsApp, serta menstandarkan lokasi presensi tepat ke koordinat target. "

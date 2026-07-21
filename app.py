@@ -6726,7 +6726,6 @@ def karyawan_merge():
             # audit tables
             db.execute('UPDATE audit_activity SET user_id = ? WHERE user_id = ?', (target_uid, source_uid))
             db.execute('UPDATE audit_errors SET user_id = ? WHERE user_id = ?', (target_uid, source_uid))
-            db.execute('UPDATE audit_notifications SET user_id = ? WHERE user_id = ?', (target_uid, source_uid))
             
             # eval_reviews (UNIQUE on eval_id, reviewer_user_id)
             eval_reviews = db.execute('SELECT id, eval_id FROM eval_reviews WHERE reviewer_user_id = ?', (source_uid,)).fetchall()
