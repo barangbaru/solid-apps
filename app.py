@@ -2957,7 +2957,11 @@ def add_security_headers():
 @app.after_request
 def set_security_headers(response):
     response.headers['X-Content-Type-Options']  = 'nosniff'
-    response.headers['X-Frame-Options']          = 'SAMEORIGIN'
+    if request.path == '/booking/public':
+        response.headers.pop('X-Frame-Options', None)
+        response.headers['Content-Security-Policy'] = "frame-ancestors 'self' *"
+    else:
+        response.headers['X-Frame-Options']          = 'SAMEORIGIN'
     response.headers['X-XSS-Protection']         = '1; mode=block'
     response.headers['Referrer-Policy']           = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy']        = 'geolocation=(), microphone=(), camera=()'
