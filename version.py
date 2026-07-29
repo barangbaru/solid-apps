@@ -1,6 +1,7 @@
-VERSION = "2.2.129"
+VERSION = "2.2.130"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.130: Mendukung modul target migrasi SupportCore (Daftar Tiket & Layanan) dengan konfigurasi pilihan Customer tujuan, Kontrak tujuan, dan Tipe Layanan secara dinamis di Web UI. "
     "v2.2.129: Memulihkan decorator rute @app.route('/portal/migration') yang terhapus saat modifikasi pengoptimalan batch sebelumnya. "
     "v2.2.128: Implementasi pemetaan project terpilih (checkbox selection) dinamis pada modul Migrasi Redmine, serta menambahkan mekanisme Batch Commit (setiap 50 item) pada database Hive untuk menjaga stabilitas memori. "
     "v2.2.127: Mengimplementasikan real-time progress streaming berbasis NDJSON dengan menonaktifkan buffering Nginx (X-Accel-Buffering: no) pada proses ETL Migrasi Redmine untuk mencegah 504 Gateway Time-out. "

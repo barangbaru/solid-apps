@@ -17682,8 +17682,12 @@ def portal_migration():
         flash('Akses ditolak — Perlu hak akses Administrator', 'danger')
         return redirect(url_for('portal_dashboard'))
         
+    db = get_db()
     if request.method == 'GET':
-        return render_template('portal_migration.html')
+        customers = db.execute("SELECT id, name FROM sc_customers ORDER BY name ASC").fetchall()
+        contracts = db.execute("SELECT id, title, code FROM sc_contracts ORDER BY title ASC").fetchall()
+        support_types = db.execute("SELECT id, name FROM sc_support_types ORDER BY name ASC").fetchall()
+        return render_template('portal_migration.html', customers=customers, contracts=contracts, support_types=support_types)
 
     # POST - Start Migration
     from flask import stream_with_context
@@ -17693,6 +17697,11 @@ def portal_migration():
     user = request.form.get('mysql_user', '').strip()
     password = request.form.get('mysql_password', '').strip()
     db_name = request.form.get('mysql_db', '').strip()
+    
+    target_module = request.form.get('target_module', 'project').strip()
+    sc_customer_id = request.form.get('sc_customer_id', '').strip()
+    sc_support_type_id = request.form.get('sc_support_type_id', '').strip()
+    sc_contract_id = request.form.get('sc_contract_id', '').strip()
     
     selected_project_ids = [int(x) for x in request.form.getlist('selected_project_ids') if x.isdigit()]
     
@@ -17707,6 +17716,14 @@ def portal_migration():
         
         if not selected_project_ids:
             yield json.dumps({'status': 'error', 'message': 'Pilih minimal satu project untuk di-migrasi.'}) + '\n'
+            return
+
+        cust_id = int(sc_customer_id) if sc_customer_id.isdigit() else None
+        st_id = int(sc_support_type_id) if sc_support_type_id.isdigit() else None
+        ct_id = int(sc_contract_id) if sc_contract_id.isdigit() else None
+        
+        if target_module == 'support' and (cust_id is None or st_id is None):
+            yield json.dumps({'status': 'error', 'message': 'Pilih Customer Tujuan dan Tipe Layanan untuk migrasi ke SupportCore.'}) + '\n'
             return
 
         try:
@@ -17742,12 +17759,12 @@ def portal_migration():
             
             # 1. Map Users
             yield json.dumps({'log': '[SYSTEM] Memetakan user Redmine ke karyawan Hive...'}) + '\n'
-            mysql_cur.execute("""
+            mysql_cur.execute('''
                 SELECT u.id, u.login, e.address as mail, u.firstname, u.lastname
                 FROM users u
                 LEFT JOIN email_addresses e ON e.user_id = u.id AND e.is_default = 1
                 WHERE u.type='User'
-            """)
+            ''')
             redmine_users = mysql_cur.fetchall()
             
             hive_employees = db.execute("SELECT id, email, name FROM employees").fetchall()
@@ -17783,7 +17800,7 @@ def portal_migration():
                 if usr_id:
                     user_id_map[ru['id']] = usr_id
 
-            # 2. Get Redmine Projects
+            # 2. Process Projects Selection
             yield json.dumps({'log': f'[SYSTEM] Mengambil data {len(selected_project_ids)} project pilihan dari Redmine...'}) + '\n'
             
             placeholders = ', '.join(['%s'] * len(selected_project_ids))
@@ -17795,49 +17812,56 @@ def portal_migration():
             for p in projects:
                 p_code = p['identifier'].strip()
                 p_name = p['name'].strip()
-                if prefix_proj:
-                    p_name = f"[Redmine] {p_name}"
-                p_desc = p['description'] or ''
-                p_status = 'active' if p['status'] == 1 else 'inactive'
                 
-                existing = db.execute("SELECT id FROM pc_projects WHERE code = ?", (p_code,)).fetchone()
-                if existing:
-                    project_map[p['id']] = existing['id']
-                    yield json.dumps({'log': f"[PROJECT] Lewati (sudah ada): {p_name} ({p_code})"}) + '\n'
-                    continue
+                if target_module == 'support':
+                    # SupportCore just logs projects processing
+                    yield json.dumps({'log': f"[PROJECT] Memproses project Redmine: {p_name} ({p_code})"}) + '\n'
+                    stats['projects'] += 1
+                    project_map[p['id']] = p['id'] # keep original id for issue mapping filter
+                else:
+                    # ProjectCore inserts new projects
+                    p_name_core = f"[Redmine] {p_name}" if prefix_proj else p_name
+                    p_desc = p['description'] or ''
+                    p_status = 'active' if p['status'] == 1 else 'inactive'
                     
-                cur = db.execute(
-                    "INSERT INTO pc_projects (code, name, description, status, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (p_code, p_name, p_desc, p_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                )
-                new_proj_id = cur.lastrowid
-                project_map[p['id']] = new_proj_id
-                stats['projects'] += 1
-                uncommitted_count += 1
-                yield json.dumps({'log': f"[PROJECT] Diimpor: {p_name} ({p_code})", 'stats': stats}) + '\n'
-                
-                # 3. Map Project Members
-                mysql_cur.execute("SELECT user_id FROM members WHERE project_id = %s", (p['id'],))
-                members = mysql_cur.fetchall()
-                for m in members:
-                    h_emp_id = user_map.get(m['user_id'])
-                    if h_emp_id:
-                        m_exists = db.execute("SELECT id FROM pc_members WHERE project_id=? AND employee_id=?", 
-                                              (new_proj_id, h_emp_id)).fetchone()
-                        if not m_exists:
-                            db.execute("INSERT INTO pc_members (project_id, employee_id, role) VALUES (?, ?, 'developer')",
-                                       (new_proj_id, h_emp_id))
-                            stats['members'] += 1
-                            uncommitted_count += 1
-                            if uncommitted_count >= 50:
-                                db.commit()
-                                uncommitted_count = 0
-                            yield json.dumps({'stats': stats}) + '\n'
+                    existing = db.execute("SELECT id FROM pc_projects WHERE code = ?", (p_code,)).fetchone()
+                    if existing:
+                        project_map[p['id']] = existing['id']
+                        yield json.dumps({'log': f"[PROJECT] Lewati (sudah ada): {p_name_core} ({p_code})"}) + '\n'
+                        continue
+                        
+                    cur = db.execute(
+                        "INSERT INTO pc_projects (code, name, description, status, created_at) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (p_code, p_name_core, p_desc, p_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                    )
+                    new_proj_id = cur.lastrowid
+                    project_map[p['id']] = new_proj_id
+                    stats['projects'] += 1
+                    uncommitted_count += 1
+                    yield json.dumps({'log': f"[PROJECT] Diimpor: {p_name_core} ({p_code})", 'stats': stats}) + '\n'
+                    
+                    # Map Project Members (ProjectCore only)
+                    mysql_cur.execute("SELECT user_id FROM members WHERE project_id = %s", (p['id'],))
+                    members = mysql_cur.fetchall()
+                    for m in members:
+                        h_emp_id = user_map.get(m['user_id'])
+                        if h_emp_id:
+                            m_exists = db.execute("SELECT id FROM pc_members WHERE project_id=? AND employee_id=?", 
+                                                  (new_proj_id, h_emp_id)).fetchone()
+                            if not m_exists:
+                                db.execute("INSERT INTO pc_members (project_id, employee_id, role) VALUES (?, ?, 'developer')",
+                                           (new_proj_id, h_emp_id))
+                                stats['members'] += 1
+                                uncommitted_count += 1
+                                if uncommitted_count >= 50:
+                                    db.commit()
+                                    uncommitted_count = 0
+                                yield json.dumps({'stats': stats}) + '\n'
 
-            # 4. Get Redmine Issues for selected projects
+            # 3. Get Redmine Issues
             yield json.dumps({'log': '[SYSTEM] Mengambil data issue/tiket untuk project terpilih...'}) + '\n'
-            mysql_cur.execute(f"""
+            mysql_cur.execute(f'''
                 SELECT i.id, i.project_id, i.subject, i.description, i.assigned_to_id, i.created_on,
                        t.name as tracker_name, s.name as status_name, pr.name as priority_name
                 FROM issues i
@@ -17845,7 +17869,7 @@ def portal_migration():
                 LEFT JOIN issue_statuses s ON s.id = i.status_id
                 LEFT JOIN enumerations pr ON pr.id = i.priority_id AND pr.type = 'IssuePriority'
                 WHERE i.project_id IN ({placeholders})
-            """, selected_project_ids)
+            ''', selected_project_ids)
             issues = mysql_cur.fetchall()
             
             issue_map = {}
@@ -17856,109 +17880,193 @@ def portal_migration():
                     continue
                     
                 issue_no = f"RM-{iss['id']}"
-                
-                iss_exists = db.execute("SELECT id FROM pc_issues WHERE issue_no = ?", (issue_no,)).fetchone()
-                if iss_exists:
-                    issue_map[iss['id']] = iss_exists['id']
-                    yield json.dumps({'log': f"[ISSUE] Lewati (sudah ada): {issue_no} - {iss['subject']}"}) + '\n'
-                    continue
-                    
                 title = iss['subject']
                 desc = iss['description'] or ''
-                
-                tracker = iss['tracker_name'] or 'Task'
-                if 'bug' in tracker.lower():
-                    issued_type = 'Bugs'
-                elif 'feature' in tracker.lower():
-                    issued_type = 'Feature'
-                else:
-                    issued_type = 'Task'
-                    
-                status_name = iss['status_name'] or 'New'
-                if 'new' in status_name.lower():
-                    status_prog = 'New'
-                elif 'in progress' in status_name.lower() or 'active' in status_name.lower():
-                    status_prog = 'In Progress'
-                elif 'resolved' in status_name.lower() or 'solved' in status_name.lower():
-                    status_prog = 'Resolved'
-                elif 'closed' in status_name.lower():
-                    status_prog = 'Resolved'
-                else:
-                    status_prog = 'In Progress'
-                    
-                prio_name = iss['priority_name'] or 'Normal'
-                if 'high' in prio_name.lower() or 'urgent' in prio_name.lower() or 'immediate' in prio_name.lower():
-                    priority = 'High'
-                elif 'low' in prio_name.lower():
-                    priority = 'Low'
-                else:
-                    priority = 'Medium'
-                    
                 pic_prog = user_map.get(iss['assigned_to_id'])
                 created_at_str = iss['created_on'].strftime('%Y-%m-%d %H:%M:%S') if iss['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                redmine_url = f"https://redmine-imported/issues/{iss['id']}"
                 
-                cur_iss = db.execute(
-                    "INSERT INTO pc_issues (project_id, issue_no, title, description, issued_type, "
-                    "status_programmer, priority, pic_programmer_id, redmine, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (h_proj_id, issue_no, title, desc, issued_type, status_prog, priority, pic_prog, redmine_url, created_at_str)
-                )
-                new_iss_id = cur_iss.lastrowid
-                issue_map[iss['id']] = new_iss_id
-                stats['issues'] += 1
-                uncommitted_count += 1
+                if target_module == 'support':
+                    # SupportCore ticket migration
+                    existing = db.execute("SELECT id FROM sc_tickets WHERE ticket_no = ?", (issue_no,)).fetchone()
+                    if existing:
+                        issue_map[iss['id']] = existing['id']
+                        yield json.dumps({'log': f"[TICKET] Lewati (sudah ada): {issue_no} - {title}"}) + '\n'
+                        continue
+                        
+                    # Status mapping
+                    status_name = iss['status_name'] or 'New'
+                    s_lower = status_name.lower()
+                    if 'new' in s_lower:
+                        status_sc = 'new'
+                    elif 'in progress' in s_lower or 'active' in s_lower:
+                        status_sc = 'in_progress'
+                    elif 'resolved' in s_lower or 'solved' in s_lower:
+                        status_sc = 'resolved'
+                    elif 'feedback' in s_lower:
+                        status_sc = 'feedback'
+                    elif 'closed' in s_lower:
+                        status_sc = 'closed'
+                    elif 'rejected' in s_lower:
+                        status_sc = 'rejected'
+                    else:
+                        status_sc = 'in_progress'
+                        
+                    # Priority mapping
+                    prio_name = iss['priority_name'] or 'Normal'
+                    p_lower = prio_name.lower()
+                    if 'low' in p_lower:
+                        priority_sc = 'Low'
+                    elif 'high' in p_lower:
+                        priority_sc = 'High'
+                    elif 'urgent' in p_lower or 'immediate' in p_lower:
+                        priority_sc = 'Critical'
+                    else:
+                        priority_sc = 'Medium'
+                        
+                    cur_t = db.execute(
+                        "INSERT INTO sc_tickets (ticket_no, customer_id, contract_id, support_type_id, subject, description, status, priority, assigned_to, reported_by, reported_at, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Redmine Importer', ?, ?)",
+                        (issue_no, cust_id, ct_id, st_id, title, desc, status_sc, priority_sc, pic_prog, created_at_str, created_at_str)
+                    )
+                    new_ticket_id = cur_t.lastrowid
+                    issue_map[iss['id']] = new_ticket_id
+                    stats['issues'] += 1
+                    uncommitted_count += 1
+                    
+                    # Assignee sync
+                    if pic_prog:
+                        emp = db.execute('SELECT name, divisi FROM employees WHERE id=?', (pic_prog,)).fetchone()
+                        db.execute('INSERT OR IGNORE INTO sc_ticket_assignees (ticket_id, employee_id, divisi) VALUES (?, ?, ?)',
+                                   (new_ticket_id, pic_prog, emp['divisi'] if emp else ''))
+                        stats['members'] += 1
+                    
+                    if uncommitted_count >= 50:
+                        db.commit()
+                        uncommitted_count = 0
+                        yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['issues']} tiket tersimpan...", 'stats': stats}) + '\n'
+                    else:
+                        yield json.dumps({'log': f"[TICKET] Diimpor: {issue_no} - {title}", 'stats': stats}) + '\n'
                 
-                if uncommitted_count >= 50:
-                    db.commit()
-                    uncommitted_count = 0
-                    yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['issues']} issue tersimpan...", 'stats': stats}) + '\n'
                 else:
-                    yield json.dumps({'log': f"[ISSUE] Diimpor: {issue_no} - {title}", 'stats': stats}) + '\n'
+                    # ProjectCore issue migration
+                    iss_exists = db.execute("SELECT id FROM pc_issues WHERE issue_no = ?", (issue_no,)).fetchone()
+                    if iss_exists:
+                        issue_map[iss['id']] = iss_exists['id']
+                        yield json.dumps({'log': f"[ISSUE] Lewati (sudah ada): {issue_no} - {title}"}) + '\n'
+                        continue
+                        
+                    tracker = iss['tracker_name'] or 'Task'
+                    if 'bug' in tracker.lower():
+                        issued_type = 'Bugs'
+                    elif 'feature' in tracker.lower():
+                        issued_type = 'Feature'
+                    else:
+                        issued_type = 'Task'
+                        
+                    status_name = iss['status_name'] or 'New'
+                    if 'new' in status_name.lower():
+                        status_prog = 'New'
+                    elif 'in progress' in status_name.lower() or 'active' in status_name.lower():
+                        status_prog = 'In Progress'
+                    elif 'resolved' in status_name.lower() or 'solved' in status_name.lower():
+                        status_prog = 'Resolved'
+                    elif 'closed' in status_name.lower():
+                        status_prog = 'Resolved'
+                    else:
+                        status_prog = 'In Progress'
+                        
+                    prio_name = iss['priority_name'] or 'Normal'
+                    if 'high' in prio_name.lower() or 'urgent' in prio_name.lower() or 'immediate' in prio_name.lower():
+                        priority = 'High'
+                    elif 'low' in prio_name.lower():
+                        priority = 'Low'
+                    else:
+                        priority = 'Medium'
+                        
+                    redmine_url = f"https://redmine-imported/issues/{iss['id']}"
+                    
+                    cur_iss = db.execute(
+                        "INSERT INTO pc_issues (project_id, issue_no, title, description, issued_type, "
+                        "status_programmer, priority, pic_programmer_id, redmine, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (h_proj_id, issue_no, title, desc, issued_type, status_prog, priority, pic_prog, redmine_url, created_at_str)
+                    )
+                    new_iss_id = cur_iss.lastrowid
+                    issue_map[iss['id']] = new_iss_id
+                    stats['issues'] += 1
+                    uncommitted_count += 1
+                    
+                    if uncommitted_count >= 50:
+                        db.commit()
+                        uncommitted_count = 0
+                        yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['issues']} issue tersimpan...", 'stats': stats}) + '\n'
+                    else:
+                        yield json.dumps({'log': f"[ISSUE] Diimpor: {issue_no} - {title}", 'stats': stats}) + '\n'
 
-            # 5. Get Redmine Journals (Issue Comments / History) for migrated issues only
+            # 4. Get Redmine Journals (Issue Comments / History) for migrated issues only
             migrated_issue_ids = list(issue_map.keys())
             if migrated_issue_ids:
                 yield json.dumps({'log': f'[SYSTEM] Mengambil komentar/riwayat untuk {len(migrated_issue_ids)} issue yang diimpor...'}) + '\n'
                 
-                # Fetch in batches of 500 issue IDs to prevent SQL limits
                 journals = []
                 for idx in range(0, len(migrated_issue_ids), 500):
                     batch_ids = migrated_issue_ids[idx:idx+500]
                     batch_placeholders = ', '.join(['%s'] * len(batch_ids))
-                    q = f"""
+                    q = f'''
                         SELECT j.id, j.journalized_id as issue_id, j.user_id, j.notes, j.created_on
                         FROM journals j
                         WHERE j.journalized_type = 'Issue' AND (j.notes IS NOT NULL AND j.notes != '')
                           AND j.journalized_id IN ({batch_placeholders})
-                    """
+                    '''
                     mysql_cur.execute(q, batch_ids)
                     journals.extend(mysql_cur.fetchall())
                 
                 for j in journals:
-                    h_iss_id = issue_map.get(j['issue_id'])
-                    if not h_iss_id:
+                    h_target_id = issue_map.get(j['issue_id'])
+                    if not h_target_id:
                         continue
                         
                     h_usr_id = user_id_map.get(j['user_id'])
                     notes = j['notes'].strip()
                     created_at_str = j['created_on'].strftime('%Y-%m-%d %H:%M:%S') if j['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     
-                    hist_exists = db.execute("SELECT id FROM pc_issue_history WHERE issue_id=? AND notes=? AND created_at=?",
-                                             (h_iss_id, notes, created_at_str)).fetchone()
-                    if not hist_exists:
-                        db.execute(
-                            "INSERT INTO pc_issue_history (issue_id, action, notes, changed_by, created_at) "
-                            "VALUES (?, 'comment', ?, ?, ?)",
-                            (h_iss_id, notes, h_usr_id, created_at_str)
-                        )
-                        stats['journals'] += 1
-                        uncommitted_count += 1
-                        
-                        if uncommitted_count >= 50:
-                            db.commit()
-                            uncommitted_count = 0
-                            yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['journals']} komentar tersimpan...", 'stats': stats}) + '\n'
+                    if target_module == 'support':
+                        # SupportCore comments mapping to sc_ticket_history
+                        hist_exists = db.execute("SELECT id FROM sc_ticket_history WHERE ticket_id=? AND notes=? AND created_at=?",
+                                                 (h_target_id, notes, created_at_str)).fetchone()
+                        if not hist_exists:
+                            changed_by_name = db.execute("SELECT full_name FROM users WHERE id=?", (h_usr_id,)).fetchone() if h_usr_id else None
+                            username = changed_by_name['full_name'] if changed_by_name else 'Redmine User'
+                            
+                            db.execute(
+                                "INSERT INTO sc_ticket_history (ticket_id, changed_by, changed_by_name, action, notes, created_at) "
+                                "VALUES (?, ?, ?, 'comment', ?, ?)",
+                                (h_target_id, h_usr_id, username, notes, created_at_str)
+                            )
+                            stats['journals'] += 1
+                            uncommitted_count += 1
+                            
+                            if uncommitted_count >= 50:
+                                db.commit()
+                                uncommitted_count = 0
+                                yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['journals']} komentar tersimpan...", 'stats': stats}) + '\n'
+                    else:
+                        # ProjectCore comments mapping to pc_issue_history
+                        hist_exists = db.execute("SELECT id FROM pc_issue_history WHERE issue_id=? AND notes=? AND created_at=?",
+                                                 (h_target_id, notes, created_at_str)).fetchone()
+                        if not hist_exists:
+                            db.execute(
+                                "INSERT INTO pc_issue_history (issue_id, action, notes, changed_by, created_at) "
+                                "VALUES (?, 'comment', ?, ?, ?)",
+                                (h_target_id, notes, h_usr_id, created_at_str)
+                            )
+                            stats['journals'] += 1
+                            uncommitted_count += 1
+                            
+                            if uncommitted_count >= 50:
+                                db.commit()
+                                uncommitted_count = 0
+                                yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['journals']} komentar tersimpan...", 'stats': stats}) + '\n'
 
             # Final Commit
             if uncommitted_count > 0:
@@ -17976,8 +18084,6 @@ def portal_migration():
 
     headers = {'X-Accel-Buffering': 'no'}
     return Response(stream_with_context(generate_migration()), content_type='application/x-ndjson', headers=headers)
-
-
 if __name__ == '__main__':
     init_db()
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
