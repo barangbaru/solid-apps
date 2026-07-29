@@ -17683,11 +17683,18 @@ def portal_migration():
         return redirect(url_for('portal_dashboard'))
         
     db = get_db()
+    rollback_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'last_migration_rollback.json')
+    rollback_available = os.path.exists(rollback_file)
+    
     if request.method == 'GET':
         customers = db.execute("SELECT id, name FROM sc_customers ORDER BY name ASC").fetchall()
         contracts = db.execute("SELECT id, title, code FROM sc_contracts ORDER BY title ASC").fetchall()
         support_types = db.execute("SELECT id, name FROM sc_support_types ORDER BY name ASC").fetchall()
-        return render_template('portal_migration.html', customers=customers, contracts=contracts, support_types=support_types)
+        return render_template('portal_migration.html', 
+                               customers=customers, 
+                               contracts=contracts, 
+                               support_types=support_types,
+                               rollback_available=rollback_available)
 
     # POST - Start Migration
     from flask import stream_with_context
@@ -17713,6 +17720,15 @@ def portal_migration():
     
     def generate_migration():
         stats = {'projects': 0, 'members': 0, 'issues': 0, 'journals': 0}
+        
+        rollback_data = {
+            'target_module': target_module,
+            'projects': [],
+            'members': [],
+            'issues': [],
+            'tickets': [],
+            'histories': []
+        }
         
         if not selected_project_ids:
             yield json.dumps({'status': 'error', 'message': 'Pilih minimal satu project untuk di-migrasi.'}) + '\n'
@@ -17837,6 +17853,7 @@ def portal_migration():
                     )
                     new_proj_id = cur.lastrowid
                     project_map[p['id']] = new_proj_id
+                    rollback_data['projects'].append(new_proj_id)
                     stats['projects'] += 1
                     uncommitted_count += 1
                     yield json.dumps({'log': f"[PROJECT] Diimpor: {p_name_core} ({p_code})", 'stats': stats}) + '\n'
@@ -17850,8 +17867,9 @@ def portal_migration():
                             m_exists = db.execute("SELECT id FROM pc_members WHERE project_id=? AND employee_id=?", 
                                                   (new_proj_id, h_emp_id)).fetchone()
                             if not m_exists:
-                                db.execute("INSERT INTO pc_members (project_id, employee_id, role) VALUES (?, ?, 'developer')",
+                                cur_m = db.execute("INSERT INTO pc_members (project_id, employee_id, role) VALUES (?, ?, 'developer')",
                                            (new_proj_id, h_emp_id))
+                                rollback_data['members'].append(cur_m.lastrowid)
                                 stats['members'] += 1
                                 uncommitted_count += 1
                                 if uncommitted_count >= 50:
@@ -17930,6 +17948,7 @@ def portal_migration():
                     )
                     new_ticket_id = cur_t.lastrowid
                     issue_map[iss['id']] = new_ticket_id
+                    rollback_data['tickets'].append(new_ticket_id)
                     stats['issues'] += 1
                     uncommitted_count += 1
                     
@@ -17993,6 +18012,7 @@ def portal_migration():
                     )
                     new_iss_id = cur_iss.lastrowid
                     issue_map[iss['id']] = new_iss_id
+                    rollback_data['issues'].append(new_iss_id)
                     stats['issues'] += 1
                     uncommitted_count += 1
                     
@@ -18055,11 +18075,12 @@ def portal_migration():
                         hist_exists = db.execute("SELECT id FROM pc_issue_history WHERE issue_id=? AND notes=? AND created_at=?",
                                                  (h_target_id, notes, created_at_str)).fetchone()
                         if not hist_exists:
-                            db.execute(
+                            cur_h = db.execute(
                                 "INSERT INTO pc_issue_history (issue_id, action, notes, changed_by, created_at) "
                                 "VALUES (?, 'comment', ?, ?, ?)",
                                 (h_target_id, notes, h_usr_id, created_at_str)
                             )
+                            rollback_data['histories'].append(cur_h.lastrowid)
                             stats['journals'] += 1
                             uncommitted_count += 1
                             
@@ -18071,6 +18092,13 @@ def portal_migration():
             # Final Commit
             if uncommitted_count > 0:
                 db.commit()
+                
+            # Save rollback info to file if anything was imported
+            if len(rollback_data['projects']) > 0 or len(rollback_data['issues']) > 0 or len(rollback_data['tickets']) > 0:
+                rollback_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'last_migration_rollback.json')
+                with open(rollback_file_path, 'w', encoding='utf-8') as f_roll:
+                    json.dump(rollback_data, f_roll)
+                    
             yield json.dumps({'status': 'success', 'log': '[SYSTEM] Transaksi berhasil. Seluruh data terpilih selesai diimpor!', 'stats': stats}) + '\n'
             
         except Exception as e:
@@ -18084,6 +18112,78 @@ def portal_migration():
 
     headers = {'X-Accel-Buffering': 'no'}
     return Response(stream_with_context(generate_migration()), content_type='application/x-ndjson', headers=headers)
+
+
+@app.route('/portal/migration/rollback', methods=['POST'])
+@login_required
+def portal_migration_rollback():
+    if not is_portal_admin():
+        return jsonify({'success': False, 'message': 'Akses ditolak — Perlu hak akses Administrator'})
+        
+    rollback_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'last_migration_rollback.json')
+    if not os.path.exists(rollback_file):
+        return jsonify({'success': False, 'message': 'Tidak ada data aktivitas migrasi terakhir untuk di-rollback.'})
+        
+    try:
+        with open(rollback_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Gagal membaca file rollback: {str(e)}'})
+        
+    target_module = data.get('target_module', 'project')
+    projects_list = data.get('projects', [])
+    members_list = data.get('members', [])
+    issues_list = data.get('issues', [])
+    tickets_list = data.get('tickets', [])
+    histories_list = data.get('histories', [])
+    
+    db = get_db()
+    try:
+        deleted = {'projects': 0, 'members': 0, 'issues': 0, 'tickets': 0, 'histories': 0}
+        
+        if target_module == 'support':
+            if tickets_list:
+                placeholders = ', '.join(['?'] * len(tickets_list))
+                # Delete from sc_ticket_history (cascades automatically, but we do it manually to be safe)
+                db.execute(f"DELETE FROM sc_ticket_history WHERE ticket_id IN ({placeholders})", tickets_list)
+                # Delete from sc_ticket_assignees
+                db.execute(f"DELETE FROM sc_ticket_assignees WHERE ticket_id IN ({placeholders})", tickets_list)
+                # Delete from sc_tickets
+                cur = db.execute(f"DELETE FROM sc_tickets WHERE id IN ({placeholders})", tickets_list)
+                deleted['tickets'] += cur.rowcount if hasattr(cur, 'rowcount') and cur.rowcount is not None else len(tickets_list)
+        else:
+            if histories_list:
+                placeholders = ', '.join(['?'] * len(histories_list))
+                db.execute(f"DELETE FROM pc_issue_history WHERE id IN ({placeholders})", histories_list)
+            if issues_list:
+                placeholders = ', '.join(['?'] * len(issues_list))
+                cur = db.execute(f"DELETE FROM pc_issues WHERE id IN ({placeholders})", issues_list)
+                deleted['issues'] += cur.rowcount if hasattr(cur, 'rowcount') and cur.rowcount is not None else len(issues_list)
+            if members_list:
+                placeholders = ', '.join(['?'] * len(members_list))
+                db.execute(f"DELETE FROM pc_members WHERE id IN ({placeholders})", members_list)
+            if projects_list:
+                placeholders = ', '.join(['?'] * len(projects_list))
+                cur = db.execute(f"DELETE FROM pc_projects WHERE id IN ({placeholders})", projects_list)
+                deleted['projects'] += cur.rowcount if hasattr(cur, 'rowcount') and cur.rowcount is not None else len(projects_list)
+                
+        db.commit()
+        
+        # Cleanup rollback file
+        if os.path.exists(rollback_file):
+            os.remove(rollback_file)
+            
+        msg = f"Rollback berhasil. Modul: {target_module.upper()}."
+        if target_module == 'support':
+            msg += f" Menghapus {deleted['tickets']} tiket layanan dan data terkait."
+        else:
+            msg += f" Menghapus {deleted['projects']} project, {deleted['issues']} issue, dan data terkait."
+            
+        return jsonify({'success': True, 'message': msg})
+        
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'message': f"Gagal mengeksekusi rollback: {str(e)}"})
 if __name__ == '__main__':
     init_db()
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':

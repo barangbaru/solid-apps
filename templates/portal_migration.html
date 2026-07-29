@@ -148,9 +148,14 @@
             <button type="button" class="btn btn-outline-primary btn-sm fw-semibold" id="btnTestConn" onclick="testConnection()">
               <i class="bi bi-arrow-repeat me-1"></i> Tes Koneksi & Ambil Project
             </button>
-            <button type="button" class="btn btn-primary btn-sm fw-semibold" id="btnStartMigrate" onclick="startMigration()" disabled>
-              <i class="bi bi-play-fill me-1"></i> Mulai Migrasi
-            </button>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-outline-danger btn-sm fw-semibold" id="btnRollback" onclick="rollbackMigration()" {% if not rollback_available %}style="display:none"{% endif %}>
+                <i class="bi bi-arrow-counterclockwise me-1"></i> Rollback Terakhir
+              </button>
+              <button type="button" class="btn btn-primary btn-sm fw-semibold" id="btnStartMigrate" onclick="startMigration()" disabled>
+                <i class="bi bi-play-fill me-1"></i> Mulai Migrasi
+              </button>
+            </div>
           </div>
           <div id="testConnResult" class="mt-3 small"></div>
         </form>
@@ -344,12 +349,14 @@ function startMigration() {
 
   const btnStart = document.getElementById('btnStartMigrate');
   const btnTest = document.getElementById('btnTestConn');
+  const btnRoll = document.getElementById('btnRollback');
   const resCard = document.getElementById('resultCard');
   const statusBadge = document.getElementById('migrationStatus');
   const logsDiv = document.getElementById('migrateLogs');
   
   btnStart.disabled = true;
   btnTest.disabled = true;
+  btnRoll.disabled = true;
   resCard.style.display = 'block';
   statusBadge.className = 'badge bg-warning text-dark';
   statusBadge.innerText = 'PROSES';
@@ -385,6 +392,7 @@ function startMigration() {
         if (done) {
           btnStart.disabled = false;
           btnTest.disabled = false;
+          btnRoll.disabled = false;
           if (statusBadge.innerText === 'PROSES') {
             statusBadge.className = 'badge bg-success';
             statusBadge.innerText = 'SELESAI';
@@ -425,6 +433,8 @@ function startMigration() {
               if (data.status === 'success') {
                 statusBadge.className = 'badge bg-success';
                 statusBadge.innerText = 'SELESAI';
+                // Show rollback button on success
+                btnRoll.style.display = 'inline-block';
               } else if (data.status === 'error') {
                 statusBadge.className = 'badge bg-danger';
                 statusBadge.innerText = 'GAGAL';
@@ -449,12 +459,77 @@ function startMigration() {
   .catch(err => {
     btnStart.disabled = false;
     btnTest.disabled = false;
+    btnRoll.disabled = false;
     statusBadge.className = 'badge bg-danger';
     statusBadge.innerText = 'ERROR';
     
     const div = document.createElement('div');
     div.className = 'text-danger fw-bold';
     div.innerText = `[ERROR] Kesalahan request: ${err.message || err}`;
+    logsDiv.appendChild(div);
+    logsDiv.scrollTop = logsDiv.scrollHeight;
+  });
+}
+
+function rollbackMigration() {
+  if (!confirm('Apakah Anda yakin ingin membatalkan (rollback) seluruh data dari aktifitas migrasi terakhir? Seluruh data yang diimpor pada sesi tersebut akan dihapus permanen dari Hive.')) {
+    return;
+  }
+  
+  const btn = document.getElementById('btnRollback');
+  const btnStart = document.getElementById('btnStartMigrate');
+  const btnTest = document.getElementById('btnTestConn');
+  const resCard = document.getElementById('resultCard');
+  const statusBadge = document.getElementById('migrationStatus');
+  const logsDiv = document.getElementById('migrateLogs');
+  
+  btn.disabled = true;
+  btnStart.disabled = true;
+  btnTest.disabled = true;
+  
+  resCard.style.display = 'block';
+  statusBadge.className = 'badge bg-warning text-dark';
+  statusBadge.innerText = 'ROLLBACK';
+  logsDiv.innerHTML = '<div class="text-warning">[SYSTEM] Memulai pembatalan (rollback) migrasi terakhir...</div>';
+  
+  fetch('/portal/migration/rollback', {
+    method: 'POST'
+  })
+  .then(res => res.json())
+  .then(data => {
+    btnStart.disabled = false;
+    btnTest.disabled = false;
+    if (data.success) {
+      statusBadge.className = 'badge bg-success';
+      statusBadge.innerText = 'BATAL_OK';
+      btn.style.display = 'none';
+      
+      const div = document.createElement('div');
+      div.className = 'text-success fw-bold';
+      div.innerText = `[SUCCESS] ${data.message}`;
+      logsDiv.appendChild(div);
+    } else {
+      btn.disabled = false;
+      statusBadge.className = 'badge bg-danger';
+      statusBadge.innerText = 'BATAL_FAIL';
+      
+      const div = document.createElement('div');
+      div.className = 'text-danger fw-bold';
+      div.innerText = `[ERROR] Rollback gagal: ${data.message}`;
+      logsDiv.appendChild(div);
+    }
+    logsDiv.scrollTop = logsDiv.scrollHeight;
+  })
+  .catch(err => {
+    btn.disabled = false;
+    btnStart.disabled = false;
+    btnTest.disabled = false;
+    statusBadge.className = 'badge bg-danger';
+    statusBadge.innerText = 'BATAL_ERROR';
+    
+    const div = document.createElement('div');
+    div.className = 'text-danger fw-bold';
+    div.innerText = `[ERROR] Kesalahan request: ${err}`;
     logsDiv.appendChild(div);
     logsDiv.scrollTop = logsDiv.scrollHeight;
   });
