@@ -146,6 +146,61 @@
             </select>
           </div>
 
+          <!-- Skenario Test -->
+          <div class="col-12 border-top pt-3 mt-3">
+            <label class="form-label fw-semibold small">Skenario Test <span class="text-danger">*</span></label>
+            <div class="d-flex gap-4 mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="test_scenario_type" id="scenType_text" value="text"
+                       {{ 'checked' if not row or row.test_scenario_type == 'text' }}
+                       onchange="toggleScenarioType('text')">
+                <label class="form-check-label small fw-semibold" for="scenType_text">
+                  Input Text
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="test_scenario_type" id="scenType_file" value="file"
+                       {{ 'checked' if row and row.test_scenario_type == 'file' }}
+                       onchange="toggleScenarioType('file')">
+                <label class="form-check-label small fw-semibold" for="scenType_file">
+                  Upload File
+                </label>
+              </div>
+            </div>
+
+            <!-- Div for Text Input -->
+            <div id="scenario_text_wrapper" class="{{ 'd-none' if row and row.test_scenario_type == 'file' }}">
+              <textarea name="test_scenario_text" id="test_scenario_text" class="form-control form-control-sm" rows="3"
+                        placeholder="Tulis skenario test di sini..."
+                        {{ 'required' if not row or row.test_scenario_type == 'text' }}>{{ row.test_scenario_text if row else '' }}</textarea>
+            </div>
+
+            <!-- Div for File Upload -->
+            <div id="scenario_file_wrapper" class="{{ 'd-none' if not row or row.test_scenario_type == 'text' }}">
+              <div class="border rounded p-2 bg-light">
+                <label class="form-label small text-muted mb-1">
+                  <i class="bi bi-file-earmark-arrow-up me-1"></i>Lampirkan File Skenario Test
+                </label>
+                <input type="file" name="attach_test_scenario" id="upload_test_scenario"
+                       class="form-control form-control-sm" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+                       style="font-size:.8rem"
+                       {{ 'required' if row and row.test_scenario_type == 'file' and not has_test_scenario_file }}>
+                
+                <div id="preview_test_scenario" class="mt-2 d-flex flex-wrap"></div>
+
+                {% if row and row.test_scenario_type == 'file' %}
+                  <!-- If file is already uploaded, show the current file -->
+                  {% if has_test_scenario_file %}
+                  <div class="mt-2 small text-success d-flex align-items-center gap-1">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>File skenario test sudah terupload. Upload file baru jika ingin mengganti.</span>
+                  </div>
+                  {% endif %}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
           <div class="col-12">
             <label class="form-label fw-semibold small">Catatan Internal</label>
             <textarea name="notes" class="form-control form-control-sm" rows="2"
@@ -451,10 +506,39 @@ document.addEventListener('DOMContentLoaded', function() {
   const modSel = document.getElementById('moduleSelect');
   if (modSel && modSel.value) onModuleChange(modSel);
 
-  ['description', 'status_note', 'solution_note'].forEach(sec => {
+  ['description', 'status_note', 'solution_note', 'test_scenario'].forEach(sec => {
     initUpload('upload_' + sec, 'preview_' + sec);
   });
+
+  const scenTypeChecked = document.querySelector('input[name="test_scenario_type"]:checked');
+  if (scenTypeChecked) {
+    toggleScenarioType(scenTypeChecked.value);
+  }
 });
+
+function toggleScenarioType(type) {
+  const textWrap = document.getElementById('scenario_text_wrapper');
+  const fileWrap = document.getElementById('scenario_file_wrapper');
+  const textInput = document.getElementById('test_scenario_text');
+  const fileInput = document.getElementById('upload_test_scenario');
+  const hasFile = {{ 'true' if has_test_scenario_file else 'false' }};
+
+  if (type === 'text') {
+    textWrap.classList.remove('d-none');
+    fileWrap.classList.add('d-none');
+    textInput.setAttribute('required', 'required');
+    fileInput.removeAttribute('required');
+  } else {
+    textWrap.classList.add('d-none');
+    fileWrap.classList.remove('d-none');
+    textInput.removeAttribute('required');
+    if (!hasFile) {
+      fileInput.setAttribute('required', 'required');
+    } else {
+      fileInput.removeAttribute('required');
+    }
+  }
+}
 
 /* ── External assignee tag input ── */
 function syncExtHidden() {

@@ -930,6 +930,8 @@ CREATE TABLE IF NOT EXISTS sc_tickets (
     assigned_to INTEGER DEFAULT NULL,
     created_by INTEGER DEFAULT NULL,
     notes TEXT DEFAULT '',
+    test_scenario_type TEXT DEFAULT 'text',
+    test_scenario_text TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now','localtime')),
     FOREIGN KEY(customer_id) REFERENCES sc_customers(id),
     FOREIGN KEY(contract_id) REFERENCES sc_contracts(id),
@@ -1462,6 +1464,8 @@ MIGRATIONS = [
     ('sc_tickets',         'work_start_date',         "TEXT DEFAULT NULL"),
     ('sc_tickets',         'media_lapor',             "TEXT DEFAULT ''"),
     ('sc_tickets',         'priority',                "TEXT DEFAULT 'Medium'"),
+    ('sc_tickets',         'test_scenario_type',      "TEXT DEFAULT 'text'"),
+    ('sc_tickets',         'test_scenario_text',      "TEXT DEFAULT ''"),
     ('sc_customers',       'customer_type',           "TEXT DEFAULT 'aktif'"),
     ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
     ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
@@ -7728,23 +7732,39 @@ def sc_ticket_add():
         work_start_date = request.form.get('work_start_date','').strip() or None
         media_lapor   = request.form.get('media_lapor','').strip()
         priority      = request.form.get('priority','Medium').strip()
+        test_scenario_type = request.form.get('test_scenario_type', 'text').strip()
+        test_scenario_text = request.form.get('test_scenario_text', '').strip()
         from datetime import datetime as _dt
         if not reported_at:
             reported_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         try:
+            if test_scenario_type == 'file':
+                files = request.files.getlist('attach_test_scenario')
+                has_upload = False
+                for f in files:
+                    if f and f.filename:
+                        has_upload = True
+                        break
+                if not has_upload:
+                    raise ValueError("File skenario test wajib diupload jika memilih metode Upload File")
+            elif test_scenario_type == 'text':
+                if not test_scenario_text:
+                    raise ValueError("Skenario test text wajib diisi jika memilih metode Input Text")
+
             cur = db.execute('''INSERT INTO sc_tickets(ticket_no,contract_id,customer_id,support_type_id,
                           sla_category_id,subject,description,reported_by,reported_at,notes,created_by,
                           module_id,status_note,mandays,pct_done,solution_type,solution_note,
-                          due_date,work_start_date,media_lapor,priority)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                       (ticket_no, contract_id, customer_id, support_type_id, sla_cat_id,
-                        subject, description, reported_by, reported_at, notes, session.get('user_id'),
-                        module_id, status_note, mandays, pct_done,
-                        solution_type, solution_note, due_date, work_start_date, media_lapor, priority))
+                          due_date,work_start_date,media_lapor,priority,test_scenario_type,test_scenario_text)
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                        (ticket_no, contract_id, customer_id, support_type_id, sla_cat_id,
+                         subject, description, reported_by, reported_at, notes, session.get('user_id'),
+                         module_id, status_note, mandays, pct_done,
+                         solution_type, solution_note, due_date, work_start_date, media_lapor, priority,
+                         test_scenario_type, test_scenario_text))
             new_id = cur.lastrowid
             db.commit()
             _sc_ticket_history(db, new_id, 'created', notes=f'Tiket dibuat oleh {session.get("user_name","")}')
-            for sec in ('description', 'status_note', 'solution_note'):
+            for sec in ('description', 'status_note', 'solution_note', 'test_scenario'):
                 _save_ticket_attachments(db, new_id, sec)
             ext_names = [n for n in request.form.get('external_assignees','').split('\n') if n.strip()]
             _sync_external_assignees(db, 'sc_ticket_external_assignees', 'ticket_id', new_id, ext_names)
@@ -7799,24 +7819,45 @@ def sc_ticket_edit(tid):
         work_start_date = request.form.get('work_start_date','').strip() or None
         media_lapor     = request.form.get('media_lapor','').strip()
         priority        = request.form.get('priority','Medium').strip()
+        test_scenario_type = request.form.get('test_scenario_type', 'text').strip()
+        test_scenario_text = request.form.get('test_scenario_text', '').strip()
         # Track changed fields for history
         changed = []
         if row['status_note'] != status_note: changed.append(('status_note','Keterangan',row['status_note'],status_note))
         if str(row['pct_done'] or 0) != str(pct_done): changed.append(('pct_done','% Done',row['pct_done'],pct_done))
         if (row['solution_type'] or '') != solution_type: changed.append(('solution_type','Tipe Solusi',row['solution_type'],solution_type))
         if (row['priority'] or 'Medium') != priority: changed.append(('priority','Prioritas',row['priority'],priority))
+        if (row['test_scenario_type'] or 'text') != test_scenario_type: changed.append(('test_scenario_type','Tipe Skenario Test',row['test_scenario_type'],test_scenario_type))
+        if (row['test_scenario_text'] or '') != test_scenario_text: changed.append(('test_scenario_text','Skenario Test',row['test_scenario_text'],test_scenario_text))
         try:
+            if test_scenario_type == 'file':
+                has_test_scenario_file = db.execute(
+                    "SELECT COUNT(*) FROM sc_ticket_attachments WHERE ticket_id=? AND section='test_scenario'", (tid,)).fetchone()[0] > 0
+                files = request.files.getlist('attach_test_scenario')
+                has_upload = False
+                for f in files:
+                    if f and f.filename:
+                        has_upload = True
+                        break
+                if not has_upload and not has_test_scenario_file:
+                    raise ValueError("File skenario test wajib diupload jika memilih metode Upload File")
+            elif test_scenario_type == 'text':
+                if not test_scenario_text:
+                    raise ValueError("Skenario test text wajib diisi jika memilih metode Input Text")
+
             db.execute('''UPDATE sc_tickets SET contract_id=?,customer_id=?,support_type_id=?,
                           sla_category_id=?,subject=?,description=?,reported_by=?,reported_at=?,notes=?,
                           module_id=?,status_note=?,mandays=?,pct_done=?,
-                          solution_type=?,solution_note=?,due_date=?,work_start_date=?,media_lapor=?,priority=?
+                          solution_type=?,solution_note=?,due_date=?,work_start_date=?,media_lapor=?,priority=?,
+                          test_scenario_type=?,test_scenario_text=?
                           WHERE id=?''',
                        (contract_id, customer_id, support_type_id, sla_cat_id,
                         subject, description, reported_by, reported_at, notes,
                         module_id, status_note, mandays, pct_done,
-                        solution_type, solution_note, due_date, work_start_date, media_lapor, priority, tid))
+                        solution_type, solution_note, due_date, work_start_date, media_lapor, priority,
+                        test_scenario_type, test_scenario_text, tid))
             db.commit()
-            for sec in ('description', 'status_note', 'solution_note'):
+            for sec in ('description', 'status_note', 'solution_note', 'test_scenario'):
                 _save_ticket_attachments(db, tid, sec)
             ext_names = [n for n in request.form.get('external_assignees','').split('\n') if n.strip()]
             _sync_external_assignees(db, 'sc_ticket_external_assignees', 'ticket_id', tid, ext_names)
@@ -7832,6 +7873,8 @@ def sc_ticket_edit(tid):
             flash(f'Error: {e}', 'danger')
     sel_ext = db.execute(
         'SELECT name FROM sc_ticket_external_assignees WHERE ticket_id=? ORDER BY id', (tid,)).fetchall()
+    has_test_scenario_file = db.execute(
+        "SELECT COUNT(*) FROM sc_ticket_attachments WHERE ticket_id=? AND section='test_scenario'", (tid,)).fetchone()[0] > 0
     return render_template('sc_ticket_form.html', row=row, sel_assignees=sel_assignees,
                            ext_assignees=[r['name'] for r in sel_ext],
                            customers=customers,
@@ -7840,7 +7883,8 @@ def sc_ticket_edit(tid):
                            sc_ticket_statuses=SC_TICKET_STATUSES,
                            sc_solution_types=SC_SOLUTION_TYPES,
                            sc_media_lapor=SC_MEDIA_LAPOR,
-                           sc_ticket_priorities=SC_TICKET_PRIORITIES)
+                           sc_ticket_priorities=SC_TICKET_PRIORITIES,
+                           has_test_scenario_file=has_test_scenario_file)
 
 @app.route('/support/tickets/<int:tid>')
 @login_required

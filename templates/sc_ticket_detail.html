@@ -259,6 +259,53 @@
     </div>
     {% endif %}
 
+    {# Skenario Test #}
+    {% if t.test_scenario_type or t.test_scenario_text or att_by_section.get('test_scenario') %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold small text-uppercase text-muted">
+        <i class="bi bi-journal-check me-1"></i>Skenario Test <span class="text-danger">*</span>
+      </div>
+      <div class="card-body" style="font-size:.88rem">
+        <div class="mb-2">
+          <span class="text-muted small">Tipe Skenario:</span>
+          <span class="badge bg-info-subtle text-info border border-info ms-1">
+            {{ 'Upload File' if t.test_scenario_type == 'file' else 'Input Text' }}
+          </span>
+        </div>
+        {% if t.test_scenario_type == 'text' and t.test_scenario_text %}
+        <div style="white-space:pre-wrap" class="p-2 bg-light rounded">{{ t.test_scenario_text }}</div>
+        {% endif %}
+        {% if att_by_section.get('test_scenario') %}
+        <div class="mt-3">
+          <div class="text-muted small fw-semibold mb-2"><i class="bi bi-paperclip me-1"></i>Lampiran Skenario Test</div>
+          <div class="d-flex flex-wrap gap-2">
+            {% for a in att_by_section['test_scenario'] %}
+            <div class="position-relative">
+              {% if a.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')) %}
+              <a href="{{ a.filename }}" target="_blank">
+                <img src="{{ a.filename }}" class="rounded border" style="width:100px;height:75px;object-fit:cover" title="{{ a.original_name }}">
+              </a>
+              {% else %}
+              <a href="{{ a.filename }}" target="_blank" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+                <i class="bi bi-file-earmark-arrow-down"></i>
+                <span class="text-truncate" style="max-width:120px" title="{{ a.original_name }}">{{ a.original_name }}</span>
+              </a>
+              {% endif %}
+              {% if can_manage %}
+              <form method="post" action="/support/tickets/{{ t.id }}/attachments/{{ a.id }}/delete"
+                    onsubmit="return confirm('Hapus lampiran ini?')" style="position:absolute;top:2px;right:2px">
+                <button class="btn btn-danger btn-sm p-0" style="width:18px;height:18px;font-size:.6rem;line-height:1">×</button>
+              </form>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     {# Keterangan Status #}
     {% if t.status_note or att_by_section.get('status_note') %}
     <div class="card border-0 shadow-sm mb-3">
