@@ -17813,18 +17813,21 @@ def portal_migration():
             for p in projects:
                 p_code = p['identifier'].strip()
                 p_name = p['name'].strip()
+                # Customer code: zero-padded Redmine project ID (e.g. ID 26 -> '026')
+                p_cust_code = str(p['id']).zfill(3)
                 
                 if target_module == 'support':
                     # SupportCore: Automatically lookup or create Customer and Contract
-                    cust = db.execute("SELECT id FROM sc_customers WHERE name = ? OR code = ?", (p_name, p_code)).fetchone()
+                    # Match by name OR by ID-based code OR by identifier
+                    cust = db.execute("SELECT id FROM sc_customers WHERE name = ? OR code = ? OR code = ?", (p_name, p_cust_code, p_code)).fetchone()
                     if cust:
                         cust_id = cust['id']
                     else:
-                        cur_cust = db.execute("INSERT INTO sc_customers (code, name, notes) VALUES (?, ?, 'Imported from Redmine')", (p_code, p_name))
+                        cur_cust = db.execute("INSERT INTO sc_customers (code, name, notes) VALUES (?, ?, 'Imported from Redmine')", (p_cust_code, p_name))
                         cust_id = cur_cust.lastrowid
-                        yield json.dumps({'log': f"[CUSTOMER] Customer baru dibuat otomatis: {p_name} ({p_code})"}) + '\n'
+                        yield json.dumps({'log': f"[CUSTOMER] Customer baru dibuat otomatis: {p_name} (kode: {p_cust_code})"}) + '\n'
                         
-                    contract = db.execute("SELECT id FROM sc_contracts WHERE customer_id = ? AND (title = ? OR code = ?)", (cust_id, p_name, p_code)).fetchone()
+                    contract = db.execute("SELECT id FROM sc_contracts WHERE customer_id = ? AND (title = ? OR code = ? OR code = ?)", (cust_id, p_name, p_cust_code, p_code)).fetchone()
                     if contract:
                         ct_id = contract['id']
                     else:
@@ -17832,13 +17835,13 @@ def portal_migration():
                         end_date = '2030-12-31'
                         cur_contr = db.execute(
                             "INSERT INTO sc_contracts (code, customer_id, title, start_date, end_date, description) VALUES (?, ?, ?, ?, ?, 'Imported from Redmine')",
-                            (p_code, cust_id, p_name, start_date, end_date)
+                            (p_cust_code, cust_id, p_name, start_date, end_date)
                         )
                         ct_id = cur_contr.lastrowid
-                        yield json.dumps({'log': f"[CONTRACT] Kontrak baru dibuat otomatis untuk Customer {p_name}"}) + '\n'
+                        yield json.dumps({'log': f"[CONTRACT] Kontrak baru dibuat otomatis untuk Customer {p_name} (kode: {p_cust_code})"}) + '\n'
                     
                     project_map[p['id']] = {'cust_id': cust_id, 'ct_id': ct_id}
-                    yield json.dumps({'log': f"[PROJECT] Terpetakan ke Customer & Kontrak: {p_name} ({p_code})"}) + '\n'
+                    yield json.dumps({'log': f"[PROJECT] Terpetakan ke Customer & Kontrak: {p_name} (kode: {p_cust_code})"}) + '\n'
                     stats['projects'] += 1
                 else:
                     # ProjectCore: Inserts new project
