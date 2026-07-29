@@ -17675,6 +17675,8 @@ def portal_migration_test_connection():
         return jsonify({'success': False, 'message': str(e)})
 
 
+@app.route('/portal/migration', methods=['GET', 'POST'])
+@login_required
 def portal_migration():
     if not is_portal_admin():
         flash('Akses ditolak — Perlu hak akses Administrator', 'danger')
