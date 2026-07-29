@@ -17723,7 +17723,12 @@ def portal_migration():
         
         # 1. Map Users
         logs.append("[SYSTEM] Memetakan user Redmine ke karyawan Hive...")
-        mysql_cur.execute("SELECT id, login, mail, firstname, lastname FROM users WHERE type='User'")
+        mysql_cur.execute("""
+            SELECT u.id, u.login, e.address as mail, u.firstname, u.lastname
+            FROM users u
+            LEFT JOIN email_addresses e ON e.user_id = u.id AND e.is_default = 1
+            WHERE u.type='User'
+        """)
         redmine_users = mysql_cur.fetchall()
         
         hive_employees = db.execute("SELECT id, email, name FROM employees").fetchall()

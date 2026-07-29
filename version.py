@@ -1,6 +1,7 @@
-VERSION = "2.2.124"
+VERSION = "2.2.125"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.125: Memperbaiki query penarikan email user Redmine pada modul migrasi dengan melakukan JOIN ke tabel email_addresses untuk mendukung struktur schema Redmine v3.x/v4.x. "
     "v2.2.124: Implementasi Web UI Migrasi Redmine ke Hive di Portal Settings dengan validasi koneksi database MySQL, opsi pemetaan user otomatis, serta pencatatan logs detail impor secara transaksional (read-only pada sumber). "
     "v2.2.123: Menambahkan inputan Skenario Test wajib (mandatory) pada Informasi Tiket SupportCore dengan opsi pilihan input text atau upload file, didukung validasi frontend & backend serta render detail skenario. "
     "v2.2.122: Menambahkan tombol navigasi Daftar Tiket dan Buat Tiket Support di dashboard utama SupportCore, serta menambahkan section Menu Operasional dan Master Apps & Modul pada layout dashboard. "
