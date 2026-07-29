@@ -1,6 +1,7 @@
-VERSION = "2.2.135"
+VERSION = "2.2.136"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.136: Menambahkan fitur Restore Backup langsung dari GUI Backup Center — tombol Restore (kuning) tersedia di setiap baris file backup lokal dengan modal konfirmasi, pilihan restore Database dan/atau Konten Media, serta safety backup otomatis sebelum menimpa data yang ada. "
     "v2.2.135: Kode Customer baru pada migrasi SupportCore kini mengikuti ID project Redmine dalam format 3-digit (misal project ID 26 menjadi kode 026), serta dicocokan juga terhadap kode lama (identifier) saat pencarian customer yang sudah ada. "
     "v2.2.134: Memperbaiki error kolom description tidak ditemukan pada INSERT sc_customers saat migrasi SupportCore — diganti dengan kolom yang benar yaitu notes. "
     "v2.2.133: Migrasi Redmine kini melompati PIC yang tidak terdaftar di Hive tanpa memblokir proses — PIC tidak terdaftar secara otomatis disimpan sebagai Assignee Manual di SupportCore (sc_ticket_external_assignees) atau kolom Issued By di ProjectCore (pc_issues). "

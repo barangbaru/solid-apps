@@ -316,6 +316,9 @@
                     <button class="btn btn-outline-danger btn-xs ms-1" onclick="deleteBackup('{{ bf.filename }}')" title="Hapus">
                       <i class="bi bi-trash"></i>
                     </button>
+                    <button class="btn btn-outline-warning btn-xs ms-1" onclick="confirmRestore('{{ bf.filename }}')" title="Restore dari file ini">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -369,6 +372,50 @@
       </div>
     </div>
     {% endif %}
+  </div>
+</div>
+
+
+<!-- Restore Modal -->
+<div class="modal fade" id="restoreModal" tabindex="-1" aria-labelledby="restoreModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning-subtle">
+        <h5 class="modal-title fw-bold" id="restoreModalLabel">
+          <i class="bi bi-arrow-counterclockwise text-warning me-2"></i>Konfirmasi Restore Backup
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger py-2 mb-3">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <strong>Peringatan!</strong> Proses restore akan <strong>menimpa</strong> data yang ada saat ini.
+          Sebelum dilanjutkan, pastikan Anda telah membuat backup terbaru.
+        </div>
+        <p class="mb-2">File backup yang akan di-restore:</p>
+        <p class="fw-bold text-primary" id="restoreFilenameDisplay"></p>
+        <p class="mb-3">Pilih item yang ingin di-restore:</p>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="restoreDbCheck" value="1" checked>
+          <label class="form-check-label fw-semibold" for="restoreDbCheck">
+            Database <span class="fw-normal text-muted">(database_dump.sql / evaluasi.db)</span>
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="restoreUploadsCheck" value="1" checked>
+          <label class="form-check-label fw-semibold" for="restoreUploadsCheck">
+            Konten Media <span class="fw-normal text-muted">(static/uploads)</span>
+          </label>
+        </div>
+        <div id="restoreResult" class="mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-warning fw-semibold" id="btnDoRestore" onclick="doRestore()">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Restore Sekarang
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -479,6 +526,51 @@ function deleteBackup(filename, isS3 = false) {
       alert("Error: " + err);
     });
   }
+}
+
+let _restoreFilename = null;
+
+function confirmRestore(filename) {
+  _restoreFilename = filename;
+  document.getElementById('restoreFilenameDisplay').textContent = filename;
+  document.getElementById('restoreResult').innerHTML = '';
+  document.getElementById('btnDoRestore').disabled = false;
+  const modal = new bootstrap.Modal(document.getElementById('restoreModal'));
+  modal.show();
+}
+
+function doRestore() {
+  if (!_restoreFilename) return;
+  const btn = document.getElementById('btnDoRestore');
+  const resultDiv = document.getElementById('restoreResult');
+  const restoreDb = document.getElementById('restoreDbCheck').checked ? '1' : '0';
+  const restoreUploads = document.getElementById('restoreUploadsCheck').checked ? '1' : '0';
+
+  btn.disabled = true;
+  resultDiv.innerHTML = '<div class="alert alert-info py-2"><i class="spinner-border spinner-border-sm me-1"></i> Sedang me-restore, harap tunggu...</div>';
+
+  const formData = new FormData();
+  formData.append('restore_db', restoreDb);
+  formData.append('restore_uploads', restoreUploads);
+
+  fetch('/portal/backup/restore/' + _restoreFilename, {
+    method: 'POST',
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.ok) {
+      resultDiv.innerHTML = `<div class="alert alert-success py-2"><i class="bi bi-check-circle-fill me-1"></i>${data.msg}<br><small class="text-muted mt-1 d-block">Halaman akan dimuat ulang dalam 3 detik...</small></div>`;
+      setTimeout(() => { window.location.reload(); }, 3000);
+    } else {
+      btn.disabled = false;
+      resultDiv.innerHTML = `<div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>${data.msg}</div>`;
+    }
+  })
+  .catch(err => {
+    btn.disabled = false;
+    resultDiv.innerHTML = `<div class="alert alert-danger py-2">Koneksi terputus atau server error: ${err}</div>`;
+  });
 }
 </script>
 {% endblock %}

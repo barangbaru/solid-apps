@@ -17631,6 +17631,126 @@ def portal_test_s3():
 # ─── Main ──────────────────────────────────────────────────────────────────────
 
 
+
+@app.route('/portal/backup/restore/<filename>', methods=['POST'])
+@login_required
+def restore_backup_file(filename):
+    """Restore database and/or uploads from a local backup ZIP file."""
+    if not is_portal_admin():
+        return jsonify({'ok': False, 'msg': 'Akses ditolak.'})
+
+    import werkzeug
+    import zipfile
+    import shutil
+    import tempfile
+
+    filename = werkzeug.utils.secure_filename(filename)
+    if not filename.startswith('backup_hive_') or not filename.endswith('.zip'):
+        return jsonify({'ok': False, 'msg': 'Nama file backup tidak valid.'})
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    backups_dir = os.path.join(base_dir, 'backups')
+    zip_path = os.path.join(backups_dir, filename)
+
+    if not os.path.exists(zip_path):
+        return jsonify({'ok': False, 'msg': f'File backup {filename} tidak ditemukan di server.'})
+
+    restore_db = request.form.get('restore_db') == '1'
+    restore_uploads = request.form.get('restore_uploads') == '1'
+
+    if not restore_db and not restore_uploads:
+        return jsonify({'ok': False, 'msg': 'Pilih minimal satu item yang akan di-restore (Database atau Konten Media).'})
+
+    log_msgs = []
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Extract ZIP
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(tmp_dir)
+
+            # ── Restore Database ─────────────────────────────────────────────
+            if restore_db:
+                if DB_TYPE == 'postgresql':
+                    sql_path = os.path.join(tmp_dir, 'database_dump.sql')
+                    if not os.path.exists(sql_path):
+                        return jsonify({'ok': False, 'msg': 'File database_dump.sql tidak ditemukan di dalam arsip backup ini.'})
+
+                    # Read connection string from environment
+                    import subprocess
+                    db_url = os.environ.get('DATABASE_URL', '')
+                    if not db_url:
+                        return jsonify({'ok': False, 'msg': 'DATABASE_URL tidak dikonfigurasi di environment. Tidak dapat restore PostgreSQL.'})
+
+                    # Parse db_url: postgresql://user:pass@host:port/dbname
+                    from urllib.parse import urlparse
+                    parsed = urlparse(db_url)
+                    pg_user = parsed.username or 'postgres'
+                    pg_pass = parsed.password or ''
+                    pg_host = parsed.hostname or 'localhost'
+                    pg_port = str(parsed.port or 5432)
+                    pg_db   = parsed.path.lstrip('/') or 'hive'
+
+                    env = os.environ.copy()
+                    env['PGPASSWORD'] = pg_pass
+
+                    # Drop & recreate public schema to cleanly restore
+                    drop_cmd = [
+                        'psql', '-U', pg_user, '-h', pg_host, '-p', pg_port, '-d', pg_db,
+                        '-c', 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+                    ]
+                    result = subprocess.run(drop_cmd, env=env, capture_output=True, text=True, timeout=60)
+                    if result.returncode != 0:
+                        return jsonify({'ok': False, 'msg': f'Gagal reset schema PostgreSQL: {result.stderr[:300]}'})
+
+                    # Restore from SQL dump
+                    restore_cmd = [
+                        'psql', '-U', pg_user, '-h', pg_host, '-p', pg_port, '-d', pg_db,
+                        '-f', sql_path
+                    ]
+                    result = subprocess.run(restore_cmd, env=env, capture_output=True, text=True, timeout=300)
+                    if result.returncode != 0:
+                        return jsonify({'ok': False, 'msg': f'Restore PostgreSQL gagal: {result.stderr[:300]}'})
+
+                    log_msgs.append('Database PostgreSQL berhasil di-restore dari dump SQL.')
+                else:
+                    # SQLite
+                    db_src = os.path.join(tmp_dir, 'evaluasi.db')
+                    if not os.path.exists(db_src):
+                        return jsonify({'ok': False, 'msg': 'File evaluasi.db tidak ditemukan di dalam arsip backup ini.'})
+
+                    # Create safety backup of current DB before overwrite
+                    if os.path.exists(DB_PATH):
+                        safety_path = DB_PATH + '.before_restore'
+                        shutil.copy2(DB_PATH, safety_path)
+
+                    shutil.copy2(db_src, DB_PATH)
+                    log_msgs.append('Database SQLite berhasil di-restore.')
+
+            # ── Restore Uploads ──────────────────────────────────────────────
+            if restore_uploads:
+                uploads_src = os.path.join(tmp_dir, 'uploads')
+                if not os.path.exists(uploads_src):
+                    log_msgs.append('Folder uploads tidak ada di dalam arsip ini — dilewati.')
+                else:
+                    uploads_dest = os.path.join(base_dir, 'static', 'uploads')
+                    # Safety backup of current uploads
+                    if os.path.exists(uploads_dest):
+                        uploads_backup = uploads_dest + '_before_restore'
+                        if os.path.exists(uploads_backup):
+                            shutil.rmtree(uploads_backup)
+                        shutil.copytree(uploads_dest, uploads_backup)
+                    os.makedirs(uploads_dest, exist_ok=True)
+                    shutil.copytree(uploads_src, uploads_dest, dirs_exist_ok=True)
+                    log_msgs.append('Konten media (static/uploads) berhasil di-restore.')
+
+        summary = f"Restore dari {filename} berhasil pada {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}. " + " | ".join(log_msgs)
+        return jsonify({'ok': True, 'msg': summary})
+
+    except Exception as e:
+        return jsonify({'ok': False, 'msg': f'Restore gagal: {str(e)}'})
+
+
 @app.route('/portal/migration/test-connection', methods=['POST'])
 @login_required
 def portal_migration_test_connection():
