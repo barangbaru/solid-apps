@@ -17677,8 +17677,10 @@ def portal_migration():
         
     if request.method == 'GET':
         return render_template('portal_migration.html')
-        
+
     # POST - Start Migration
+    from flask import stream_with_context
+    
     host = request.form.get('mysql_host', '').strip()
     port_str = request.form.get('mysql_port', '3306').strip()
     user = request.form.get('mysql_user', '').strip()
@@ -17691,242 +17693,243 @@ def portal_migration():
     
     port = int(port_str) if port_str.isdigit() else 3306
     
-    logs = []
-    stats = {'projects': 0, 'members': 0, 'issues': 0, 'journals': 0}
-    
-    try:
-        import pymysql
-    except ImportError:
-        return jsonify({
-            'success': False, 
-            'message': "Library 'pymysql' tidak terpasang di Python environment. Silakan jalankan 'pip install pymysql' di server."
-        })
+    def generate_migration():
+        stats = {'projects': 0, 'members': 0, 'issues': 0, 'journals': 0}
         
-    mysql_conn = None
-    try:
-        mysql_conn = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=db_name,
-            cursorclass=pymysql.cursors.DictCursor,
-            connect_timeout=5
-        )
-        logs.append("[SYSTEM] Berhasil terhubung ke database Redmine (MySQL).")
-    except Exception as e:
-        return jsonify({'success': False, 'message': f"Koneksi ke Redmine MySQL gagal: {str(e)}"})
-        
-    try:
-        mysql_cur = mysql_conn.cursor()
-        db = get_db()
-        
-        # 1. Map Users
-        logs.append("[SYSTEM] Memetakan user Redmine ke karyawan Hive...")
-        mysql_cur.execute("""
-            SELECT u.id, u.login, e.address as mail, u.firstname, u.lastname
-            FROM users u
-            LEFT JOIN email_addresses e ON e.user_id = u.id AND e.is_default = 1
-            WHERE u.type='User'
-        """)
-        redmine_users = mysql_cur.fetchall()
-        
-        hive_employees = db.execute("SELECT id, email, name FROM employees").fetchall()
-        hive_users = db.execute("SELECT id, username FROM users").fetchall()
-        
-        # Mapping dict: redmine_user_id -> hive_employee_id
-        user_map = {}
-        # Mapping dict: redmine_user_id -> hive_user_id (for history changed_by)
-        user_id_map = {}
-        
-        for ru in redmine_users:
-            mail = (ru['mail'] or '').lower().strip()
-            login = (ru['login'] or '').lower().strip()
+        try:
+            import pymysql
+        except ImportError:
+            yield json.dumps({
+                'status': 'error', 
+                'message': "Library 'pymysql' tidak terpasang di Python environment. Silakan jalankan 'pip install pymysql' di server."
+            }) + '\n'
+            return
             
-            # Match employee
-            emp_id = None
-            for he in hive_employees:
-                he_email = (he['email'] or '').lower().strip()
-                if mail and he_email == mail:
-                    emp_id = he['id']
-                    break
-            
-            if emp_id:
-                user_map[ru['id']] = emp_id
-            else:
-                if not skip_unmapped:
-                    raise ValueError(f"User Redmine '{ru['login']}' dengan email '{ru['mail']}' tidak ditemukan di Karyawan Hive. Tambahkan karyawan tersebut dahulu atau centang opsi 'Lompati PIC yang tidak terdaftar'.")
-                logs.append(f"[WARNING] User Redmine '{ru['login']}' tidak terpetakan (PIC akan dikosongkan).")
-                
-            # Match user account
-            usr_id = None
-            for hu in hive_users:
-                hu_username = (hu['username'] or '').lower().strip()
-                if login and hu_username == login:
-                    usr_id = hu['id']
-                    break
-            if usr_id:
-                user_id_map[ru['id']] = usr_id
-
-        # 2. Get Redmine Projects
-        logs.append("[SYSTEM] Mengambil data project dari Redmine...")
-        mysql_cur.execute("SELECT id, name, identifier, description, status FROM projects")
-        projects = mysql_cur.fetchall()
-        
-        project_map = {} # redmine_project_id -> hive_project_id
-        
-        for p in projects:
-            p_code = p['identifier'].strip()
-            p_name = p['name'].strip()
-            if prefix_proj:
-                p_name = f"[Redmine] {p_name}"
-            p_desc = p['description'] or ''
-            p_status = 'active' if p['status'] == 1 else 'inactive'
-            
-            # Check duplicate project code in Hive
-            existing = db.execute("SELECT id FROM pc_projects WHERE code = ?", (p_code,)).fetchone()
-            if existing:
-                project_map[p['id']] = existing['id']
-                logs.append(f"[PROJECT] Lewati (sudah ada): {p_name} ({p_code})")
-                continue
-                
-            # Insert project
-            cur = db.execute(
-                "INSERT INTO pc_projects (code, name, description, status, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (p_code, p_name, p_desc, p_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        mysql_conn = None
+        try:
+            mysql_conn = pymysql.connect(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                database=db_name,
+                cursorclass=pymysql.cursors.DictCursor,
+                connect_timeout=5
             )
-            new_proj_id = cur.lastrowid
-            project_map[p['id']] = new_proj_id
-            stats['projects'] += 1
-            logs.append(f"[PROJECT] Diimpor: {p_name} ({p_code})")
+            yield json.dumps({'log': '[SYSTEM] Berhasil terhubung ke database Redmine (MySQL).'}) + '\n'
+        except Exception as e:
+            yield json.dumps({'status': 'error', 'message': f"Koneksi ke Redmine MySQL gagal: {str(e)}"}) + '\n'
+            return
             
-            # 3. Map Project Members
-            mysql_cur.execute("SELECT user_id FROM members WHERE project_id = %s", (p['id'],))
-            members = mysql_cur.fetchall()
-            for m in members:
-                h_emp_id = user_map.get(m['user_id'])
-                if h_emp_id:
-                    m_exists = db.execute("SELECT id FROM pc_members WHERE project_id=? AND employee_id=?", 
-                                          (new_proj_id, h_emp_id)).fetchone()
-                    if not m_exists:
-                        db.execute("INSERT INTO pc_members (project_id, employee_id, role) VALUES (?, ?, 'developer')",
-                                   (new_proj_id, h_emp_id))
-                        stats['members'] += 1
+        try:
+            mysql_cur = mysql_conn.cursor()
+            db = get_db()
+            
+            # 1. Map Users
+            yield json.dumps({'log': '[SYSTEM] Memetakan user Redmine ke karyawan Hive...'}) + '\n'
+            mysql_cur.execute("""
+                SELECT u.id, u.login, e.address as mail, u.firstname, u.lastname
+                FROM users u
+                LEFT JOIN email_addresses e ON e.user_id = u.id AND e.is_default = 1
+                WHERE u.type='User'
+            """)
+            redmine_users = mysql_cur.fetchall()
+            
+            hive_employees = db.execute("SELECT id, email, name FROM employees").fetchall()
+            hive_users = db.execute("SELECT id, username FROM users").fetchall()
+            
+            user_map = {}
+            user_id_map = {}
+            
+            for ru in redmine_users:
+                mail = (ru['mail'] or '').lower().strip()
+                login = (ru['login'] or '').lower().strip()
+                
+                emp_id = None
+                for he in hive_employees:
+                    he_email = (he['email'] or '').lower().strip()
+                    if mail and he_email == mail:
+                        emp_id = he['id']
+                        break
+                
+                if emp_id:
+                    user_map[ru['id']] = emp_id
+                else:
+                    if not skip_unmapped:
+                        raise ValueError(f"User Redmine '{ru['login']}' dengan email '{ru['mail']}' tidak ditemukan di Karyawan Hive. Tambahkan karyawan tersebut dahulu atau centang opsi 'Lompati PIC yang tidak terdaftar'.")
+                    yield json.dumps({'log': f"[WARNING] User Redmine '{ru['login']}' tidak terpetakan (PIC akan dikosongkan)."}) + '\n'
+                    
+                usr_id = None
+                for hu in hive_users:
+                    hu_username = (hu['username'] or '').lower().strip()
+                    if login and hu_username == login:
+                        usr_id = hu['id']
+                        break
+                if usr_id:
+                    user_id_map[ru['id']] = usr_id
 
-        # 4. Get Redmine Issues
-        logs.append("[SYSTEM] Mengambil data issue/tiket dari Redmine...")
-        mysql_cur.execute("""
-            SELECT i.id, i.project_id, i.subject, i.description, i.assigned_to_id, i.created_on,
-                   t.name as tracker_name, s.name as status_name, pr.name as priority_name
-            FROM issues i
-            LEFT JOIN trackers t ON t.id = i.tracker_id
-            LEFT JOIN issue_statuses s ON s.id = i.status_id
-            LEFT JOIN enumerations pr ON pr.id = i.priority_id AND pr.type = 'IssuePriority'
-        """)
-        issues = mysql_cur.fetchall()
-        
-        issue_map = {} # redmine_issue_id -> hive_issue_id
-        
-        for iss in issues:
-            h_proj_id = project_map.get(iss['project_id'])
-            if not h_proj_id:
-                continue
-                
-            issue_no = f"RM-{iss['id']}"
+            # 2. Get Redmine Projects
+            yield json.dumps({'log': '[SYSTEM] Mengambil data project dari Redmine...'}) + '\n'
+            mysql_cur.execute("SELECT id, name, identifier, description, status FROM projects")
+            projects = mysql_cur.fetchall()
             
-            iss_exists = db.execute("SELECT id FROM pc_issues WHERE issue_no = ?", (issue_no,)).fetchone()
-            if iss_exists:
-                issue_map[iss['id']] = iss_exists['id']
-                logs.append(f"[ISSUE] Lewati (sudah ada): {issue_no} - {iss['subject']}")
-                continue
-                
-            title = iss['subject']
-            desc = iss['description'] or ''
+            project_map = {}
             
-            tracker = iss['tracker_name'] or 'Task'
-            if 'bug' in tracker.lower():
-                issued_type = 'Bugs'
-            elif 'feature' in tracker.lower():
-                issued_type = 'Feature'
-            else:
-                issued_type = 'Task'
+            for p in projects:
+                p_code = p['identifier'].strip()
+                p_name = p['name'].strip()
+                if prefix_proj:
+                    p_name = f"[Redmine] {p_name}"
+                p_desc = p['description'] or ''
+                p_status = 'active' if p['status'] == 1 else 'inactive'
                 
-            status_name = iss['status_name'] or 'New'
-            if 'new' in status_name.lower():
-                status_prog = 'New'
-            elif 'in progress' in status_name.lower() or 'active' in status_name.lower():
-                status_prog = 'In Progress'
-            elif 'resolved' in status_name.lower() or 'solved' in status_name.lower():
-                status_prog = 'Resolved'
-            elif 'closed' in status_name.lower():
-                status_prog = 'Resolved'
-            else:
-                status_prog = 'In Progress'
-                
-            prio_name = iss['priority_name'] or 'Normal'
-            if 'high' in prio_name.lower() or 'urgent' in prio_name.lower() or 'immediate' in prio_name.lower():
-                priority = 'High'
-            elif 'low' in prio_name.lower():
-                priority = 'Low'
-            else:
-                priority = 'Medium'
-                
-            pic_prog = user_map.get(iss['assigned_to_id'])
-            created_at_str = iss['created_on'].strftime('%Y-%m-%d %H:%M:%S') if iss['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            redmine_url = f"https://redmine-imported/issues/{iss['id']}"
-            
-            cur_iss = db.execute(
-                "INSERT INTO pc_issues (project_id, issue_no, title, description, issued_type, "
-                "status_programmer, priority, pic_programmer_id, redmine, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (h_proj_id, issue_no, title, desc, issued_type, status_prog, priority, pic_prog, redmine_url, created_at_str)
-            )
-            new_iss_id = cur_iss.lastrowid
-            issue_map[iss['id']] = new_iss_id
-            stats['issues'] += 1
-            logs.append(f"[ISSUE] Diimpor: {issue_no} - {title}")
-
-        # 5. Get Redmine Journals (Issue Comments / History)
-        logs.append("[SYSTEM] Mengambil riwayat komentar dan journal dari Redmine...")
-        mysql_cur.execute("""
-            SELECT j.id, j.journalized_id as issue_id, j.user_id, j.notes, j.created_on
-            FROM journals j
-            WHERE j.journalized_type = 'Issue' AND (j.notes IS NOT NULL AND j.notes != '')
-        """)
-        journals = mysql_cur.fetchall()
-        
-        for j in journals:
-            h_iss_id = issue_map.get(j['issue_id'])
-            if not h_iss_id:
-                continue
-                
-            h_usr_id = user_id_map.get(j['user_id'])
-            notes = j['notes'].strip()
-            created_at_str = j['created_on'].strftime('%Y-%m-%d %H:%M:%S') if j['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            hist_exists = db.execute("SELECT id FROM pc_issue_history WHERE issue_id=? AND notes=? AND created_at=?",
-                                     (h_iss_id, notes, created_at_str)).fetchone()
-            if not hist_exists:
-                db.execute(
-                    "INSERT INTO pc_issue_history (issue_id, action, notes, changed_by, created_at) "
-                    "VALUES (?, 'comment', ?, ?, ?)",
-                    (h_iss_id, notes, h_usr_id, created_at_str)
+                existing = db.execute("SELECT id FROM pc_projects WHERE code = ?", (p_code,)).fetchone()
+                if existing:
+                    project_map[p['id']] = existing['id']
+                    yield json.dumps({'log': f"[PROJECT] Lewati (sudah ada): {p_name} ({p_code})"}) + '\n'
+                    continue
+                    
+                cur = db.execute(
+                    "INSERT INTO pc_projects (code, name, description, status, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (p_code, p_name, p_desc, p_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
                 )
-                stats['journals'] += 1
+                new_proj_id = cur.lastrowid
+                project_map[p['id']] = new_proj_id
+                stats['projects'] += 1
+                yield json.dumps({'log': f"[PROJECT] Diimpor: {p_name} ({p_code})", 'stats': stats}) + '\n'
+                
+                # 3. Map Project Members
+                mysql_cur.execute("SELECT user_id FROM members WHERE project_id = %s", (p['id'],))
+                members = mysql_cur.fetchall()
+                for m in members:
+                    h_emp_id = user_map.get(m['user_id'])
+                    if h_emp_id:
+                        m_exists = db.execute("SELECT id FROM pc_members WHERE project_id=? AND employee_id=?", 
+                                              (new_proj_id, h_emp_id)).fetchone()
+                        if not m_exists:
+                            db.execute("INSERT INTO pc_members (project_id, employee_id, role) VALUES (?, ?, 'developer')",
+                                       (new_proj_id, h_emp_id))
+                            stats['members'] += 1
+                            yield json.dumps({'stats': stats}) + '\n'
 
-        db.commit()
-        logs.append("[SYSTEM] Transaksi berhasil. Data disimpan.")
-        return jsonify({'success': True, 'stats': stats, 'logs': logs})
-        
-    except Exception as e:
-        db.rollback()
-        import traceback
-        error_msg = traceback.format_exc()
-        return jsonify({'success': False, 'message': f"Migrasi gagal: {str(e)}", 'error_details': error_msg})
-    finally:
-        if mysql_conn:
-            mysql_conn.close()
+            # 4. Get Redmine Issues
+            yield json.dumps({'log': '[SYSTEM] Mengambil data issue/tiket dari Redmine...'}) + '\n'
+            mysql_cur.execute("""
+                SELECT i.id, i.project_id, i.subject, i.description, i.assigned_to_id, i.created_on,
+                       t.name as tracker_name, s.name as status_name, pr.name as priority_name
+                FROM issues i
+                LEFT JOIN trackers t ON t.id = i.tracker_id
+                LEFT JOIN issue_statuses s ON s.id = i.status_id
+                LEFT JOIN enumerations pr ON pr.id = i.priority_id AND pr.type = 'IssuePriority'
+            """)
+            issues = mysql_cur.fetchall()
+            
+            issue_map = {}
+            
+            for iss in issues:
+                h_proj_id = project_map.get(iss['project_id'])
+                if not h_proj_id:
+                    continue
+                    
+                issue_no = f"RM-{iss['id']}"
+                
+                iss_exists = db.execute("SELECT id FROM pc_issues WHERE issue_no = ?", (issue_no,)).fetchone()
+                if iss_exists:
+                    issue_map[iss['id']] = iss_exists['id']
+                    yield json.dumps({'log': f"[ISSUE] Lewati (sudah ada): {issue_no} - {iss['subject']}"}) + '\n'
+                    continue
+                    
+                title = iss['subject']
+                desc = iss['description'] or ''
+                
+                tracker = iss['tracker_name'] or 'Task'
+                if 'bug' in tracker.lower():
+                    issued_type = 'Bugs'
+                elif 'feature' in tracker.lower():
+                    issued_type = 'Feature'
+                else:
+                    issued_type = 'Task'
+                    
+                status_name = iss['status_name'] or 'New'
+                if 'new' in status_name.lower():
+                    status_prog = 'New'
+                elif 'in progress' in status_name.lower() or 'active' in status_name.lower():
+                    status_prog = 'In Progress'
+                elif 'resolved' in status_name.lower() or 'solved' in status_name.lower():
+                    status_prog = 'Resolved'
+                elif 'closed' in status_name.lower():
+                    status_prog = 'Resolved'
+                else:
+                    status_prog = 'In Progress'
+                    
+                prio_name = iss['priority_name'] or 'Normal'
+                if 'high' in prio_name.lower() or 'urgent' in prio_name.lower() or 'immediate' in prio_name.lower():
+                    priority = 'High'
+                elif 'low' in prio_name.lower():
+                    priority = 'Low'
+                else:
+                    priority = 'Medium'
+                    
+                pic_prog = user_map.get(iss['assigned_to_id'])
+                created_at_str = iss['created_on'].strftime('%Y-%m-%d %H:%M:%S') if iss['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                redmine_url = f"https://redmine-imported/issues/{iss['id']}"
+                
+                cur_iss = db.execute(
+                    "INSERT INTO pc_issues (project_id, issue_no, title, description, issued_type, "
+                    "status_programmer, priority, pic_programmer_id, redmine, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (h_proj_id, issue_no, title, desc, issued_type, status_prog, priority, pic_prog, redmine_url, created_at_str)
+                )
+                new_iss_id = cur_iss.lastrowid
+                issue_map[iss['id']] = new_iss_id
+                stats['issues'] += 1
+                yield json.dumps({'log': f"[ISSUE] Diimpor: {issue_no} - {title}", 'stats': stats}) + '\n'
+
+            # 5. Get Redmine Journals (Issue Comments / History)
+            yield json.dumps({'log': '[SYSTEM] Mengambil riwayat komentar dan journal dari Redmine...'}) + '\n'
+            mysql_cur.execute("""
+                SELECT j.id, j.journalized_id as issue_id, j.user_id, j.notes, j.created_on
+                FROM journals j
+                WHERE j.journalized_type = 'Issue' AND (j.notes IS NOT NULL AND j.notes != '')
+            """)
+            journals = mysql_cur.fetchall()
+            
+            for j in journals:
+                h_iss_id = issue_map.get(j['issue_id'])
+                if not h_iss_id:
+                    continue
+                    
+                h_usr_id = user_id_map.get(j['user_id'])
+                notes = j['notes'].strip()
+                created_at_str = j['created_on'].strftime('%Y-%m-%d %H:%M:%S') if j['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                
+                hist_exists = db.execute("SELECT id FROM pc_issue_history WHERE issue_id=? AND notes=? AND created_at=?",
+                                         (h_iss_id, notes, created_at_str)).fetchone()
+                if not hist_exists:
+                    db.execute(
+                        "INSERT INTO pc_issue_history (issue_id, action, notes, changed_by, created_at) "
+                        "VALUES (?, 'comment', ?, ?, ?)",
+                        (h_iss_id, notes, h_usr_id, created_at_str)
+                    )
+                    stats['journals'] += 1
+                    if stats['journals'] % 10 == 0:
+                        yield json.dumps({'log': f"[HISTORY] Diimpor {stats['journals']} komentar...", 'stats': stats}) + '\n'
+
+            db.commit()
+            yield json.dumps({'status': 'success', 'log': '[SYSTEM] Transaksi berhasil. Seluruh data selesai diimpor!', 'stats': stats}) + '\n'
+            
+        except Exception as e:
+            db.rollback()
+            import traceback
+            error_msg = traceback.format_exc()
+            yield json.dumps({'status': 'error', 'message': f"Migrasi gagal: {str(e)}", 'error_details': error_msg}) + '\n'
+        finally:
+            if mysql_conn:
+                mysql_conn.close()
+
+    headers = {'X-Accel-Buffering': 'no'}
+    return Response(stream_with_context(generate_migration()), content_type='application/x-ndjson', headers=headers)
 
 
 if __name__ == '__main__':

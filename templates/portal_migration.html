@@ -215,50 +215,94 @@ function startMigration() {
   statusBadge.innerText = 'PROSES';
   logsDiv.innerHTML = '<div class="text-info">[SYSTEM] Memulai proses ETL migrasi data...</div>';
 
-  const formData = new FormData(document.getElementById('migrationForm'));
-
-  fetch('/portal/migration', {
+  const formData = new FormData(document.getElementById('migrationForm'));  fetch('/portal/migration', {
     method: 'POST',
     body: formData
   })
-  .then(res => {
-    const contentType = res.headers.get('content-type') || '';
-    if (!res.ok || contentType.includes('text/html')) {
-      return res.text().then(text => {
-        throw new Error(`Server returned HTML (status ${res.status}): ${text.substring(0, 300)}...`);
+  .then(response => {
+    const contentType = response.headers.get('content-type') || '';
+    if (!response.ok || contentType.includes('text/html')) {
+      return response.text().then(text => {
+        throw new Error(`Server returned HTML (status ${response.status}): ${text.substring(0, 300)}...`);
       });
     }
-    return res.json();
-  })
-  .then(data => {
-    btnStart.disabled = false;
-    btnTest.disabled = false;
-    
-    if (data.success) {
-      statusBadge.className = 'badge bg-success';
-      statusBadge.innerText = 'SELESAI';
-      
-      document.getElementById('statProjects').innerText = data.stats.projects;
-      document.getElementById('statMembers').innerText = data.stats.members;
-      document.getElementById('statIssues').innerText = data.stats.issues;
-      document.getElementById('statJournals').innerText = data.stats.journals;
 
-      logsDiv.innerHTML = '';
-      data.logs.forEach(log => {
-        const div = document.createElement('div');
-        div.innerText = log;
-        logsDiv.appendChild(div);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Reset stats display
+    document.getElementById('statProjects').innerText = '0';
+    document.getElementById('statMembers').innerText = '0';
+    document.getElementById('statIssues').innerText = '0';
+    document.getElementById('statJournals').innerText = '0';
+    logsDiv.innerHTML = '';
+
+    function readChunk() {
+      return reader.read().then(({ done, value }) => {
+        if (done) {
+          btnStart.disabled = false;
+          btnTest.disabled = false;
+          if (statusBadge.innerText === 'PROSES') {
+            statusBadge.className = 'badge bg-success';
+            statusBadge.innerText = 'SELESAI';
+          }
+          return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Save the last partial line back to buffer
+
+        lines.forEach(line => {
+          if (line.trim()) {
+            try {
+              const data = JSON.parse(line);
+              
+              if (data.log) {
+                const div = document.createElement('div');
+                div.innerText = data.log;
+                if (data.log.includes('[WARNING]')) {
+                  div.className = 'text-warning';
+                } else if (data.log.includes('[ERROR]')) {
+                  div.className = 'text-danger fw-bold';
+                } else if (data.log.includes('[SYSTEM]')) {
+                  div.className = 'text-info';
+                }
+                logsDiv.appendChild(div);
+                logsDiv.scrollTop = logsDiv.scrollHeight;
+              }
+
+              if (data.stats) {
+                document.getElementById('statProjects').innerText = data.stats.projects || '0';
+                document.getElementById('statMembers').innerText = data.stats.members || '0';
+                document.getElementById('statIssues').innerText = data.stats.issues || '0';
+                document.getElementById('statJournals').innerText = data.stats.journals || '0';
+              }
+
+              if (data.status === 'success') {
+                statusBadge.className = 'badge bg-success';
+                statusBadge.innerText = 'SELESAI';
+              } else if (data.status === 'error') {
+                statusBadge.className = 'badge bg-danger';
+                statusBadge.innerText = 'GAGAL';
+                const div = document.createElement('div');
+                div.className = 'text-danger fw-bold';
+                div.innerText = `[ERROR] ${data.message}`;
+                logsDiv.appendChild(div);
+                logsDiv.scrollTop = logsDiv.scrollHeight;
+              }
+            } catch (err) {
+              console.error("Failed to parse NDJSON line:", err, line);
+            }
+          }
+        });
+
+        return readChunk();
       });
-      logsDiv.scrollTop = logsDiv.scrollHeight;
-    } else {
-      statusBadge.className = 'badge bg-danger';
-      statusBadge.innerText = 'GAGAL';
-      
-      const div = document.createElement('div');
-      div.className = 'text-danger';
-      div.innerText = `[ERROR] Migrasi gagal: ${data.message}`;
-      logsDiv.appendChild(div);
     }
+
+    return readChunk();
   })
   .catch(err => {
     btnStart.disabled = false;
@@ -267,9 +311,10 @@ function startMigration() {
     statusBadge.innerText = 'ERROR';
     
     const div = document.createElement('div');
-    div.className = 'text-danger';
-    div.innerText = `[ERROR] Kesalahan request: ${err}`;
+    div.className = 'text-danger fw-bold';
+    div.innerText = `[ERROR] Kesalahan request: ${err.message || err}`;
     logsDiv.appendChild(div);
+    logsDiv.scrollTop = logsDiv.scrollHeight;
   });
 }
 </script>

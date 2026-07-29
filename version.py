@@ -1,6 +1,7 @@
-VERSION = "2.2.126"
+VERSION = "2.2.127"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.127: Mengimplementasikan real-time progress streaming berbasis NDJSON dengan menonaktifkan buffering Nginx (X-Accel-Buffering: no) pada proses ETL Migrasi Redmine untuk mencegah 504 Gateway Time-out. "
     "v2.2.126: Menambahkan penanganan respon HTML pada pemanggilan Fetch JS di halaman Migrasi Redmine untuk mempermudah debugging jika terjadi 500 internal server error atau session expired. "
     "v2.2.125: Memperbaiki query penarikan email user Redmine pada modul migrasi dengan melakukan JOIN ke tabel email_addresses untuk mendukung struktur schema Redmine v3.x/v4.x. "
     "v2.2.124: Implementasi Web UI Migrasi Redmine ke Hive di Portal Settings dengan validasi koneksi database MySQL, opsi pemetaan user otomatis, serta pencatatan logs detail impor secara transaksional (read-only pada sumber). "
