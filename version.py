@@ -1,6 +1,7 @@
-VERSION = "2.2.123"
+VERSION = "2.2.124"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.124: Implementasi Web UI Migrasi Redmine ke Hive di Portal Settings dengan validasi koneksi database MySQL, opsi pemetaan user otomatis, serta pencatatan logs detail impor secara transaksional (read-only pada sumber). "
     "v2.2.123: Menambahkan inputan Skenario Test wajib (mandatory) pada Informasi Tiket SupportCore dengan opsi pilihan input text atau upload file, didukung validasi frontend & backend serta render detail skenario. "
     "v2.2.122: Menambahkan tombol navigasi Daftar Tiket dan Buat Tiket Support di dashboard utama SupportCore, serta menambahkan section Menu Operasional dan Master Apps & Modul pada layout dashboard. "
     "v2.2.121: Mengizinkan URL /booking/public untuk disematkan (embedded) pada iframe dari domain luar dengan mengecualikan X-Frame-Options global dan menambahkan header Content-Security-Policy frame-ancestors. "
