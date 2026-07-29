@@ -1,6 +1,7 @@
-VERSION = "2.2.137"
+VERSION = "2.2.138"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.138: Memperpanjang limit timeout Gunicorn dan Nginx dari 120s menjadi 600s untuk mencegah error 'Unexpected end of JSON input' saat proses restore backup S3 berukuran besar. "
     "v2.2.137: Menambahkan tombol Restore pada Daftar Backup S3 di Backup Center — mendukung restore langsung dari file backup S3 dengan download otomatis ke server sebelum restore, badge sumber (Lokal/S3) di modal konfirmasi, dan endpoint terpisah /portal/backup/restore-s3/<filename>. "
     "v2.2.136: Menambahkan fitur Restore Backup langsung dari GUI Backup Center — tombol Restore (kuning) tersedia di setiap baris file backup lokal dengan modal konfirmasi, pilihan restore Database dan/atau Konten Media, serta safety backup otomatis sebelum menimpa data yang ada. "
     "v2.2.135: Kode Customer baru pada migrasi SupportCore kini mengikuti ID project Redmine dalam format 3-digit (misal project ID 26 menjadi kode 026), serta dicocokan juga terhadap kode lama (identifier) saat pencarian customer yang sudah ada. "

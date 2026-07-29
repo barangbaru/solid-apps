@@ -10,7 +10,7 @@ bind = "unix:/run/evaluasi/evaluasi.sock"
 workers = 1
 worker_class = "sync"
 threads = 4
-timeout = 120
+timeout = 600
 keepalive = 5
 
 # ─── Logging ───────────────────────────────────────────────────────────────────
