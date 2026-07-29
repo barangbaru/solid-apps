@@ -17770,10 +17770,13 @@ def portal_migration():
             
             user_map = {}
             user_id_map = {}
+            user_name_map = {}  # maps redmine user_id -> full name string (for unmatched users)
             
             for ru in redmine_users:
                 mail = (ru['mail'] or '').lower().strip()
                 login = (ru['login'] or '').lower().strip()
+                full_name = f"{ru['firstname'] or ''} {ru['lastname'] or ''}".strip() or ru['login']
+                user_name_map[ru['id']] = full_name
                 
                 emp_id = None
                 for he in hive_employees:
@@ -17787,7 +17790,7 @@ def portal_migration():
                 else:
                     if not skip_unmapped:
                         raise ValueError(f"User Redmine '{ru['login']}' dengan email '{ru['mail']}' tidak ditemukan di Karyawan Hive. Tambahkan karyawan tersebut dahulu atau centang opsi 'Lompati PIC yang tidak terdaftar'.")
-                    yield json.dumps({'log': f"[WARNING] User Redmine '{ru['login']}' tidak terpetakan (PIC akan dikosongkan)."}) + '\n'
+                    yield json.dumps({'log': f"[WARNING] User Redmine '{ru['login']}' ('{full_name}') tidak terpetakan — akan dimasukkan sebagai Assignee Manual."}) + '\n'
                     
                 usr_id = None
                 for hu in hive_users:
@@ -17903,7 +17906,10 @@ def portal_migration():
                 issue_no = f"RM-{iss['id']}"
                 title = iss['subject']
                 desc = iss['description'] or ''
-                pic_prog = user_map.get(iss['assigned_to_id'])
+                assigned_to_id = iss['assigned_to_id']
+                pic_prog = user_map.get(assigned_to_id)  # None if not found in Hive employees
+                # If PIC not found in Hive, get their Redmine full name for Assignee Manual
+                unregistered_pic_name = user_name_map.get(assigned_to_id) if (assigned_to_id and not pic_prog) else None
                 created_at_str = iss['created_on'].strftime('%Y-%m-%d %H:%M:%S') if iss['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 
                 if target_module == 'support':
@@ -17978,6 +17984,13 @@ def portal_migration():
                         db.execute('INSERT OR IGNORE INTO sc_ticket_assignees (ticket_id, employee_id, divisi) VALUES (?, ?, ?)',
                                    (new_ticket_id, pic_prog, emp['divisi'] if emp else ''))
                         stats['members'] += 1
+                    elif unregistered_pic_name:
+                        # PIC tidak terdaftar di Hive → masukkan sebagai Assignee Manual (external)
+                        db.execute(
+                            "INSERT INTO sc_ticket_external_assignees (ticket_id, name, role_note) VALUES (?, ?, ?)",
+                            (new_ticket_id, unregistered_pic_name, 'Imported from Redmine')
+                        )
+                        yield json.dumps({'log': f"[INFO] PIC '{unregistered_pic_name}' tidak terdaftar — ditambahkan sebagai Assignee Manual tiket {issue_no}"}) + '\n'
                     
                     if uncommitted_count >= 50:
                         db.commit()
@@ -18024,18 +18037,22 @@ def portal_migration():
                         priority = 'Medium'
                         
                     redmine_url = f"https://redmine-imported/issues/{iss['id']}"
+                    # If PIC not in Hive, store name in issued_by as Assignee Manual reference
+                    issued_by_val = unregistered_pic_name or ''
                     
                     cur_iss = db.execute(
                         "INSERT INTO pc_issues (project_id, issue_no, title, description, issued_type, "
-                        "status_programmer, priority, pic_programmer_id, redmine, created_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (h_proj_id, issue_no, title, desc, issued_type, status_prog, priority, pic_prog, redmine_url, created_at_str)
+                        "status_programmer, priority, pic_programmer_id, issued_by, redmine, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (h_proj_id, issue_no, title, desc, issued_type, status_prog, priority, pic_prog, issued_by_val, redmine_url, created_at_str)
                     )
                     new_iss_id = cur_iss.lastrowid
                     issue_map[iss['id']] = new_iss_id
                     rollback_data['issues'].append(new_iss_id)
                     stats['issues'] += 1
                     uncommitted_count += 1
+                    if unregistered_pic_name:
+                        yield json.dumps({'log': f"[INFO] PIC '{unregistered_pic_name}' tidak terdaftar — dicatat sebagai Assignee Manual di issue {issue_no}"}) + '\n'
                     
                     if uncommitted_count >= 50:
                         db.commit()

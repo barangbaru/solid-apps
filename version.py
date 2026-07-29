@@ -1,6 +1,7 @@
-VERSION = "2.2.132"
+VERSION = "2.2.133"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.133: Migrasi Redmine kini melompati PIC yang tidak terdaftar di Hive tanpa memblokir proses — PIC tidak terdaftar secara otomatis disimpan sebagai Assignee Manual di SupportCore (sc_ticket_external_assignees) atau kolom Issued By di ProjectCore (pc_issues). "
     "v2.2.132: Otomatisasi pemetaan modul target SupportCore yang secara dinamis mendeteksi, mencocokkan, atau membuat baru data Customer, Kontrak, dan Tipe Layanan berdasarkan data sumber Redmine. "
     "v2.2.131: Menambahkan tombol dan mekanisme Rollback Terakhir pada halaman Migrasi Redmine untuk membatalkan seluruh rekaman hasil migrasi sesi terakhir secara aman. "
     "v2.2.130: Mendukung modul target migrasi SupportCore (Daftar Tiket & Layanan) dengan konfigurasi pilihan Customer tujuan, Kontrak tujuan, dan Tipe Layanan secara dinamis di Web UI. "
