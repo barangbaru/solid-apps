@@ -359,6 +359,9 @@
                     <button class="btn btn-outline-danger btn-xs ms-1" onclick="deleteBackup('{{ bf.filename }}', true)" title="Hapus dari S3">
                       <i class="bi bi-trash"></i>
                     </button>
+                    <button class="btn btn-outline-warning btn-xs ms-1" onclick="confirmRestore('{{ bf.filename }}', true)" title="Restore dari S3">
+                      <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -393,7 +396,10 @@
           Sebelum dilanjutkan, pastikan Anda telah membuat backup terbaru.
         </div>
         <p class="mb-2">File backup yang akan di-restore:</p>
-        <p class="fw-bold text-primary" id="restoreFilenameDisplay"></p>
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <p class="fw-bold text-primary mb-0" id="restoreFilenameDisplay"></p>
+          <span class="badge" id="restoreSrcBadge"></span>
+        </div>
         <p class="mb-3">Pilih item yang ingin di-restore:</p>
         <div class="form-check mb-2">
           <input class="form-check-input" type="checkbox" id="restoreDbCheck" value="1" checked>
@@ -529,10 +535,20 @@ function deleteBackup(filename, isS3 = false) {
 }
 
 let _restoreFilename = null;
+let _restoreIsS3 = false;
 
-function confirmRestore(filename) {
+function confirmRestore(filename, isS3 = false) {
   _restoreFilename = filename;
+  _restoreIsS3 = isS3;
   document.getElementById('restoreFilenameDisplay').textContent = filename;
+  const badge = document.getElementById('restoreSrcBadge');
+  if (isS3) {
+    badge.className = 'badge bg-primary text-white';
+    badge.textContent = '☁ S3 Storage';
+  } else {
+    badge.className = 'badge bg-secondary text-white';
+    badge.textContent = '💾 Lokal';
+  }
   document.getElementById('restoreResult').innerHTML = '';
   document.getElementById('btnDoRestore').disabled = false;
   const modal = new bootstrap.Modal(document.getElementById('restoreModal'));
@@ -547,13 +563,18 @@ function doRestore() {
   const restoreUploads = document.getElementById('restoreUploadsCheck').checked ? '1' : '0';
 
   btn.disabled = true;
-  resultDiv.innerHTML = '<div class="alert alert-info py-2"><i class="spinner-border spinner-border-sm me-1"></i> Sedang me-restore, harap tunggu...</div>';
+  const srcLabel = _restoreIsS3 ? 'S3' : 'lokal';
+  resultDiv.innerHTML = `<div class="alert alert-info py-2"><i class="spinner-border spinner-border-sm me-1"></i> Sedang me-restore dari backup ${srcLabel}, harap tunggu...</div>`;
 
   const formData = new FormData();
   formData.append('restore_db', restoreDb);
   formData.append('restore_uploads', restoreUploads);
 
-  fetch('/portal/backup/restore/' + _restoreFilename, {
+  const endpoint = _restoreIsS3
+    ? '/portal/backup/restore-s3/' + _restoreFilename
+    : '/portal/backup/restore/' + _restoreFilename;
+
+  fetch(endpoint, {
     method: 'POST',
     body: formData
   })
