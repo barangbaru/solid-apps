@@ -17660,16 +17660,21 @@ def portal_migration_test_connection():
             user=user,
             password=password,
             database=db_name,
+            cursorclass=pymysql.cursors.DictCursor,
             connect_timeout=5
         )
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, identifier FROM projects ORDER BY name ASC")
+        projects = cur.fetchall()
         conn.close()
-        return jsonify({'success': True})
+        return jsonify({
+            'success': True,
+            'projects': [{'id': p['id'], 'name': p['name'], 'identifier': p['identifier']} for p in projects]
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
 
-@app.route('/portal/migration', methods=['GET', 'POST'])
-@login_required
 def portal_migration():
     if not is_portal_admin():
         flash('Akses ditolak — Perlu hak akses Administrator', 'danger')
@@ -17687,6 +17692,8 @@ def portal_migration():
     password = request.form.get('mysql_password', '').strip()
     db_name = request.form.get('mysql_db', '').strip()
     
+    selected_project_ids = [int(x) for x in request.form.getlist('selected_project_ids') if x.isdigit()]
+    
     auto_map = request.form.get('auto_map_users') == '1'
     skip_unmapped = request.form.get('skip_unmapped_users') == '1'
     prefix_proj = request.form.get('prefix_project_name') == '1'
@@ -17696,6 +17703,10 @@ def portal_migration():
     def generate_migration():
         stats = {'projects': 0, 'members': 0, 'issues': 0, 'journals': 0}
         
+        if not selected_project_ids:
+            yield json.dumps({'status': 'error', 'message': 'Pilih minimal satu project untuk di-migrasi.'}) + '\n'
+            return
+
         try:
             import pymysql
         except ImportError:
@@ -17724,6 +17735,8 @@ def portal_migration():
         try:
             mysql_cur = mysql_conn.cursor()
             db = get_db()
+            
+            uncommitted_count = 0
             
             # 1. Map Users
             yield json.dumps({'log': '[SYSTEM] Memetakan user Redmine ke karyawan Hive...'}) + '\n'
@@ -17769,8 +17782,10 @@ def portal_migration():
                     user_id_map[ru['id']] = usr_id
 
             # 2. Get Redmine Projects
-            yield json.dumps({'log': '[SYSTEM] Mengambil data project dari Redmine...'}) + '\n'
-            mysql_cur.execute("SELECT id, name, identifier, description, status FROM projects")
+            yield json.dumps({'log': f'[SYSTEM] Mengambil data {len(selected_project_ids)} project pilihan dari Redmine...'}) + '\n'
+            
+            placeholders = ', '.join(['%s'] * len(selected_project_ids))
+            mysql_cur.execute(f"SELECT id, name, identifier, description, status FROM projects WHERE id IN ({placeholders})", selected_project_ids)
             projects = mysql_cur.fetchall()
             
             project_map = {}
@@ -17797,6 +17812,7 @@ def portal_migration():
                 new_proj_id = cur.lastrowid
                 project_map[p['id']] = new_proj_id
                 stats['projects'] += 1
+                uncommitted_count += 1
                 yield json.dumps({'log': f"[PROJECT] Diimpor: {p_name} ({p_code})", 'stats': stats}) + '\n'
                 
                 # 3. Map Project Members
@@ -17811,18 +17827,23 @@ def portal_migration():
                             db.execute("INSERT INTO pc_members (project_id, employee_id, role) VALUES (?, ?, 'developer')",
                                        (new_proj_id, h_emp_id))
                             stats['members'] += 1
+                            uncommitted_count += 1
+                            if uncommitted_count >= 50:
+                                db.commit()
+                                uncommitted_count = 0
                             yield json.dumps({'stats': stats}) + '\n'
 
-            # 4. Get Redmine Issues
-            yield json.dumps({'log': '[SYSTEM] Mengambil data issue/tiket dari Redmine...'}) + '\n'
-            mysql_cur.execute("""
+            # 4. Get Redmine Issues for selected projects
+            yield json.dumps({'log': '[SYSTEM] Mengambil data issue/tiket untuk project terpilih...'}) + '\n'
+            mysql_cur.execute(f"""
                 SELECT i.id, i.project_id, i.subject, i.description, i.assigned_to_id, i.created_on,
                        t.name as tracker_name, s.name as status_name, pr.name as priority_name
                 FROM issues i
                 LEFT JOIN trackers t ON t.id = i.tracker_id
                 LEFT JOIN issue_statuses s ON s.id = i.status_id
                 LEFT JOIN enumerations pr ON pr.id = i.priority_id AND pr.type = 'IssuePriority'
-            """)
+                WHERE i.project_id IN ({placeholders})
+            """, selected_project_ids)
             issues = mysql_cur.fetchall()
             
             issue_map = {}
@@ -17884,40 +17905,63 @@ def portal_migration():
                 new_iss_id = cur_iss.lastrowid
                 issue_map[iss['id']] = new_iss_id
                 stats['issues'] += 1
-                yield json.dumps({'log': f"[ISSUE] Diimpor: {issue_no} - {title}", 'stats': stats}) + '\n'
-
-            # 5. Get Redmine Journals (Issue Comments / History)
-            yield json.dumps({'log': '[SYSTEM] Mengambil riwayat komentar dan journal dari Redmine...'}) + '\n'
-            mysql_cur.execute("""
-                SELECT j.id, j.journalized_id as issue_id, j.user_id, j.notes, j.created_on
-                FROM journals j
-                WHERE j.journalized_type = 'Issue' AND (j.notes IS NOT NULL AND j.notes != '')
-            """)
-            journals = mysql_cur.fetchall()
-            
-            for j in journals:
-                h_iss_id = issue_map.get(j['issue_id'])
-                if not h_iss_id:
-                    continue
-                    
-                h_usr_id = user_id_map.get(j['user_id'])
-                notes = j['notes'].strip()
-                created_at_str = j['created_on'].strftime('%Y-%m-%d %H:%M:%S') if j['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                uncommitted_count += 1
                 
-                hist_exists = db.execute("SELECT id FROM pc_issue_history WHERE issue_id=? AND notes=? AND created_at=?",
-                                         (h_iss_id, notes, created_at_str)).fetchone()
-                if not hist_exists:
-                    db.execute(
-                        "INSERT INTO pc_issue_history (issue_id, action, notes, changed_by, created_at) "
-                        "VALUES (?, 'comment', ?, ?, ?)",
-                        (h_iss_id, notes, h_usr_id, created_at_str)
-                    )
-                    stats['journals'] += 1
-                    if stats['journals'] % 10 == 0:
-                        yield json.dumps({'log': f"[HISTORY] Diimpor {stats['journals']} komentar...", 'stats': stats}) + '\n'
+                if uncommitted_count >= 50:
+                    db.commit()
+                    uncommitted_count = 0
+                    yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['issues']} issue tersimpan...", 'stats': stats}) + '\n'
+                else:
+                    yield json.dumps({'log': f"[ISSUE] Diimpor: {issue_no} - {title}", 'stats': stats}) + '\n'
 
-            db.commit()
-            yield json.dumps({'status': 'success', 'log': '[SYSTEM] Transaksi berhasil. Seluruh data selesai diimpor!', 'stats': stats}) + '\n'
+            # 5. Get Redmine Journals (Issue Comments / History) for migrated issues only
+            migrated_issue_ids = list(issue_map.keys())
+            if migrated_issue_ids:
+                yield json.dumps({'log': f'[SYSTEM] Mengambil komentar/riwayat untuk {len(migrated_issue_ids)} issue yang diimpor...'}) + '\n'
+                
+                # Fetch in batches of 500 issue IDs to prevent SQL limits
+                journals = []
+                for idx in range(0, len(migrated_issue_ids), 500):
+                    batch_ids = migrated_issue_ids[idx:idx+500]
+                    batch_placeholders = ', '.join(['%s'] * len(batch_ids))
+                    q = f"""
+                        SELECT j.id, j.journalized_id as issue_id, j.user_id, j.notes, j.created_on
+                        FROM journals j
+                        WHERE j.journalized_type = 'Issue' AND (j.notes IS NOT NULL AND j.notes != '')
+                          AND j.journalized_id IN ({batch_placeholders})
+                    """
+                    mysql_cur.execute(q, batch_ids)
+                    journals.extend(mysql_cur.fetchall())
+                
+                for j in journals:
+                    h_iss_id = issue_map.get(j['issue_id'])
+                    if not h_iss_id:
+                        continue
+                        
+                    h_usr_id = user_id_map.get(j['user_id'])
+                    notes = j['notes'].strip()
+                    created_at_str = j['created_on'].strftime('%Y-%m-%d %H:%M:%S') if j['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    hist_exists = db.execute("SELECT id FROM pc_issue_history WHERE issue_id=? AND notes=? AND created_at=?",
+                                             (h_iss_id, notes, created_at_str)).fetchone()
+                    if not hist_exists:
+                        db.execute(
+                            "INSERT INTO pc_issue_history (issue_id, action, notes, changed_by, created_at) "
+                            "VALUES (?, 'comment', ?, ?, ?)",
+                            (h_iss_id, notes, h_usr_id, created_at_str)
+                        )
+                        stats['journals'] += 1
+                        uncommitted_count += 1
+                        
+                        if uncommitted_count >= 50:
+                            db.commit()
+                            uncommitted_count = 0
+                            yield json.dumps({'log': f"[SYSTEM] Batch commit: {stats['journals']} komentar tersimpan...", 'stats': stats}) + '\n'
+
+            # Final Commit
+            if uncommitted_count > 0:
+                db.commit()
+            yield json.dumps({'status': 'success', 'log': '[SYSTEM] Transaksi berhasil. Seluruh data terpilih selesai diimpor!', 'stats': stats}) + '\n'
             
         except Exception as e:
             db.rollback()

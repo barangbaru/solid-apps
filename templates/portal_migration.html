@@ -61,8 +61,22 @@
               <input type="text" name="mysql_db" id="mysql_db" class="form-control form-control-sm" required placeholder="redmine atau redmine_production">
             </div>
 
+            <!-- Pemilihan Project (Dinamis setelah tes koneksi) -->
+            <div class="col-12 border-top pt-3 mt-3" id="projectSelectionSection" style="display:none">
+              <label class="form-label fw-bold small text-muted text-uppercase mb-2">Pilih Project yang Akan Di-migrasi <span class="text-danger">*</span></label>
+              <div class="p-3 border rounded bg-light" style="max-height: 250px; overflow-y: auto;">
+                <div class="form-check mb-2 pb-2 border-bottom">
+                  <input class="form-check-input" type="checkbox" id="selectAllProjects" onchange="toggleSelectAllProjects(this)" checked>
+                  <label class="form-check-label fw-bold small" for="selectAllProjects">Pilih Semua Project</label>
+                </div>
+                <div id="projectChecklistContainer">
+                  <!-- Checkboxes generated dynamically -->
+                </div>
+              </div>
+            </div>
+
             <!-- Opsi Tambahan -->
-            <div class="col-12 border-top pt-3 mt-4">
+            <div class="col-12 border-top pt-3 mt-3">
               <label class="form-label fw-bold small text-muted text-uppercase mb-2">Opsi Migrasi</label>
               <div class="p-3 border rounded bg-light">
                 <div class="form-check mb-2">
@@ -89,9 +103,9 @@
 
           <div class="mt-4 d-flex justify-content-between align-items-center">
             <button type="button" class="btn btn-outline-primary btn-sm fw-semibold" id="btnTestConn" onclick="testConnection()">
-              <i class="bi bi-arrow-repeat me-1"></i> Tes Koneksi
+              <i class="bi bi-arrow-repeat me-1"></i> Tes Koneksi & Ambil Project
             </button>
-            <button type="button" class="btn btn-primary btn-sm fw-semibold" id="btnStartMigrate" onclick="startMigration()">
+            <button type="button" class="btn btn-primary btn-sm fw-semibold" id="btnStartMigrate" onclick="startMigration()" disabled>
               <i class="bi bi-play-fill me-1"></i> Mulai Migrasi
             </button>
           </div>
@@ -110,10 +124,9 @@
       </div>
       <div class="card-body small">
         <ol class="ps-3 mb-0 text-muted" style="line-height: 1.6;">
-          <li class="mb-2">Pastikan port database MySQL server Redmine Anda dapat diakses dari server Hive (buka firewall jika diperlukan).</li>
-          <li class="mb-2">User database MySQL minimal harus memiliki permission **SELECT** pada database Redmine.</li>
-          <li class="mb-2">Sistem akan mencocokkan user Redmine dengan karyawan Hive menggunakan email. Pastikan data email karyawan di **TalentCore** sudah terisi.</li>
-          <li class="mb-2">Nomor issue/tiket Redmine akan disimpan pada nomor issue di Hive dengan format `RM-[id]` untuk mempermudah pelacakan dokumen.</li>
+          <li class="mb-2">Masukkan kredensial dan klik **Tes Koneksi & Ambil Project** terlebih dahulu untuk memunculkan daftar project.</li>
+          <li class="mb-2">Pilih project yang ingin dimigrasikan. Disarankan migrasi per 1-2 project jika database Redmine Anda sangat besar untuk menjaga stabilitas.</li>
+          <li class="mb-2">Sistem menggunakan **Batch Commit** di sisi database Hive untuk mencegah aplikasi hang dan meminimalkan durasi lock table.</li>
         </ol>
       </div>
     </div>
@@ -161,12 +174,25 @@
 </div>
 
 <script>
+function toggleSelectAllProjects(chk) {
+  const checkboxes = document.querySelectorAll('.project-chk');
+  checkboxes.forEach(c => {
+    c.checked = chk.checked;
+  });
+}
+
 function testConnection() {
   const btn = document.getElementById('btnTestConn');
+  const btnStart = document.getElementById('btnStartMigrate');
   const resDiv = document.getElementById('testConnResult');
+  const sect = document.getElementById('projectSelectionSection');
+  const container = document.getElementById('projectChecklistContainer');
   
   btn.disabled = true;
-  resDiv.innerHTML = '<span class="text-muted"><i class="spinner-border spinner-border-sm me-1" role="status"></i> Menghubungkan ke MySQL...</span>';
+  resDiv.innerHTML = '<span class="text-muted"><i class="spinner-border spinner-border-sm me-1" role="status"></i> Menghubungkan ke MySQL & memuat data project...</span>';
+  sect.style.display = 'none';
+  container.innerHTML = '';
+  btnStart.disabled = true;
 
   const formData = new FormData(document.getElementById('migrationForm'));
   
@@ -187,6 +213,25 @@ function testConnection() {
     btn.disabled = false;
     if (data.success) {
       resDiv.innerHTML = '<div class="alert alert-success py-2 px-3 border-0 small"><i class="bi bi-check-circle-fill me-1"></i> Koneksi berhasil! Terhubung ke Redmine MySQL.</div>';
+      
+      if (data.projects && data.projects.length > 0) {
+        sect.style.display = 'block';
+        data.projects.forEach(p => {
+          const div = document.createElement('div');
+          div.className = 'form-check mb-1';
+          div.innerHTML = `
+            <input class="form-check-input project-chk" type="checkbox" name="selected_project_ids" value="${p.id}" id="chkProj_${p.id}" checked>
+            <label class="form-check-label small" for="chkProj_${p.id}">
+              <strong>${p.name}</strong> <span class="text-muted">(${p.identifier})</span>
+            </label>
+          `;
+          container.appendChild(div);
+        });
+        document.getElementById('selectAllProjects').checked = true;
+        btnStart.disabled = false; // Enable start migration button
+      } else {
+        resDiv.innerHTML += '<div class="alert alert-warning py-2 px-3 border-0 small mt-2"><i class="bi bi-exclamation-triangle-fill me-1"></i> Tidak ada project ditemukan di database Redmine.</div>';
+      }
     } else {
       resDiv.innerHTML = `<div class="alert alert-danger py-2 px-3 border-0 small"><i class="bi bi-exclamation-triangle-fill me-1"></i> Koneksi gagal: ${data.message}</div>`;
     }
@@ -198,7 +243,13 @@ function testConnection() {
 }
 
 function startMigration() {
-  if (!confirm('Apakah Anda yakin ingin memulai migrasi? Proses ini akan mengimpor data ke Hive.')) {
+  const checkboxes = document.querySelectorAll('.project-chk:checked');
+  if (checkboxes.length === 0) {
+    alert('Harap pilih minimal satu project yang akan dimigrasikan.');
+    return;
+  }
+
+  if (!confirm(`Apakah Anda yakin ingin memulai migrasi untuk ${checkboxes.length} project yang dipilih?`)) {
     return;
   }
 
@@ -215,7 +266,9 @@ function startMigration() {
   statusBadge.innerText = 'PROSES';
   logsDiv.innerHTML = '<div class="text-info">[SYSTEM] Memulai proses ETL migrasi data...</div>';
 
-  const formData = new FormData(document.getElementById('migrationForm'));  fetch('/portal/migration', {
+  const formData = new FormData(document.getElementById('migrationForm'));
+
+  fetch('/portal/migration', {
     method: 'POST',
     body: formData
   })
