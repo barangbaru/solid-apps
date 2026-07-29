@@ -17820,7 +17820,7 @@ def portal_migration():
                     if cust:
                         cust_id = cust['id']
                     else:
-                        cur_cust = db.execute("INSERT INTO sc_customers (code, name, description) VALUES (?, ?, 'Imported from Redmine')", (p_code, p_name))
+                        cur_cust = db.execute("INSERT INTO sc_customers (code, name, notes) VALUES (?, ?, 'Imported from Redmine')", (p_code, p_name))
                         cust_id = cur_cust.lastrowid
                         yield json.dumps({'log': f"[CUSTOMER] Customer baru dibuat otomatis: {p_name} ({p_code})"}) + '\n'
                         

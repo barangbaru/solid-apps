@@ -1,6 +1,7 @@
-VERSION = "2.2.133"
+VERSION = "2.2.134"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.134: Memperbaiki error kolom description tidak ditemukan pada INSERT sc_customers saat migrasi SupportCore — diganti dengan kolom yang benar yaitu notes. "
     "v2.2.133: Migrasi Redmine kini melompati PIC yang tidak terdaftar di Hive tanpa memblokir proses — PIC tidak terdaftar secara otomatis disimpan sebagai Assignee Manual di SupportCore (sc_ticket_external_assignees) atau kolom Issued By di ProjectCore (pc_issues). "
     "v2.2.132: Otomatisasi pemetaan modul target SupportCore yang secara dinamis mendeteksi, mencocokkan, atau membuat baru data Customer, Kontrak, dan Tipe Layanan berdasarkan data sumber Redmine. "
     "v2.2.131: Menambahkan tombol dan mekanisme Rollback Terakhir pada halaman Migrasi Redmine untuk membatalkan seluruh rekaman hasil migrasi sesi terakhir secara aman. "
