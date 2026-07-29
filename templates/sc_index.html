@@ -3,13 +3,25 @@
 {% block page_title %}<span class="breadcrumb-page">Dashboard</span>{% endblock %}
 
 {% block content %}
-<div class="d-flex align-items-center gap-2 mb-4">
-  <div style="width:38px;height:38px;border-radius:10px;background:#0d9488;display:flex;align-items:center;justify-content:center">
-    <i class="bi bi-headset text-white fs-5"></i>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <div class="d-flex align-items-center gap-2">
+    <div style="width:38px;height:38px;border-radius:10px;background:#0d9488;display:flex;align-items:center;justify-content:center">
+      <i class="bi bi-headset text-white fs-5"></i>
+    </div>
+    <div>
+      <h5 class="fw-bold mb-0">SupportCore</h5>
+      <div class="text-muted small">Annual Technical Support Monitoring</div>
+    </div>
   </div>
-  <div>
-    <h5 class="fw-bold mb-0">SupportCore</h5>
-    <div class="text-muted small">Annual Technical Support Monitoring</div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/support/tickets" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-ticket-detailed me-1"></i>Daftar Tiket
+    </a>
+    {% if 'sc_manage_tickets' in user_perms %}
+    <a href="/support/tickets/add" class="btn btn-primary btn-sm" style="background-color: #0d9488; border-color: #0d9488;">
+      <i class="bi bi-plus-circle me-1"></i>Buat Tiket Support
+    </a>
+    {% endif %}
   </div>
 </div>
 
@@ -77,9 +89,45 @@
 </div>
 
 <div class="row g-3">
-  <div class="col-md-6">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header py-2 fw-bold"><i class="bi bi-grid-1x2 me-1 text-primary"></i>Menu Master Data</div>
+  <div class="col-md-6 d-flex flex-column gap-3">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-gear-fill me-1 text-primary"></i>Menu Operasional</div>
+      <div class="list-group list-group-flush">
+        <a href="/support/contracts" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#e0f2fe;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-file-earmark-text" style="color:#0ea5e9"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Kontrak Support</div>
+            <div class="text-muted" style="font-size:.75rem">Kelola kontrak tahunan & reminder otomatis</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="/support/presales" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#fef3c7;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-person-plus" style="color:#f59e0b"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Presales & POC</div>
+            <div class="text-muted" style="font-size:.75rem">Request demo, POC & tracking status</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="/support/tickets" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#fee2e2;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-ticket-detailed" style="color:#ef4444"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Tiket Support</div>
+            <div class="text-muted" style="font-size:.75rem">Pencatatan & tracking tiket technical support</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold"><i class="bi bi-grid-1x2 me-1 text-success"></i>Menu Master Data</div>
       <div class="list-group list-group-flush">
         <a href="/support/customers" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
           <div style="width:36px;height:36px;border-radius:9px;background:#e6faf8;display:flex;align-items:center;justify-content:center">
@@ -88,6 +136,16 @@
           <div>
             <div class="fw-semibold small">Master Customer</div>
             <div class="text-muted" style="font-size:.75rem">Daftar customer pemegang kontrak support</div>
+          </div>
+          <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="/support/apps" class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-3">
+          <div style="width:36px;height:36px;border-radius:9px;background:#f5f3ff;display:flex;align-items:center;justify-content:center">
+            <i class="bi bi-grid-3x3-gap" style="color:#8b5cf6"></i>
+          </div>
+          <div>
+            <div class="fw-semibold small">Master Apps & Modul</div>
+            <div class="text-muted" style="font-size:.75rem">Daftar aplikasi dan modul untuk pemetaan tiket</div>
           </div>
           <i class="bi bi-chevron-right ms-auto text-muted"></i>
         </a>

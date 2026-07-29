@@ -1,6 +1,7 @@
-VERSION = "2.2.121"
-RELEASE_DATE = "2026-07-21"
+VERSION = "2.2.122"
+RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.122: Menambahkan tombol navigasi Daftar Tiket dan Buat Tiket Support di dashboard utama SupportCore, serta menambahkan section Menu Operasional dan Master Apps & Modul pada layout dashboard. "
     "v2.2.121: Mengizinkan URL /booking/public untuk disematkan (embedded) pada iframe dari domain luar dengan mengecualikan X-Frame-Options global dan menambahkan header Content-Security-Policy frame-ancestors. "
     "v2.2.120: Memperbaiki bug error query merge karyawan dengan menghapus update ke tabel audit_notifications karena kolom user_id tidak ada di skema tabel tersebut. "
     "v2.2.119: Implementasi fitur merge karyawan dari Telegram Core ke Karyawan Tetap/Kontrak beserta relasi tugas (task) dan riwayat presensi (attendance) secara transaksional. "
