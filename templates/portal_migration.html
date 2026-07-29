@@ -70,40 +70,6 @@
               </select>
             </div>
 
-            <!-- Config SupportCore (Hanya tampil jika target_module == support) -->
-            <div class="col-12 border-top pt-3 mt-3" id="supportCoreConfig" style="display:none">
-              <label class="form-label fw-bold small text-muted text-uppercase mb-2">Konfigurasi Target SupportCore</label>
-              <div class="row g-2">
-                <div class="col-md-6">
-                  <label class="form-label fw-semibold small">Customer Tujuan <span class="text-danger">*</span></label>
-                  <select name="sc_customer_id" id="sc_customer_id" class="form-select form-select-sm">
-                    <option value="">- Pilih Customer -</option>
-                    {% for c in customers %}
-                    <option value="{{ c.id }}">{{ c.name }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label fw-semibold small">Tipe Layanan <span class="text-danger">*</span></label>
-                  <select name="sc_support_type_id" id="sc_support_type_id" class="form-select form-select-sm">
-                    <option value="">- Pilih Tipe -</option>
-                    {% for st in support_types %}
-                    <option value="{{ st.id }}">{{ st.name }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div class="col-12 mt-2">
-                  <label class="form-label fw-semibold small">Kontrak Tujuan <span class="text-muted">(Opsional)</span></label>
-                  <select name="sc_contract_id" id="sc_contract_id" class="form-select form-select-sm">
-                    <option value="">- Tanpa Kontrak -</option>
-                    {% for co in contracts %}
-                    <option value="{{ co.id }}">{{ co.title }} [{{ co.code }}]</option>
-                    {% endfor %}
-                  </select>
-                </div>
-              </div>
-            </div>
-
             <!-- Pemilihan Project (Dinamis setelah tes koneksi) -->
             <div class="col-12 border-top pt-3 mt-3" id="projectSelectionSection" style="display:none">
               <label class="form-label fw-bold small text-muted text-uppercase mb-2">Pilih Project yang Akan Di-migrasi <span class="text-danger">*</span></label>
@@ -174,7 +140,7 @@
         <ol class="ps-3 mb-0 text-muted" style="line-height: 1.6;">
           <li class="mb-2">Masukkan kredensial dan klik **Tes Koneksi & Ambil Project** terlebih dahulu untuk memunculkan daftar project.</li>
           <li class="mb-2">Pilih target modul migrasi (ProjectCore atau SupportCore).</li>
-          <li class="mb-2">Jika memilih **SupportCore**, harap tentukan Customer tujuan, Tipe Layanan, dan Kontrak tujuan. Seluruh tiket Redmine akan didaftarkan sebagai Tiket Layanan di bawah customer tersebut.</li>
+          <li class="mb-2">Jika memilih **SupportCore**, sistem akan memetakan project dan issue tracker Redmine secara otomatis ke **Customer**, **Kontrak**, dan **Tipe Layanan** Hive tanpa perlu konfigurasi pilihan manual.</li>
           <li class="mb-2">Sistem menggunakan **Batch Commit** di sisi database Hive untuk mencegah aplikasi hang dan meminimalkan durasi lock table.</li>
         </ol>
       </div>
@@ -224,10 +190,7 @@
 
 <script>
 function toggleTargetModule(sel) {
-  const scConfig = document.getElementById('supportCoreConfig');
   const prefixDiv = document.getElementById('prefixCheckDiv');
-  const cust = document.getElementById('sc_customer_id');
-  const type = document.getElementById('sc_support_type_id');
   
   const lblProj = document.getElementById('statLabelProjects');
   const lblMemb = document.getElementById('statLabelMembers');
@@ -235,9 +198,6 @@ function toggleTargetModule(sel) {
   const lblJourn = document.getElementById('statLabelJournals');
   
   if (sel.value === 'support') {
-    scConfig.style.display = 'block';
-    cust.required = true;
-    type.required = true;
     prefixDiv.style.display = 'none'; // No projects inserted
     
     lblProj.innerText = 'Processed';
@@ -245,9 +205,6 @@ function toggleTargetModule(sel) {
     lblIss.innerText = 'Tickets';
     lblJourn.innerText = 'Histories';
   } else {
-    scConfig.style.display = 'none';
-    cust.required = false;
-    type.required = false;
     prefixDiv.style.display = 'block';
     
     lblProj.innerText = 'Projects';
@@ -330,17 +287,6 @@ function startMigration() {
   if (checkboxes.length === 0) {
     alert('Harap pilih minimal satu project yang akan dimigrasikan.');
     return;
-  }
-
-  // SupportCore validation
-  const targetModule = document.getElementById('target_module').value;
-  if (targetModule === 'support') {
-    const cust = document.getElementById('sc_customer_id').value;
-    const type = document.getElementById('sc_support_type_id').value;
-    if (!cust || !type) {
-      alert('Harap isi Customer Tujuan dan Tipe Layanan untuk migrasi ke SupportCore.');
-      return;
-    }
   }
 
   if (!confirm(`Apakah Anda yakin ingin memulai migrasi untuk ${checkboxes.length} project yang dipilih?`)) {

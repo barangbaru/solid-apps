@@ -1,6 +1,7 @@
-VERSION = "2.2.131"
+VERSION = "2.2.132"
 RELEASE_DATE = "2026-07-29"
 RELEASE_NOTES = (
+    "v2.2.132: Otomatisasi pemetaan modul target SupportCore yang secara dinamis mendeteksi, mencocokkan, atau membuat baru data Customer, Kontrak, dan Tipe Layanan berdasarkan data sumber Redmine. "
     "v2.2.131: Menambahkan tombol dan mekanisme Rollback Terakhir pada halaman Migrasi Redmine untuk membatalkan seluruh rekaman hasil migrasi sesi terakhir secara aman. "
     "v2.2.130: Mendukung modul target migrasi SupportCore (Daftar Tiket & Layanan) dengan konfigurasi pilihan Customer tujuan, Kontrak tujuan, dan Tipe Layanan secara dinamis di Web UI. "
     "v2.2.129: Memulihkan decorator rute @app.route('/portal/migration') yang terhapus saat modifikasi pengoptimalan batch sebelumnya. "

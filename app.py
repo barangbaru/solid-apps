@@ -17687,14 +17687,7 @@ def portal_migration():
     rollback_available = os.path.exists(rollback_file)
     
     if request.method == 'GET':
-        customers = db.execute("SELECT id, name FROM sc_customers ORDER BY name ASC").fetchall()
-        contracts = db.execute("SELECT id, title, code FROM sc_contracts ORDER BY title ASC").fetchall()
-        support_types = db.execute("SELECT id, name FROM sc_support_types ORDER BY name ASC").fetchall()
-        return render_template('portal_migration.html', 
-                               customers=customers, 
-                               contracts=contracts, 
-                               support_types=support_types,
-                               rollback_available=rollback_available)
+        return render_template('portal_migration.html', rollback_available=rollback_available)
 
     # POST - Start Migration
     from flask import stream_with_context
@@ -17706,9 +17699,6 @@ def portal_migration():
     db_name = request.form.get('mysql_db', '').strip()
     
     target_module = request.form.get('target_module', 'project').strip()
-    sc_customer_id = request.form.get('sc_customer_id', '').strip()
-    sc_support_type_id = request.form.get('sc_support_type_id', '').strip()
-    sc_contract_id = request.form.get('sc_contract_id', '').strip()
     
     selected_project_ids = [int(x) for x in request.form.getlist('selected_project_ids') if x.isdigit()]
     
@@ -17732,14 +17722,6 @@ def portal_migration():
         
         if not selected_project_ids:
             yield json.dumps({'status': 'error', 'message': 'Pilih minimal satu project untuk di-migrasi.'}) + '\n'
-            return
-
-        cust_id = int(sc_customer_id) if sc_customer_id.isdigit() else None
-        st_id = int(sc_support_type_id) if sc_support_type_id.isdigit() else None
-        ct_id = int(sc_contract_id) if sc_contract_id.isdigit() else None
-        
-        if target_module == 'support' and (cust_id is None or st_id is None):
-            yield json.dumps({'status': 'error', 'message': 'Pilih Customer Tujuan dan Tipe Layanan untuk migrasi ke SupportCore.'}) + '\n'
             return
 
         try:
@@ -17823,19 +17805,40 @@ def portal_migration():
             mysql_cur.execute(f"SELECT id, name, identifier, description, status FROM projects WHERE id IN ({placeholders})", selected_project_ids)
             projects = mysql_cur.fetchall()
             
-            project_map = {}
+            project_map = {} # maps redmine project_id to hive destination customer_id/contract_id or project_id
             
             for p in projects:
                 p_code = p['identifier'].strip()
                 p_name = p['name'].strip()
                 
                 if target_module == 'support':
-                    # SupportCore just logs projects processing
-                    yield json.dumps({'log': f"[PROJECT] Memproses project Redmine: {p_name} ({p_code})"}) + '\n'
+                    # SupportCore: Automatically lookup or create Customer and Contract
+                    cust = db.execute("SELECT id FROM sc_customers WHERE name = ? OR code = ?", (p_name, p_code)).fetchone()
+                    if cust:
+                        cust_id = cust['id']
+                    else:
+                        cur_cust = db.execute("INSERT INTO sc_customers (code, name, description) VALUES (?, ?, 'Imported from Redmine')", (p_code, p_name))
+                        cust_id = cur_cust.lastrowid
+                        yield json.dumps({'log': f"[CUSTOMER] Customer baru dibuat otomatis: {p_name} ({p_code})"}) + '\n'
+                        
+                    contract = db.execute("SELECT id FROM sc_contracts WHERE customer_id = ? AND (title = ? OR code = ?)", (cust_id, p_name, p_code)).fetchone()
+                    if contract:
+                        ct_id = contract['id']
+                    else:
+                        start_date = datetime.now().strftime('%Y-%m-%d')
+                        end_date = '2030-12-31'
+                        cur_contr = db.execute(
+                            "INSERT INTO sc_contracts (code, customer_id, title, start_date, end_date, description) VALUES (?, ?, ?, ?, ?, 'Imported from Redmine')",
+                            (p_code, cust_id, p_name, start_date, end_date)
+                        )
+                        ct_id = cur_contr.lastrowid
+                        yield json.dumps({'log': f"[CONTRACT] Kontrak baru dibuat otomatis untuk Customer {p_name}"}) + '\n'
+                    
+                    project_map[p['id']] = {'cust_id': cust_id, 'ct_id': ct_id}
+                    yield json.dumps({'log': f"[PROJECT] Terpetakan ke Customer & Kontrak: {p_name} ({p_code})"}) + '\n'
                     stats['projects'] += 1
-                    project_map[p['id']] = p['id'] # keep original id for issue mapping filter
                 else:
-                    # ProjectCore inserts new projects
+                    # ProjectCore: Inserts new project
                     p_name_core = f"[Redmine] {p_name}" if prefix_proj else p_name
                     p_desc = p['description'] or ''
                     p_status = 'active' if p['status'] == 1 else 'inactive'
@@ -17893,8 +17896,8 @@ def portal_migration():
             issue_map = {}
             
             for iss in issues:
-                h_proj_id = project_map.get(iss['project_id'])
-                if not h_proj_id:
+                h_proj_data = project_map.get(iss['project_id'])
+                if not h_proj_data:
                     continue
                     
                 issue_no = f"RM-{iss['id']}"
@@ -17911,6 +17914,23 @@ def portal_migration():
                         yield json.dumps({'log': f"[TICKET] Lewati (sudah ada): {issue_no} - {title}"}) + '\n'
                         continue
                         
+                    cust_id = h_proj_data['cust_id']
+                    ct_id = h_proj_data['ct_id']
+                    
+                    # Resolve or create Support Type from tracker name
+                    tracker_name = iss['tracker_name'] or 'Task'
+                    st = db.execute("SELECT id FROM sc_support_types WHERE name = ?", (tracker_name,)).fetchone()
+                    if st:
+                        st_id = st['id']
+                    else:
+                        st_code = tracker_name.lower().replace(' ', '_')
+                        cur_st = db.execute("INSERT INTO sc_support_types (code, name) VALUES (?, ?)", (st_code, tracker_name))
+                        st_id = cur_st.lastrowid
+                        yield json.dumps({'log': f"[SUPPORT TYPE] Tipe baru dibuat otomatis: {tracker_name}"}) + '\n'
+                        
+                    # Ensure support type is associated with contract
+                    db.execute("INSERT OR IGNORE INTO sc_contract_support_types (contract_id, support_type_id) VALUES (?, ?)", (ct_id, st_id))
+                    
                     # Status mapping
                     status_name = iss['status_name'] or 'New'
                     s_lower = status_name.lower()
@@ -17974,6 +17994,7 @@ def portal_migration():
                         yield json.dumps({'log': f"[ISSUE] Lewati (sudah ada): {issue_no} - {title}"}) + '\n'
                         continue
                         
+                    h_proj_id = h_proj_data
                     tracker = iss['tracker_name'] or 'Task'
                     if 'bug' in tracker.lower():
                         issued_type = 'Bugs'
@@ -18144,7 +18165,7 @@ def portal_migration_rollback():
         if target_module == 'support':
             if tickets_list:
                 placeholders = ', '.join(['?'] * len(tickets_list))
-                # Delete from sc_ticket_history (cascades automatically, but we do it manually to be safe)
+                # Delete from sc_ticket_history
                 db.execute(f"DELETE FROM sc_ticket_history WHERE ticket_id IN ({placeholders})", tickets_list)
                 # Delete from sc_ticket_assignees
                 db.execute(f"DELETE FROM sc_ticket_assignees WHERE ticket_id IN ({placeholders})", tickets_list)
