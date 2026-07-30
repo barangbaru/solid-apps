@@ -1,6 +1,7 @@
-VERSION = "2.2.138"
-RELEASE_DATE = "2026-07-29"
+VERSION = "2.2.139"
+RELEASE_DATE = "2026-07-30"
 RELEASE_NOTES = (
+    "v2.2.139: Memperbarui fitur Migrasi Redmine untuk secara otomatis mengambil daftar file lampiran (attachments) dari database, memetakan inline image pada deskripsi dan komentar tiket, serta memasukkan riwayat attachment ke Screenshot/Lampiran tiket SupportCore yang diarahkan ke /static/uploads/redmine_files. "\
     "v2.2.138: Memperpanjang limit timeout Gunicorn dan Nginx dari 120s menjadi 600s untuk mencegah error 'Unexpected end of JSON input' saat proses restore backup S3 berukuran besar. "
     "v2.2.137: Menambahkan tombol Restore pada Daftar Backup S3 di Backup Center — mendukung restore langsung dari file backup S3 dengan download otomatis ke server sebelum restore, badge sumber (Lokal/S3) di modal konfirmasi, dan endpoint terpisah /portal/backup/restore-s3/<filename>. "
     "v2.2.136: Menambahkan fitur Restore Backup langsung dari GUI Backup Center — tombol Restore (kuning) tersedia di setiap baris file backup lokal dengan modal konfirmasi, pilihan restore Database dan/atau Konten Media, serta safety backup otomatis sebelum menimpa data yang ada. "

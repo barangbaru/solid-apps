@@ -18167,6 +18167,37 @@ def portal_migration():
             ''', selected_project_ids)
             issues = mysql_cur.fetchall()
             
+            # Fetch attachments for all issues
+            issue_ids = [iss['id'] for iss in issues]
+            attachments_by_issue = {}
+            if issue_ids:
+                yield json.dumps({'log': '[SYSTEM] Mengambil data lampiran (attachments) untuk issue terpilih...'}) + '\n'
+                for idx in range(0, len(issue_ids), 500):
+                    batch_ids = issue_ids[idx:idx+500]
+                    batch_placeholders = ', '.join(['%s'] * len(batch_ids))
+                    mysql_cur.execute(f'''
+                        SELECT id, container_id, filename, disk_filename, created_on, author_id
+                        FROM attachments
+                        WHERE container_type = 'Issue' AND container_id IN ({batch_placeholders})
+                    ''', batch_ids)
+                    for att in mysql_cur.fetchall():
+                        cid = att['container_id']
+                        if cid not in attachments_by_issue:
+                            attachments_by_issue[cid] = []
+                        attachments_by_issue[cid].append(att)
+
+            def map_images(text, iss_id):
+                if not text or iss_id not in attachments_by_issue:
+                    return text
+                import re
+                for att in attachments_by_issue[iss_id]:
+                    fname = att['filename']
+                    disk_fname = att['disk_filename']
+                    url = f"/static/uploads/redmine_files/{disk_fname}"
+                    # Convert Redmine textile format !filename! to markdown ![filename](url)
+                    text = re.sub(r'!(?:\{[^}]+\})?' + re.escape(fname) + r'!', f"![{fname}]({url})", text)
+                return text
+
             issue_map = {}
             
             for iss in issues:
@@ -18176,7 +18207,7 @@ def portal_migration():
                     
                 issue_no = f"RM-{iss['id']}"
                 title = iss['subject']
-                desc = iss['description'] or ''
+                desc = map_images(iss['description'] or '', iss['id'])
                 assigned_to_id = iss['assigned_to_id']
                 pic_prog = user_map.get(assigned_to_id)  # None if not found in Hive employees
                 # If PIC not found in Hive, get their Redmine full name for Assignee Manual
@@ -18244,6 +18275,18 @@ def portal_migration():
                         (issue_no, cust_id, ct_id, st_id, title, desc, status_sc, priority_sc, pic_prog, created_at_str, created_at_str)
                     )
                     new_ticket_id = cur_t.lastrowid
+                    
+                    if iss['id'] in attachments_by_issue:
+                        for att in attachments_by_issue[iss['id']]:
+                            att_url = f"/static/uploads/redmine_files/{att['disk_filename']}"
+                            att_created = att['created_on'].strftime('%Y-%m-%d %H:%M:%S') if att['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            h_usr_id = user_id_map.get(att['author_id'])
+                            changed_by_name_att = db.execute("SELECT full_name FROM users WHERE id=?", (h_usr_id,)).fetchone() if h_usr_id else None
+                            att_username = changed_by_name_att['full_name'] if changed_by_name_att else 'Redmine User'
+                            db.execute('''INSERT INTO sc_ticket_attachments(ticket_id,section,filename,original_name,uploaded_by,uploaded_by_name,created_at)
+                                          VALUES(?,?,?,?,?,?,?)''',
+                                       (new_ticket_id, 'description', att_url, att['filename'], h_usr_id, att_username, att_created))
+
                     issue_map[iss['id']] = new_ticket_id
                     rollback_data['tickets'].append(new_ticket_id)
                     stats['issues'] += 1
@@ -18356,7 +18399,7 @@ def portal_migration():
                         continue
                         
                     h_usr_id = user_id_map.get(j['user_id'])
-                    notes = j['notes'].strip()
+                    notes = map_images(j['notes'].strip(), j['issue_id'])
                     created_at_str = j['created_on'].strftime('%Y-%m-%d %H:%M:%S') if j['created_on'] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     
                     if target_module == 'support':
