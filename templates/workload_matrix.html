@@ -1,0 +1,162 @@
+<!-- WORKLOAD MATRIX -->
+<div class="row g-3 mt-2">
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-bold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-person-lines-fill me-1 text-primary"></i> Workload Matrix (Support & Project Core)</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadWorkloadMatrix()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+          <table class="table table-hover align-middle mb-0" id="workload-table" style="font-size: 0.9rem;">
+            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th>Karyawan</th>
+                <th class="text-center">Support Tickets</th>
+                <th class="text-center">Project Tasks</th>
+                <th class="text-center">Total Beban</th>
+                <th class="text-center">Kapasitas</th>
+                <th class="text-end" style="padding-right: 1.5rem;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Memuat data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Unified Task Viewer -->
+<div class="modal fade" id="workloadModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-light border-0">
+        <h5 class="modal-title fw-bold">Detail Beban Kerja: <span id="wl-emp-name" class="text-primary"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <ul class="nav nav-tabs nav-justified" id="workloadTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active fw-semibold" id="tab-support" data-bs-toggle="tab" data-bs-target="#pane-support" type="button" role="tab">Support Tickets (<span id="badge-sc">0</span>)</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link fw-semibold" id="tab-project" data-bs-toggle="tab" data-bs-target="#pane-project" type="button" role="tab">Project Tasks (<span id="badge-pc">0</span>)</button>
+          </li>
+        </ul>
+        <div class="tab-content" id="workloadTabsContent">
+          <div class="tab-pane fade show active p-3" id="pane-support" role="tabpanel">
+            <div class="list-group list-group-flush" id="list-sc-tickets"></div>
+          </div>
+          <div class="tab-pane fade p-3" id="pane-project" role="tabpanel">
+            <div class="list-group list-group-flush" id="list-pc-tasks"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let workloadData = [];
+function loadWorkloadMatrix() {
+    const tbody = document.querySelector('#workload-table tbody');
+    if(tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm me-2"></div>Memuat data...</td></tr>';
+    
+    fetch('/api/workload-matrix')
+        .then(r => r.json())
+        .then(res => {
+            if(res.status === 'success' && tbody) {
+                workloadData = res.data;
+                tbody.innerHTML = '';
+                if(workloadData.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Tidak ada data workload.</td></tr>';
+                    return;
+                }
+                
+                workloadData.forEach((emp, index) => {
+                    let scCount = emp.sc_tickets.length;
+                    let pcCount = emp.pc_tasks.length;
+                    let total = emp.total_load;
+                    
+                    let capacityBadge = '';
+                    if (total === 0) capacityBadge = '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2 py-1">Tersedia (Aman)</span>';
+                    else if (total <= 3) capacityBadge = '<span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1">Normal</span>';
+                    else if (total <= 6) capacityBadge = '<span class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-2 py-1">Penuh (Warning)</span>';
+                    else capacityBadge = '<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-2 py-1">Overload</span>';
+                    
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>
+                                <div class="fw-semibold text-dark">${emp.emp_name}</div>
+                                <div class="text-muted" style="font-size: 0.75rem;">${emp.jabatan || '-'}</div>
+                            </td>
+                            <td class="text-center"><span class="badge bg-light text-dark border">${scCount}</span></td>
+                            <td class="text-center"><span class="badge bg-light text-dark border">${pcCount}</span></td>
+                            <td class="text-center"><span class="fw-bold fs-5 ${total > 6 ? 'text-danger' : 'text-primary'}">${total}</span></td>
+                            <td class="text-center">${capacityBadge}</td>
+                            <td class="text-end" style="padding-right: 1.5rem;">
+                                <button class="btn btn-sm btn-light border text-primary" onclick="showWorkloadDetail(${index})">
+                                    <i class="bi bi-eye"></i> Detail
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+        }).catch(err => {
+            if(tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Gagal memuat data.</td></tr>';
+        });
+}
+
+function showWorkloadDetail(index) {
+    const emp = workloadData[index];
+    document.getElementById('wl-emp-name').textContent = emp.emp_name;
+    document.getElementById('badge-sc').textContent = emp.sc_tickets.length;
+    document.getElementById('badge-pc').textContent = emp.pc_tasks.length;
+    
+    const scList = document.getElementById('list-sc-tickets');
+    scList.innerHTML = '';
+    if(emp.sc_tickets.length === 0) {
+        scList.innerHTML = '<div class="text-center text-muted py-3">Tidak ada tiket SupportCore aktif</div>';
+    } else {
+        emp.sc_tickets.forEach(t => {
+            scList.innerHTML += `
+                <a href="${t.url}" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-semibold">${t.id}</div>
+                        <div class="small text-muted">${t.title}</div>
+                    </div>
+                    <span class="badge bg-secondary">${t.status}</span>
+                </a>
+            `;
+        });
+    }
+    
+    const pcList = document.getElementById('list-pc-tasks');
+    pcList.innerHTML = '';
+    if(emp.pc_tasks.length === 0) {
+        pcList.innerHTML = '<div class="text-center text-muted py-3">Tidak ada task ProjectCore aktif</div>';
+    } else {
+        emp.pc_tasks.forEach(t => {
+            pcList.innerHTML += `
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-semibold"><span class="badge bg-info me-1">${t.type}</span> ${t.id}</div>
+                        <div class="small text-muted">${t.title}</div>
+                    </div>
+                    <span class="badge bg-secondary">${t.status}</span>
+                </div>
+            `;
+        });
+    }
+    
+    new bootstrap.Modal(document.getElementById('workloadModal')).show();
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    loadWorkloadMatrix();
+});
+</script>

@@ -6889,6 +6889,87 @@ def sc_require(perm):
         return False
     return True
 
+# ── API WORKLOAD MATRIX (SUPPORT & PROJECT) ───────────────────────────────────
+@app.route('/api/workload-matrix')
+@login_required
+def api_workload_matrix():
+    db = get_db()
+    
+    # 1. Ambil data seluruh karyawan aktif
+    employees = db.execute("SELECT id, name, jabatan FROM employees WHERE is_active=1 ORDER BY name ASC").fetchall()
+    
+    # 2. Ambil data Support Tickets (Active)
+    sc_rows = db.execute('''
+        SELECT t.id, t.ticket_no, t.subject, t.status, t.assigned_to, a.employee_id
+        FROM sc_tickets t
+        LEFT JOIN sc_ticket_assignees a ON a.ticket_id = t.id
+        WHERE t.status NOT IN ('Closed', 'Resolved', 'closed', 'resolved', 'batal')
+    ''').fetchall()
+    
+    # 3. Ambil data Project Tasks (Active)
+    pt_rows = db.execute('''
+        SELECT t.id, t.title, t.status, a.employee_id
+        FROM pc_tasks t
+        JOIN pc_task_assignees a ON a.task_id = t.id
+        WHERE t.status NOT IN ('done', 'Done', 'archived')
+    ''').fetchall()
+    
+    # 4. Ambil data Project Issues (Active)
+    pi_rows = db.execute('''
+        SELECT i.issue_no, i.title, i.status_programmer as status, i.pic_programmer_id, i.pic_tester_id
+        FROM pc_issues i
+        WHERE i.status_programmer NOT IN ('Done', 'Hold', 'archived')
+    ''').fetchall()
+    
+    # Mapping
+    emp_map = {}
+    for e in employees:
+        emp_map[e['id']] = {
+            'emp_id': e['id'],
+            'emp_name': e['name'],
+            'jabatan': e['jabatan'],
+            'sc_tickets': [],
+            'pc_tasks': [],
+            'total_load': 0
+        }
+        
+    # Map Support Tickets
+    for r in sc_rows:
+        ticket = {'id': r['ticket_no'], 'title': r['subject'], 'status': r['status'], 'type': 'Support Ticket', 'url': f"/support/tickets/edit/{r['id']}"}
+        assignees = set()
+        if r['assigned_to']: assignees.add(r['assigned_to'])
+        if r['employee_id']: assignees.add(r['employee_id'])
+        for eid in assignees:
+            if eid in emp_map:
+                if not any(t['id'] == ticket['id'] for t in emp_map[eid]['sc_tickets']):
+                    emp_map[eid]['sc_tickets'].append(ticket)
+                    emp_map[eid]['total_load'] += 1
+                    
+    # Map Project Tasks
+    for r in pt_rows:
+        task = {'id': f"T-{r['id']}", 'title': r['title'], 'status': r['status'], 'type': 'Project Task', 'url': '#'}
+        eid = r['employee_id']
+        if eid in emp_map:
+            emp_map[eid]['pc_tasks'].append(task)
+            emp_map[eid]['total_load'] += 1
+            
+    # Map Project Issues
+    for r in pi_rows:
+        issue = {'id': r['issue_no'], 'title': r['title'], 'status': r['status'], 'type': 'Project Issue', 'url': '#'}
+        assignees = set()
+        if r['pic_programmer_id']: assignees.add(r['pic_programmer_id'])
+        if r['pic_tester_id']: assignees.add(r['pic_tester_id'])
+        for eid in assignees:
+            if eid in emp_map:
+                emp_map[eid]['pc_tasks'].append(issue)
+                emp_map[eid]['total_load'] += 1
+                
+    # Filter dan sortir (Tampilkan yang punya beban atau level technical)
+    matrix = [v for v in emp_map.values() if v['total_load'] > 0 or (v['jabatan'] and any(x in v['jabatan'].lower() for x in ['programmer', 'developer', 'support', 'technical', 'engineer']))]
+    matrix.sort(key=lambda x: x['total_load'], reverse=True)
+    
+    return jsonify({'status': 'success', 'data': matrix})
+
 @app.route('/support/')
 @login_required
 def sc_index():
