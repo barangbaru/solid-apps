@@ -3007,7 +3007,7 @@ def auto_set_active_app():
     elif path.startswith('/aset'):
         session['active_app'] = 'aset'
     elif path.startswith('/project'):
-        session['active_app'] = 'support'  # Diarahkan ke Support & Project Core
+        session['active_app'] = 'project'
     elif any(path.startswith(p) for p in _EVALUASI_PREFIXES):
         session['active_app'] = 'evaluasi'
     elif path == '/':

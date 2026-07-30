@@ -120,7 +120,7 @@ function showWorkloadDetail(index) {
     const scList = document.getElementById('list-sc-tickets');
     scList.innerHTML = '';
     if(emp.sc_tickets.length === 0) {
-        scList.innerHTML = '<div class="text-center text-muted py-3">Tidak ada tiket Support & Project Core aktif</div>';
+        scList.innerHTML = '<div class="text-center text-muted py-3">Tidak ada tiket SupportCore aktif</div>';
     } else {
         emp.sc_tickets.forEach(t => {
             scList.innerHTML += `
@@ -138,7 +138,7 @@ function showWorkloadDetail(index) {
     const pcList = document.getElementById('list-pc-tasks');
     pcList.innerHTML = '';
     if(emp.pc_tasks.length === 0) {
-        pcList.innerHTML = '<div class="text-center text-muted py-3">Tidak ada task Support & Project Core aktif</div>';
+        pcList.innerHTML = '<div class="text-center text-muted py-3">Tidak ada task ProjectCore aktif</div>';
     } else {
         emp.pc_tasks.forEach(t => {
             pcList.innerHTML += `
