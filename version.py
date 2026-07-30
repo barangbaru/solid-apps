@@ -1,6 +1,7 @@
-VERSION = "2.2.144"
+VERSION = "2.2.145"
 RELEASE_DATE = "2026-07-30"
 RELEASE_NOTES = (
+    "v2.2.145: Menyembunyikan nama aplikasi dan mengganti tampilan di dashboard portal untuk aplikasi yang berstatus Coming Soon (Project Core). Menambahkan script fix_menus_hierarchy.py untuk merapikan duplikasi menu yang mungkin terjadi karena gagal migrasi sebelumnya. "\
     "v2.2.144: Memperbaiki error UniqueViolation saat menyalin role_menus pada script migrasi migrate_merge_project.py dengan menambahkan klausa OR IGNORE (ON CONFLICT DO NOTHING). "\
     "v2.2.143: Memperbaiki error psycopg2.errors.UndefinedColumn pada script migrasi migrate_merge_project.py saat membaca struktur tabel role_menus. "\
     "v2.2.142: Menggabungkan modul Project Core ke dalam Support Core, mengubah nama aplikasi menjadi Support & Project Core, memindahkan semua routing dan data menu, serta menonaktifkan aplikasi Project Core di portal (diubah menjadi 'Coming Soon'). "\
