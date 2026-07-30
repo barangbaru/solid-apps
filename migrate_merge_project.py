@@ -49,7 +49,7 @@ with app.app_context():
         # Check if they already have support access
         has_support = db.execute("SELECT id FROM user_app_access WHERE user_id = ? AND app_slug = 'support'", (user_id,)).fetchone()
         if not has_support:
-            db.execute("INSERT INTO user_app_access(user_id, app_slug, app_role, is_active) VALUES(?, 'support', ?, 1)", (user_id, app_role))
+            db.execute("INSERT OR IGNORE INTO user_app_access(user_id, app_slug, app_role, is_active) VALUES(?, 'support', ?, 1)", (user_id, app_role))
             
     # Wait, the menus are already updated to app_slug = 'support', so role_menus just points to menu_id.
     # What about roles defined with app_slug='project'?
@@ -64,7 +64,7 @@ with app.app_context():
     """, (project_parent_id,)).fetchall()
     for r in roles_with_project_menus:
         role_name = r['role_name']
-        db.execute("INSERT INTO role_menus(role_name, menu_id) VALUES(?, ?)", (role_name, project_parent_id))
+        db.execute("INSERT OR IGNORE INTO role_menus(role_name, menu_id) VALUES(?, ?)", (role_name, project_parent_id))
     
     db.commit()
     print("Migrasi sukses: ProjectCore berhasil digabung ke SupportCore!")
