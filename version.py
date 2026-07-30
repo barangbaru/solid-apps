@@ -1,6 +1,7 @@
-VERSION = "2.2.142"
+VERSION = "2.2.143"
 RELEASE_DATE = "2026-07-30"
 RELEASE_NOTES = (
+    "v2.2.143: Memperbaiki error psycopg2.errors.UndefinedColumn pada script migrasi migrate_merge_project.py saat membaca struktur tabel role_menus. "\
     "v2.2.142: Menggabungkan modul Project Core ke dalam Support Core, mengubah nama aplikasi menjadi Support & Project Core, memindahkan semua routing dan data menu, serta menonaktifkan aplikasi Project Core di portal (diubah menjadi 'Coming Soon'). "\
     "v2.2.141: Memperbarui deploy-ubuntu.sh agar mengecualikan direktori static/uploads/ pada saat sinkronisasi (rsync) kode terbaru, mencegah file-file lampiran user dan redmine_files ikut terhapus saat deployment. "\
     "v2.2.140: Menggabungkan (Soft Merge) visualisasi Workload Matrix (Matriks Ketersediaan & Beban Kerja) antara Support Core dan Project Core melalui endpoint API terpadu dan komponen shared UI, serta menampilkannya di Dashboard SupportCore dan ProjectCore. "\

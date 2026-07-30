@@ -51,13 +51,6 @@ with app.app_context():
         if not has_support:
             db.execute("INSERT INTO user_app_access(user_id, app_slug, app_role, is_active) VALUES(?, 'support', ?, 1)", (user_id, app_role))
             
-    # Move all role_menus from project to support (for custom roles)
-    project_role_menus = db.execute("""
-        SELECT rm.id, rm.role_name, rm.menu_id 
-        FROM role_menus rm
-        JOIN app_menus am ON rm.menu_id = am.id
-        WHERE am.app_slug = 'support' AND am.parent_id = ? 
-    """, (project_parent_id,)).fetchall()
     # Wait, the menus are already updated to app_slug = 'support', so role_menus just points to menu_id.
     # What about roles defined with app_slug='project'?
     db.execute("UPDATE roles SET app_slug = 'support' WHERE app_slug = 'project'")
