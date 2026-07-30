@@ -1,6 +1,7 @@
-VERSION = "2.2.140"
+VERSION = "2.2.141"
 RELEASE_DATE = "2026-07-30"
 RELEASE_NOTES = (
+    "v2.2.141: Memperbarui deploy-ubuntu.sh agar mengecualikan direktori static/uploads/ pada saat sinkronisasi (rsync) kode terbaru, mencegah file-file lampiran user dan redmine_files ikut terhapus saat deployment. "\
     "v2.2.140: Menggabungkan (Soft Merge) visualisasi Workload Matrix (Matriks Ketersediaan & Beban Kerja) antara Support Core dan Project Core melalui endpoint API terpadu dan komponen shared UI, serta menampilkannya di Dashboard SupportCore dan ProjectCore. "\
     "v2.2.139: Memperbarui fitur Migrasi Redmine untuk secara otomatis mengambil daftar file lampiran (attachments) dari database, memetakan inline image pada deskripsi dan komentar tiket, serta memasukkan riwayat attachment ke Screenshot/Lampiran tiket SupportCore yang diarahkan ke /static/uploads/redmine_files. "\
     "v2.2.138: Memperpanjang limit timeout Gunicorn dan Nginx dari 120s menjadi 600s untuk mencegah error 'Unexpected end of JSON input' saat proses restore backup S3 berukuran besar. "

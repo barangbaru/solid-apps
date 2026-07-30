@@ -310,6 +310,7 @@ rsync -a --delete \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
     --exclude='*.db' \
+    --exclude='static/uploads/' \
     "$TMPDIR_DEPLOY/repo/$REPO_SUBDIR/" "$APP_DIR/"
 
 # Tulis .git_info agar aplikasi bisa tampilkan info commit di UI
