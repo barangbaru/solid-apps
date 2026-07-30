@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek — ProjectCore{% endblock %}
+{% block title %}{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek — Support & Project Core{% endblock %}
 {% block page_title %}<span class="breadcrumb-page">{{ 'Edit' if r and r.get('id') else 'Buat' }} Proyek</span>{% endblock %}
 
 {% block content %}
@@ -44,7 +44,7 @@
               {% endfor %}
             </select>
             {% if not customers %}
-            <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Belum ada customer. <a href="/support/customers/add" target="_blank">Tambah di SupportCore</a>.</div>
+            <div class="form-text text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Belum ada customer. <a href="/support/customers/add" target="_blank">Tambah di Support & Project Core</a>.</div>
             {% endif %}
           </div>
           <div class="col-12">
