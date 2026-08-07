@@ -58,6 +58,17 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 DB_TYPE = 'postgresql'
 DIVISI_LIST = list(ALL_DIVISIONS.keys())
 
+# --- Global Constants for SonarQube Duplicate Literals ---
+COL_TEXT_DEFAULT = COL_TEXT_DEFAULT
+COL_INT_NULL = COL_INT_NULL
+COL_REAL_NULL = COL_REAL_NULL
+COL_TEXT_NULL = 'TEXT DEFAULT NULL'
+COL_TEXT_NOT_NULL = COL_TEXT_NOT_NULL
+QUERY_GET_USER_BY_ID = QUERY_GET_USER_BY_ID
+QUERY_GET_EMP_NAME = QUERY_GET_EMP_NAME
+TELEGRAM_BOT_TOKEN_FALLBACK = TELEGRAM_BOT_TOKEN_FALLBACK
+HASH_METHOD = HASH_METHOD
+
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_IMAGE_EXT = {'jpg', 'jpeg', 'png', 'webp', 'gif'}
@@ -1414,117 +1425,117 @@ COLUMN_TYPE_MIGRATIONS = [
 ]
 
 MIGRATIONS = [
-    ('users', 'email',     "TEXT DEFAULT ''"),
-    ('users', 'google_id', "TEXT DEFAULT ''"),
-    ('employees', 'birthday',        "TEXT DEFAULT ''"),
+    ('users', 'email',     COL_TEXT_DEFAULT),
+    ('users', 'google_id', COL_TEXT_DEFAULT),
+    ('employees', 'birthday',        COL_TEXT_DEFAULT),
     ('employees', 'level',           "TEXT DEFAULT 'Staff'"),
     ('employees', 'employment_type', "TEXT DEFAULT 'tetap'"),
-    ('employees', 'contract_start',  "TEXT DEFAULT ''"),
-    ('employees', 'contract_end',    "TEXT DEFAULT ''"),
-    ('employees', 'rate_mandays',    'REAL DEFAULT NULL'),
-    ('employees', 'email',           "TEXT DEFAULT ''"),
-    ('employees', 'phone',           "TEXT DEFAULT ''"),
-    ('employees', 'telegram_id',     "TEXT DEFAULT ''"),
+    ('employees', 'contract_start',  COL_TEXT_DEFAULT),
+    ('employees', 'contract_end',    COL_TEXT_DEFAULT),
+    ('employees', 'rate_mandays',    COL_REAL_NULL),
+    ('employees', 'email',           COL_TEXT_DEFAULT),
+    ('employees', 'phone',           COL_TEXT_DEFAULT),
+    ('employees', 'telegram_id',     COL_TEXT_DEFAULT),
     ('employees', 'is_active',       "INTEGER DEFAULT 1"),
-    ('employees', 'notes',           "TEXT DEFAULT ''"),
-    ('employees', 'supervisor_id',   'INTEGER DEFAULT NULL'),
-    ('employees', 'leader_id',       'INTEGER DEFAULT NULL'),
-    ('employees', 'manager_id',      'INTEGER DEFAULT NULL'),
-    ('employees', 'user_id',         'INTEGER DEFAULT NULL'),
-    ('evaluations', 'self_notes',        "TEXT DEFAULT ''"),
-    ('evaluations', 'self_achievements', "TEXT DEFAULT ''"),
-    ('evaluations', 'self_improvements', "TEXT DEFAULT ''"),
-    ('evaluations', 'self_assessment_json', "TEXT DEFAULT ''"),
+    ('employees', 'notes',           COL_TEXT_DEFAULT),
+    ('employees', 'supervisor_id',   COL_INT_NULL),
+    ('employees', 'leader_id',       COL_INT_NULL),
+    ('employees', 'manager_id',      COL_INT_NULL),
+    ('employees', 'user_id',         COL_INT_NULL),
+    ('evaluations', 'self_notes',        COL_TEXT_DEFAULT),
+    ('evaluations', 'self_achievements', COL_TEXT_DEFAULT),
+    ('evaluations', 'self_improvements', COL_TEXT_DEFAULT),
+    ('evaluations', 'self_assessment_json', COL_TEXT_DEFAULT),
     ('evaluations', 'review_status',     "TEXT DEFAULT 'draft'"),
-    ('evaluations', 'reviewed_by',       'INTEGER DEFAULT NULL'),
-    ('evaluations', 'reviewed_at',       "TEXT DEFAULT ''"),
-    ('evaluations', 'review_notes',      "TEXT DEFAULT ''"),
-    ('users',       'totp_secret',       "TEXT DEFAULT ''"),
+    ('evaluations', 'reviewed_by',       COL_INT_NULL),
+    ('evaluations', 'reviewed_at',       COL_TEXT_DEFAULT),
+    ('evaluations', 'review_notes',      COL_TEXT_DEFAULT),
+    ('users',       'totp_secret',       COL_TEXT_DEFAULT),
     ('users',       'mfa_enabled',       "INTEGER DEFAULT 0"),
-    ('users',       'email',             "TEXT DEFAULT ''"),
-    ('users',       'phone',             "TEXT DEFAULT ''"),
-    ('users',       'telegram_id',       "TEXT DEFAULT ''"),
-    ('employees',   'salary',            "TEXT DEFAULT ''"),
-    ('employee_salary', 'increase_date', "TEXT DEFAULT ''"),
+    ('users',       'email',             COL_TEXT_DEFAULT),
+    ('users',       'phone',             COL_TEXT_DEFAULT),
+    ('users',       'telegram_id',       COL_TEXT_DEFAULT),
+    ('employees',   'salary',            COL_TEXT_DEFAULT),
+    ('employee_salary', 'increase_date', COL_TEXT_DEFAULT),
     ('roles',              'app_slug',               "TEXT DEFAULT 'evaluasi'"),
-    ('sc_contracts',       'pic_helpdesk_id',         'INTEGER DEFAULT NULL'),
-    ('sc_customers',       'pic_helpdesk_id',         'INTEGER DEFAULT NULL'),
-    ('sc_customers',       'pic_helpdesk_backup_id',  'INTEGER DEFAULT NULL'),
-    ('sc_customers',       'pic_implementor_id',      'INTEGER DEFAULT NULL'),
-    ('sc_customers',       'pic_coleader_id',         'INTEGER DEFAULT NULL'),
-    ('sc_customers',       'telegram_group_id',       "TEXT DEFAULT ''"),
-    ('sc_tickets',         'module_id',               'INTEGER DEFAULT NULL'),
-    ('sc_tickets',         'assignee_id',             'INTEGER DEFAULT NULL'),
-    ('sc_tickets',         'status_note',             "TEXT DEFAULT ''"),
-    ('sc_tickets',         'mandays',                 'REAL DEFAULT NULL'),
+    ('sc_contracts',       'pic_helpdesk_id',         COL_INT_NULL),
+    ('sc_customers',       'pic_helpdesk_id',         COL_INT_NULL),
+    ('sc_customers',       'pic_helpdesk_backup_id',  COL_INT_NULL),
+    ('sc_customers',       'pic_implementor_id',      COL_INT_NULL),
+    ('sc_customers',       'pic_coleader_id',         COL_INT_NULL),
+    ('sc_customers',       'telegram_group_id',       COL_TEXT_DEFAULT),
+    ('sc_tickets',         'module_id',               COL_INT_NULL),
+    ('sc_tickets',         'assignee_id',             COL_INT_NULL),
+    ('sc_tickets',         'status_note',             COL_TEXT_DEFAULT),
+    ('sc_tickets',         'mandays',                 COL_REAL_NULL),
     ('sc_tickets',         'pct_done',                'INTEGER DEFAULT 0'),
-    ('sc_tickets',         'solution_type',           "TEXT DEFAULT ''"),
-    ('sc_tickets',         'solution_note',           "TEXT DEFAULT ''"),
-    ('sc_tickets',         'due_date',                "TEXT DEFAULT NULL"),
-    ('sc_tickets',         'work_start_date',         "TEXT DEFAULT NULL"),
-    ('sc_tickets',         'media_lapor',             "TEXT DEFAULT ''"),
+    ('sc_tickets',         'solution_type',           COL_TEXT_DEFAULT),
+    ('sc_tickets',         'solution_note',           COL_TEXT_DEFAULT),
+    ('sc_tickets',         'due_date',                COL_TEXT_NULL),
+    ('sc_tickets',         'work_start_date',         COL_TEXT_NULL),
+    ('sc_tickets',         'media_lapor',             COL_TEXT_DEFAULT),
     ('sc_tickets',         'priority',                "TEXT DEFAULT 'Medium'"),
     ('sc_tickets',         'test_scenario_type',      "TEXT DEFAULT 'text'"),
-    ('sc_tickets',         'test_scenario_text',      "TEXT DEFAULT ''"),
+    ('sc_tickets',         'test_scenario_text',      COL_TEXT_DEFAULT),
     ('sc_customers',       'customer_type',           "TEXT DEFAULT 'aktif'"),
-    ('sc_customers',       'pic_sales_id',            'INTEGER DEFAULT NULL'),
-    ('sc_sla_categories',  'workaround_time_hours',   'REAL DEFAULT NULL'),
+    ('sc_customers',       'pic_sales_id',            COL_INT_NULL),
+    ('sc_sla_categories',  'workaround_time_hours',   COL_REAL_NULL),
     ('sc_sla_categories',  'maintenance_type',        "TEXT DEFAULT 'corrective'"),
     ('sc_sla_categories',  'priority',                "TEXT DEFAULT 'Medium'"),
-    ('ac_assets',            'manual_employee_name',    "TEXT DEFAULT ''"),
+    ('ac_assets',            'manual_employee_name',    COL_TEXT_DEFAULT),
     ('ac_assets',            'status',                  "TEXT DEFAULT 'Aktif'"),
-    ('ac_assets',            'started_using',           "TEXT DEFAULT ''"),
-    ('ac_subscriptions',     'last_reminder_sent',      "TEXT DEFAULT ''"),
-    ('ac_infrastructure',    'updated_at',              "TEXT DEFAULT ''"),
-    ('ac_licenses',          'updated_at',              "TEXT DEFAULT ''"),
-    ('ac_subscriptions',     'updated_at',              "TEXT DEFAULT ''"),
-    ('ac_software_requests', 'updated_at',              "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'manual_user_name',        "TEXT DEFAULT ''"),
+    ('ac_assets',            'started_using',           COL_TEXT_DEFAULT),
+    ('ac_subscriptions',     'last_reminder_sent',      COL_TEXT_DEFAULT),
+    ('ac_infrastructure',    'updated_at',              COL_TEXT_DEFAULT),
+    ('ac_licenses',          'updated_at',              COL_TEXT_DEFAULT),
+    ('ac_subscriptions',     'updated_at',              COL_TEXT_DEFAULT),
+    ('ac_software_requests', 'updated_at',              COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'manual_user_name',        COL_TEXT_DEFAULT),
     ('ac_tool_requests',     'item_category',           "TEXT DEFAULT 'Laptop'"),
     ('ac_tool_requests',     'request_channel',         "TEXT DEFAULT 'Email'"),
-    ('ac_tool_requests',     'request_channel_other',   "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'request_date',            "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'purchase_date',           "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'requestor_name',          "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'received_date',           "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'receipt_date',            "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'pic_support',             "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'ket',                     "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'spec_cpu_type',           "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'spec_ram',                "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'spec_disk',               "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'spec_gpu',                "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'spec_screen',             "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'spec_os',                 "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'spec_office',             "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'asset_tag',               "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'serial_number',           "TEXT DEFAULT ''"),
-    ('ac_tool_requests',     'asset_id',                'INTEGER DEFAULT NULL'),
-    ('bk_resources',         'image',                   "TEXT DEFAULT ''"),
-    ('bk_resources',         'facilities',              "TEXT DEFAULT ''"),
-    ('bk_resources',         'notes',                   "TEXT DEFAULT ''"),
-    ('pc_projects',          'customer_id',             'INTEGER DEFAULT NULL'),
-    ('pc_projects',          'implementor_id',          'INTEGER DEFAULT NULL'),
-    ('pc_projects',          'co_leader_id',            'INTEGER DEFAULT NULL'),
-    ('pc_projects',          'pic_ext',                 "TEXT DEFAULT ''"),
-    ('pc_projects',          'implementor_ext',         "TEXT DEFAULT ''"),
-    ('pc_projects',          'co_leader_ext',           "TEXT DEFAULT ''"),
-    ('pc_members',           'name_ext',                "TEXT DEFAULT ''"),
+    ('ac_tool_requests',     'request_channel_other',   COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'request_date',            COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'purchase_date',           COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'requestor_name',          COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'received_date',           COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'receipt_date',            COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'pic_support',             COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'ket',                     COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'spec_cpu_type',           COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'spec_ram',                COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'spec_disk',               COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'spec_gpu',                COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'spec_screen',             COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'spec_os',                 COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'spec_office',             COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'asset_tag',               COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'serial_number',           COL_TEXT_DEFAULT),
+    ('ac_tool_requests',     'asset_id',                COL_INT_NULL),
+    ('bk_resources',         'image',                   COL_TEXT_DEFAULT),
+    ('bk_resources',         'facilities',              COL_TEXT_DEFAULT),
+    ('bk_resources',         'notes',                   COL_TEXT_DEFAULT),
+    ('pc_projects',          'customer_id',             COL_INT_NULL),
+    ('pc_projects',          'implementor_id',          COL_INT_NULL),
+    ('pc_projects',          'co_leader_id',            COL_INT_NULL),
+    ('pc_projects',          'pic_ext',                 COL_TEXT_DEFAULT),
+    ('pc_projects',          'implementor_ext',         COL_TEXT_DEFAULT),
+    ('pc_projects',          'co_leader_ext',           COL_TEXT_DEFAULT),
+    ('pc_members',           'name_ext',                COL_TEXT_DEFAULT),
     ('pc_projects',          'deleted_at',              'TEXT DEFAULT NULL'),
-    ('pc_phases',            'pic_ext',                 "TEXT DEFAULT ''"),
-    ('pc_phases',            'sign_off_date',           "TEXT DEFAULT NULL"),
-    ('pc_phases',            'app_id',                  'INTEGER DEFAULT NULL'),
-    ('pc_phases',            'module_id',               'INTEGER DEFAULT NULL'),
-    ('evaluations',          'task_score',              'REAL DEFAULT NULL'),
-    ('evaluations',          'task_date_from',          "TEXT DEFAULT ''"),
-    ('evaluations',          'task_date_to',            "TEXT DEFAULT ''"),
+    ('pc_phases',            'pic_ext',                 COL_TEXT_DEFAULT),
+    ('pc_phases',            'sign_off_date',           COL_TEXT_NULL),
+    ('pc_phases',            'app_id',                  COL_INT_NULL),
+    ('pc_phases',            'module_id',               COL_INT_NULL),
+    ('evaluations',          'task_score',              COL_REAL_NULL),
+    ('evaluations',          'task_date_from',          COL_TEXT_DEFAULT),
+    ('evaluations',          'task_date_to',            COL_TEXT_DEFAULT),
     ('evaluations',          'task_benchmark',          'REAL DEFAULT 100'),
-    ('notif_type_settings',  'label',                   "TEXT NOT NULL DEFAULT ''"),
-    ('notif_type_settings',  'description',             "TEXT DEFAULT ''"),
+    ('notif_type_settings',  'label',                   COL_TEXT_NOT_NULL),
+    ('notif_type_settings',  'description',             COL_TEXT_DEFAULT),
     ('notif_type_settings',  'is_active',               'INTEGER DEFAULT 1'),
-    ('notif_recipients',     'name',                    "TEXT NOT NULL DEFAULT ''"),
+    ('notif_recipients',     'name',                    COL_TEXT_NOT_NULL),
     ('notif_recipients',     'channel',                 "TEXT NOT NULL DEFAULT 'email'"),
-    ('notif_recipients',     'address',                 "TEXT NOT NULL DEFAULT ''"),
+    ('notif_recipients',     'address',                 COL_TEXT_NOT_NULL),
     ('notif_recipients',     'notif_types',             'TEXT NOT NULL DEFAULT \'["*"]\''),
     ('notif_recipients',     'is_active',               'INTEGER DEFAULT 1'),
     ('notif_recipients',     'created_at',              "TEXT DEFAULT (datetime('now','localtime'))"),
@@ -1532,18 +1543,18 @@ MIGRATIONS = [
     ('pc_tasks',             'difficulty',              "TEXT DEFAULT 'Normal'"),
     ('pc_task_assignees',    'self_assigned',           'INTEGER DEFAULT 0'),
     # Peer review structured dimensions
-    ('peer_reviews',         'dim_kerjasama',           'INTEGER DEFAULT NULL'),
-    ('peer_reviews',         'dim_komunikasi',          'INTEGER DEFAULT NULL'),
-    ('peer_reviews',         'dim_keandalan',           'INTEGER DEFAULT NULL'),
-    ('peer_reviews',         'dim_inisiatif',           'INTEGER DEFAULT NULL'),
-    ('peer_reviews',         'dim_kualitas',            'INTEGER DEFAULT NULL'),
+    ('peer_reviews',         'dim_kerjasama',           COL_INT_NULL),
+    ('peer_reviews',         'dim_komunikasi',          COL_INT_NULL),
+    ('peer_reviews',         'dim_keandalan',           COL_INT_NULL),
+    ('peer_reviews',         'dim_inisiatif',           COL_INT_NULL),
+    ('peer_reviews',         'dim_kualitas',            COL_INT_NULL),
     # Evaluasi AI narrative
-    ('evaluations',          'ai_summary',              "TEXT DEFAULT ''"),
-    ('evaluations',          'ai_recommendation',       "TEXT DEFAULT ''"),
-    ('evaluations',          'ai_generated_at',         "TEXT DEFAULT ''"),
+    ('evaluations',          'ai_summary',              COL_TEXT_DEFAULT),
+    ('evaluations',          'ai_recommendation',       COL_TEXT_DEFAULT),
+    ('evaluations',          'ai_generated_at',         COL_TEXT_DEFAULT),
     # Attendance Plan & Progress
-    ('attendance',           'plan',                    "TEXT DEFAULT ''"),
-    ('attendance',           'progress',                "TEXT DEFAULT ''"),
+    ('attendance',           'plan',                    COL_TEXT_DEFAULT),
+    ('attendance',           'progress',                COL_TEXT_DEFAULT),
     ('attendance',           'checkout_reminder_sent',  "INTEGER DEFAULT 0"),
 ]
 
@@ -3571,7 +3582,7 @@ def compose_sub_wa(sub, days_left):
 def _asset_user_display(db, asset):
     """Ambil nama pengguna saat ini dari asset (linked / manual / kosong)."""
     if asset['employee_id']:
-        row = db.execute('SELECT name FROM employees WHERE id=?', (asset['employee_id'],)).fetchone()
+        row = db.execute(QUERY_GET_EMP_NAME, (asset['employee_id'],)).fetchone()
         return row['name'] if row else f'ID#{asset["employee_id"]}'
     return (asset['manual_employee_name'] or '').strip()
 
@@ -4335,7 +4346,7 @@ def run_birthday_reminders():
         settings = get_settings(db)
         bot_token = settings.get('telegram_bot_token', '').strip()
         if not bot_token:
-            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '1095530966:AAFkSV9puxmT2z7cvpsbBQy_TWqj9-MCvbM').strip()
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', TELEGRAM_BOT_TOKEN_FALLBACK).strip()
         if not bot_token:
             db.close()
             return
@@ -4405,7 +4416,7 @@ def check_checkout_reminders():
         settings = get_settings(db)
         bot_token = settings.get('telegram_bot_token', '').strip()
         if not bot_token:
-            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '1095530966:AAFkSV9puxmT2z7cvpsbBQy_TWqj9-MCvbM').strip()
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', TELEGRAM_BOT_TOKEN_FALLBACK).strip()
         if not bot_token:
             db.close()
             return
@@ -4616,7 +4627,7 @@ def login_mfa():
     if request.method == 'POST':
         code = request.form.get('code', '').strip()
         db   = get_db()
-        user = db.execute('SELECT * FROM users WHERE id=?', (pending_id,)).fetchone()
+        user = db.execute(QUERY_GET_USER_BY_ID, (pending_id,)).fetchone()
         if user and verify_totp(user['totp_secret'], code):
             session.pop('pending_mfa_user_id', None)
             next_url = session.pop('pending_mfa_next', url_for('portal'))
@@ -4747,7 +4758,7 @@ def login_google_callback():
                 db.execute("UPDATE users SET google_id=?, email=? WHERE id=?",
                            (google_id, google_email, existing['id']))
                 db.commit()
-                user = db.execute('SELECT * FROM users WHERE id=?', (existing['id'],)).fetchone()
+                user = db.execute(QUERY_GET_USER_BY_ID, (existing['id'],)).fetchone()
                 audit_log('merge_google', 'users', user['id'],
                           f'Akun manual digabung dengan Google ({google_email})', app_slug='portal')
 
@@ -4762,7 +4773,7 @@ def login_google_callback():
             suffix += 1
         cur = db.execute(
             'INSERT INTO users(username,password_hash,full_name,role,email,google_id,is_active) VALUES(?,?,?,?,?,?,1)',
-            (username, generate_password_hash(secrets.token_hex(32), method='pbkdf2:sha256'),
+            (username, generate_password_hash(secrets.token_hex(32), method=HASH_METHOD),
              google_name, 'viewer', google_email, google_id))
         db.commit()
         new_uid = cur.lastrowid
@@ -4776,7 +4787,7 @@ def login_google_callback():
             (new_uid, 'attendance', 'user')
         )
         db.commit()
-        user = db.execute('SELECT * FROM users WHERE id=?', (new_uid,)).fetchone()
+        user = db.execute(QUERY_GET_USER_BY_ID, (new_uid,)).fetchone()
         is_new_user = True
         audit_log('register_google', 'users', user['id'],
                   f'Akun baru via Google ({google_email}) — diberikan akses default AttendanceCore (user)', app_slug='portal')
@@ -4812,7 +4823,7 @@ def mfa_challenge():
     if request.method == 'POST':
         code = request.form.get('code', '').strip()
         db   = get_db()
-        user = db.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        user = db.execute(QUERY_GET_USER_BY_ID, (session['user_id'],)).fetchone()
         if user and verify_totp(user['totp_secret'], code):
             sk = session.pop('mfa_session_key', 'mfa_verified')
             session[sk] = datetime.now().timestamp()
@@ -4827,7 +4838,7 @@ def mfa_challenge():
 @login_required
 def mfa_setup():
     db   = get_db()
-    user = db.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone()
+    user = db.execute(QUERY_GET_USER_BY_ID, (session['user_id'],)).fetchone()
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'generate':
@@ -5065,7 +5076,7 @@ def reset_password(token):
             flash('Konfirmasi password tidak cocok.', 'danger')
         else:
             db.execute("UPDATE users SET password_hash=? WHERE id=?",
-                       (generate_password_hash(new_pass, method='pbkdf2:sha256'), user['id']))
+                       (generate_password_hash(new_pass, method=HASH_METHOD), user['id']))
             # Mark token as used — link langsung kadaluarsa setelah dipakai
             db.execute("UPDATE password_reset_tokens SET used=1 WHERE token=?", (token,))
             db.commit()
@@ -5117,7 +5128,7 @@ def user_add():
             try:
                 db.execute(
                     'INSERT INTO users(username,password_hash,full_name,role,email,phone,telegram_id) VALUES(?,?,?,?,?,?,?)',
-                    (username, generate_password_hash(password, method='pbkdf2:sha256'),
+                    (username, generate_password_hash(password, method=HASH_METHOD),
                      full_name, role, email, phone, telegram))
                 db.commit()
                 flash(f'User {username} berhasil dibuat', 'success')
@@ -5134,7 +5145,7 @@ def user_add():
 @superadmin_required
 def user_edit(uid):
     db = get_db()
-    user = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    user = db.execute(QUERY_GET_USER_BY_ID, (uid,)).fetchone()
     if not user:
         flash('User tidak ditemukan', 'danger')
         return redirect(url_for('users_list'))
@@ -5150,7 +5161,7 @@ def user_edit(uid):
             db.execute(
                 'UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=?,password_hash=? WHERE id=?',
                 (full_name, role, is_active, email, phone, telegram,
-                 generate_password_hash(new_pass, method='pbkdf2:sha256'), uid))
+                 generate_password_hash(new_pass, method=HASH_METHOD), uid))
         else:
             db.execute(
                 'UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=? WHERE id=?',
@@ -5183,7 +5194,7 @@ def user_delete(uid):
 @login_required
 def profile():
     db = get_db()
-    user = db.execute('SELECT * FROM users WHERE id=?', (session['user_id'],)).fetchone()
+    user = db.execute(QUERY_GET_USER_BY_ID, (session['user_id'],)).fetchone()
     if not user:
         session.clear()
         flash('Sesi Anda tidak valid atau pengguna tidak ditemukan', 'danger')
@@ -5334,7 +5345,7 @@ def portal_settings_mass():
                     db.execute('UPDATE employees SET user_id=? WHERE id=?', (uid, eid))
             else:
                 default_user_pass = os.environ.get('DEFAULT_USER_PASS', 'hive2026_default')
-                p_hash = generate_password_hash(default_user_pass, method='pbkdf2:sha256')
+                p_hash = generate_password_hash(default_user_pass, method=HASH_METHOD)
                 cur = db.execute('''
                     INSERT INTO users (username, password_hash, full_name, role, email, is_active)
                     VALUES (?, ?, ?, 'viewer', ?, 1)
@@ -5498,8 +5509,8 @@ def portal_user_merge(google_uid, manual_uid):
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal_users'))
     db = get_db()
-    g_user = db.execute('SELECT * FROM users WHERE id=?', (google_uid,)).fetchone()
-    m_user = db.execute('SELECT * FROM users WHERE id=?', (manual_uid,)).fetchone()
+    g_user = db.execute(QUERY_GET_USER_BY_ID, (google_uid,)).fetchone()
+    m_user = db.execute(QUERY_GET_USER_BY_ID, (manual_uid,)).fetchone()
     if not g_user or not m_user:
         flash('User tidak ditemukan.', 'danger')
         return redirect(url_for('portal_users'))
@@ -5554,7 +5565,7 @@ def portal_user_add():
             try:
                 cur = db.execute(
                     'INSERT INTO users(username,password_hash,full_name,role,email,phone,telegram_id) VALUES(?,?,?,?,?,?,?)',
-                    (username, generate_password_hash(password, method='pbkdf2:sha256'),
+                    (username, generate_password_hash(password, method=HASH_METHOD),
                      full_name, role, email, phone, telegram))
                 new_uid = cur.lastrowid
                 if emp_id:
@@ -5587,7 +5598,7 @@ def portal_user_edit(uid):
         flash('Akses ditolak.', 'danger')
         return redirect(url_for('portal'))
     db   = get_db()
-    user = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    user = db.execute(QUERY_GET_USER_BY_ID, (uid,)).fetchone()
     if not user:
         flash('User tidak ditemukan', 'danger')
         return redirect(url_for('portal_users'))
@@ -5622,7 +5633,7 @@ def portal_user_edit(uid):
         if new_pass:
             db.execute('UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=?,password_hash=? WHERE id=?',
                        (full_name, role, is_active, email, phone, telegram,
-                        generate_password_hash(new_pass, method='pbkdf2:sha256'), uid))
+                        generate_password_hash(new_pass, method=HASH_METHOD), uid))
         else:
             db.execute('UPDATE users SET full_name=?,role=?,is_active=?,email=?,phone=?,telegram_id=? WHERE id=?',
                        (full_name, role, is_active, email, phone, telegram, uid))
@@ -5675,7 +5686,7 @@ def portal_user_remove(uid):
         flash('Tidak bisa menghapus akun sendiri.', 'danger')
         return redirect(url_for('portal_users'))
     db = get_db()
-    u = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    u = db.execute(QUERY_GET_USER_BY_ID, (uid,)).fetchone()
     if not u:
         flash('User tidak ditemukan.', 'danger')
         return redirect(url_for('portal_users'))
@@ -5704,7 +5715,7 @@ def portal_user_send_reset(uid):
     # Delegasi ke fungsi existing
     from flask import current_app
     db   = get_db()
-    user = db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone()
+    user = db.execute(QUERY_GET_USER_BY_ID, (uid,)).fetchone()
     if user:
         settings = get_settings(db)
         token    = secrets.token_urlsafe(48)
@@ -7144,7 +7155,7 @@ def _sc_sync_assignees(db, ticket_id, employee_ids):
                                f"Assignee ditambahkan: {emp['name']}")
     # hapus yang dicopot
     for eid in old_ids - new_ids:
-        emp = db.execute('SELECT name FROM employees WHERE id=?', (eid,)).fetchone()
+        emp = db.execute(QUERY_GET_EMP_NAME, (eid,)).fetchone()
         db.execute('DELETE FROM sc_ticket_assignees WHERE ticket_id=? AND employee_id=?', (ticket_id, eid))
         if emp:
             _sc_ticket_history(db, ticket_id, 'assignee_removed', 'assignee', emp['name'], '',
@@ -13459,7 +13470,7 @@ def ac_asset_link(aid):
         db.execute('UPDATE ac_assets SET employee_id=?, manual_employee_name=?, started_using=?, updated_at=datetime("now","localtime") WHERE id=?',
                    (emp_id, '', today, aid))
         db.commit()
-        emp = db.execute('SELECT name FROM employees WHERE id=?', (emp_id,)).fetchone()
+        emp = db.execute(QUERY_GET_EMP_NAME, (emp_id,)).fetchone()
         new_user = emp['name'] if emp else ''
         _notify_asset_change(db, cur_asset, 'assigned', old_user, new_user, reason)
         flash(f'Asset dihubungkan ke {new_user or "karyawan"}. Riwayat tersimpan.', 'success')
@@ -13531,7 +13542,7 @@ def ac_asset_edit(aid):
         if notif_event:
             if notif_event == 'assigned':
                 if emp_id:
-                    emp_row = db.execute('SELECT name FROM employees WHERE id=?', (emp_id,)).fetchone()
+                    emp_row = db.execute(QUERY_GET_EMP_NAME, (emp_id,)).fetchone()
                     notif_new = emp_row['name'] if emp_row else manual_name
                 else:
                     notif_new = manual_name or ''
@@ -16076,7 +16087,7 @@ def telegram_webhook():
     settings = get_settings(db)
     bot_token = settings.get('telegram_bot_token', '').strip()
     if not bot_token:
-        bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '1095530966:AAFkSV9puxmT2z7cvpsbBQy_TWqj9-MCvbM').strip()
+        bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', TELEGRAM_BOT_TOKEN_FALLBACK).strip()
     if not bot_token:
         return 'OK', 200
 

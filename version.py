@@ -1,6 +1,7 @@
-VERSION = "2.2.156"
+VERSION = "2.2.157"
 RELEASE_DATE = "2026-08-07"
 RELEASE_NOTES = (
+    "v2.2.157: Membersihkan ratusan isu 'CRITICAL Code Smells' di SonarQube dengan mengekstrak duplicate string literals menjadi konstanta global di app.py. "\\
     "v2.2.156: Mengaktifkan konfigurasi code coverage SonarQube untuk pipeline Jenkins dan membersihkan unused variables & functions di app.py. "\\
     "v2.2.155: Mengaktifkan konfigurasi code coverage SonarQube untuk pipeline Jenkins dan membersihkan unused variables & functions di app.py. "\\
     "v2.2.154: Menghapus trailing slash pada SONAR_URL untuk mencegah error URL double-slash saat request API, serta menambahkan logging raw response jika gagal parsing JSON. "\\
