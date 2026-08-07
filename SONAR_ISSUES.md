@@ -1,5 +1,114 @@
 # Riwayat Laporan Issue SonarQube
 
+## Scan Date: 2026-08-07 11:10:46
+
+**Total Issues:** 100
+
+| Severity | Type | File | Line | Message |
+|---|---|---|---|---|
+| MINOR | CODE_SMELL | `Dockerfile` | 37 | Sort these package names alphanumerically. |
+| CRITICAL | CODE_SMELL | `app.py` | 66 | Refactor this function to reduce its Cognitive Complexity from 39 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 270 | Refactor this function to reduce its Cognitive Complexity from 25 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 306 | Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 1417 | Define a constant instead of duplicating this literal "TEXT DEFAULT ''" 68 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1424 | Define a constant instead of duplicating this literal 'REAL DEFAULT NULL' 4 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1430 | Define a constant instead of duplicating this literal 'INTEGER DEFAULT NULL' 24 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1463 | Define a constant instead of duplicating this literal "TEXT DEFAULT NULL" 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1522 | Define a constant instead of duplicating this literal "TEXT NOT NULL DEFAULT ''" 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1559 | Define a constant instead of duplicating this literal 'In Progress' 10 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1653 | Define a constant instead of duplicating this literal '30,14,7,1' 5 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1675 | Define a constant instead of duplicating this literal 'superadmin,admin' 5 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1799 | Refactor this function to reduce its Cognitive Complexity from 41 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 1816 | Define a constant instead of duplicating this literal "Menu Utama" 17 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1840 | Define a constant instead of duplicating this literal "Permintaan & Lisensi" 5 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1854 | Define a constant instead of duplicating this literal "Master Data" 8 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1886 | Define a constant instead of duplicating this literal "Kehadiran Saya" 6 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1951 | Define a constant instead of duplicating this literal 'INSERT OR IGNORE INTO role_permissions(role_name,permission) VALUES(?,?)' 6 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 1958 | Refactor this function to reduce its Cognitive Complexity from 47 to the 15 allowed. |
+| MINOR | CODE_SMELL | `app.py` | 1972 | Use concise character class syntax '\w' instead of '[a-zA-Z0-9_]'. |
+| CRITICAL | CODE_SMELL | `app.py` | 2257 | Define a constant instead of duplicating this literal 'Implementor/BPS' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 2260 | Define a constant instead of duplicating this literal 'Helpdesk Support' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 2333 | Define a constant instead of duplicating this literal 'Telegram Core' 4 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 2703 | Define a constant instead of duplicating this literal 'Sesi Anda tidak valid atau pengguna tidak ditemukan' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 2726 | Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 2741 | Define a constant instead of duplicating this literal 'upload/media/' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 2818 | Refactor this function to reduce its Cognitive Complexity from 42 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 2995 | Define a constant instead of duplicating this literal '/static' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 3148 | Specify an exception class to catch or reraise the exception |
+| CRITICAL | CODE_SMELL | `app.py` | 3245 | Define a constant instead of duplicating this literal 'application/json' 5 times. |
+| MAJOR | CODE_SMELL | `app.py` | 3324 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3339 | Extract this nested conditional expression into an independent statement. |
+| CRITICAL | CODE_SMELL | `app.py` | 3340 | Define a constant instead of duplicating this literal 'Berakhir HARI INI!' 6 times. |
+| MAJOR | CODE_SMELL | `app.py` | 3341 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3351 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3353 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3364 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3378 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3380 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3391 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3393 | Extract this nested conditional expression into an independent statement. |
+| CRITICAL | CODE_SMELL | `app.py` | 3403 | Refactor this function to reduce its Cognitive Complexity from 61 to the 15 allowed. |
+| MAJOR | CODE_SMELL | `app.py` | 3528 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3531 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3544 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3547 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3557 | Extract this nested conditional expression into an independent statement. |
+| MAJOR | CODE_SMELL | `app.py` | 3560 | Extract this nested conditional expression into an independent statement. |
+| CRITICAL | CODE_SMELL | `app.py` | 3574 | Define a constant instead of duplicating this literal 'SELECT name FROM employees WHERE id=?' 4 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 3578 | Refactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 3620 | Refactor this function to reduce its Cognitive Complexity from 21 to the 15 allowed. |
+| MAJOR | CODE_SMELL | `app.py` | 3633 | Extract this nested conditional expression into an independent statement. |
+| CRITICAL | CODE_SMELL | `app.py` | 3663 | Refactor this function to reduce its Cognitive Complexity from 48 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 3863 | Refactor this function to reduce its Cognitive Complexity from 61 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 3898 | Define a constant instead of duplicating this literal ' AND ' 6 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 3924 | Define a constant instead of duplicating this literal 'p.end_date' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 4060 | Refactor this function to reduce its Cognitive Complexity from 113 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 4332 | Refactor this function to reduce its Cognitive Complexity from 28 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 4338 | Define a constant instead of duplicating this literal '1095530966:AAFkSV9puxmT2z7cvpsbBQy_TWqj9-MCvbM' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 4358 | Define a constant instead of duplicating this literal r'\(ID:\s*(-?\d+)\)' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 4402 | Refactor this function to reduce its Cognitive Complexity from 48 to the 15 allowed. |
+| MAJOR | CODE_SMELL | `app.py` | 4475 | Add a parameter to the parent lambda function and use variable "delete_msg" as its default value; The value of "delete_msg" might change at the next loop iteration. |
+| MAJOR | CODE_SMELL | `app.py` | 4475 | Add a parameter to the parent lambda function and use variable "bot_msg_id" as its default value; The value of "bot_msg_id" might change at the next loop iteration. |
+| MAJOR | CODE_SMELL | `app.py` | 4475 | Add a parameter to the parent lambda function and use variable "group_id" as its default value; The value of "group_id" might change at the next loop iteration. |
+| CRITICAL | CODE_SMELL | `app.py` | 4559 | Refactor this function to reduce its Cognitive Complexity from 36 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 4619 | Define a constant instead of duplicating this literal 'SELECT * FROM users WHERE id=?' 12 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 4669 | Refactor this function to reduce its Cognitive Complexity from 30 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 4765 | Define a constant instead of duplicating this literal 'pbkdf2:sha256' 7 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 4771 | Define a constant instead of duplicating this literal 'UPDATE employees SET user_id=? WHERE id=?' 5 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 4838 | Define a constant instead of duplicating this literal 'mfa_setup.html' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 4920 | Refactor this function to reduce its Cognitive Complexity from 47 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5177 | Define a constant instead of duplicating this literal 'DELETE FROM users WHERE id=?' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5253 | Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5255 | Define a constant instead of duplicating this literal 'Akses ditolak.' 20 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5287 | Define a constant instead of duplicating this literal "SELECT name, description, app_slug FROM roles ORDER BY is_system DESC, name" 5 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5302 | Refactor this function to reduce its Cognitive Complexity from 21 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5392 | Refactor this function to reduce its Cognitive Complexity from 18 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5402 | Define a constant instead of duplicating this literal 'SELECT slug, name FROM superapp_apps WHERE is_active=1 ORDER BY sort_order' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5441 | Refactor this function to reduce its Cognitive Complexity from 25 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5526 | Refactor this function to reduce its Cognitive Complexity from 29 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5531 | Define a constant instead of duplicating this literal 'SELECT slug, name, icon FROM superapp_apps WHERE is_active=1 ORDER BY sort_order' 4 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5580 | Define a constant instead of duplicating this literal 'portal_user_form.html' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5585 | Refactor this function to reduce its Cognitive Complexity from 24 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5617 | Define a constant instead of duplicating this literal 'SELECT app_slug,app_role FROM user_app_access WHERE user_id=? AND is_active=1' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5630 | Define a constant instead of duplicating this literal 'DELETE FROM user_app_access WHERE user_id=?' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5739 | Refactor this function to reduce its Cognitive Complexity from 70 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 5774 | Define a constant instead of duplicating this literal 'DELETE FROM role_permissions WHERE role_name=?' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5891 | Define a constant instead of duplicating this literal 'Akses ditolak' 18 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5899 | Define a constant instead of duplicating this literal 'Email berhasil dikirim' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5914 | Define a constant instead of duplicating this literal 'Pesan Telegram berhasil dikirim' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 5993 | Define a constant instead of duplicating this literal 'gemini-2.0-flash' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 6100 | Define a constant instead of duplicating this literal 'employee_form.html' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 6136 | Refactor this function to reduce its Cognitive Complexity from 21 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 6138 | Define a constant instead of duplicating this literal 'SELECT * FROM employees WHERE id=?' 11 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 6140 | Define a constant instead of duplicating this literal 'Karyawan tidak ditemukan' 3 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 6327 | Define a constant instead of duplicating this literal 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 4 times. |
+| CRITICAL | CODE_SMELL | `app.py` | 6333 | Refactor this function to reduce its Cognitive Complexity from 34 to the 15 allowed. |
+| CRITICAL | CODE_SMELL | `app.py` | 6424 | Refactor this function to reduce its Cognitive Complexity from 22 to the 15 allowed. |
+| MINOR | CODE_SMELL | `app.py` | 6477 | Remove the unused local variable "row_fill". |
+| CRITICAL | CODE_SMELL | `app.py` | 6527 | Refactor this function to reduce its Cognitive Complexity from 29 to the 15 allowed. |
+
+---
+
 ## Scan Date: 2026-08-07 11:01:15
 
 **Total Issues:** 100
