@@ -9,9 +9,12 @@ echo "Menjalankan script penarik laporan SonarQube..."
 python3 fetch_sonar_issues.py
 
 # 2. Commit file ke Git
-# Pastikan Jenkins punya kredensial/akses SSH untuk push ke branch origin
-git config --global user.name "Jenkins CI"
-git config --global user.email "jenkins@mitramandiri.com"
+# Set config name & email secara lokal (temporary) hanya untuk eksekusi di workspace ini
+git config user.name "Jenkins CI"
+git config user.email "jenkins@mitramandiri.com"
+
+# Catatan: Proses push akan otomatis menggunakan credential git (SSH Key atau Git Token) 
+# yang sedang aktif / di-inject oleh Jenkins saat job ini dieksekusi.
 
 # Cek apakah ada file SONAR_ISSUES.md yang diubah atau baru
 if [[ -n $(git status -s SONAR_ISSUES.md) ]]; then

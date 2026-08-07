@@ -1,6 +1,7 @@
-VERSION = "2.2.148"
+VERSION = "2.2.149"
 RELEASE_DATE = "2026-08-07"
 RELEASE_NOTES = (
+    "v2.2.149: Mengubah pengaturan git config pada jenkins_sonar_postbuild.sh menjadi bersifat lokal (temporary) agar tidak menimpa konfigurasi global di server Jenkins. "\\
     "v2.2.148: Menambahkan script Python dan Shell Script untuk menarik hasil scan (issues) dari SonarQube ke repositori via pipeline Jenkins. "\\
     "v2.2.147: Menambahkan file konfigurasi sonar-project.properties untuk integrasi SonarQube via Jenkins. "\\
     "v2.2.146: Membatalkan penggabungan aplikasi Project Core ke Support Core atas permintaan user (rollback), memulihkan struktur navigasi Project Core, menghapus menu duplikat di Support Core, serta memulihkan portal Project Core. "\\
