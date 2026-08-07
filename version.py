@@ -1,20 +1,20 @@
-VERSION = "2.2.157"
+VERSION = "2.2.158"
 RELEASE_DATE = "2026-08-07"
 RELEASE_NOTES = (
-    "v2.2.157: Membersihkan ratusan isu 'CRITICAL Code Smells' di SonarQube dengan mengekstrak duplicate string literals menjadi konstanta global di app.py. "\\
-    "v2.2.156: Mengaktifkan konfigurasi code coverage SonarQube untuk pipeline Jenkins dan membersihkan unused variables & functions di app.py. "\\
-    "v2.2.155: Mengaktifkan konfigurasi code coverage SonarQube untuk pipeline Jenkins dan membersihkan unused variables & functions di app.py. "\\
-    "v2.2.154: Menghapus trailing slash pada SONAR_URL untuk mencegah error URL double-slash saat request API, serta menambahkan logging raw response jika gagal parsing JSON. "\\
-    "v2.2.152: Memperbaiki beberapa temuan Blocker dan Code Smells dari SonarQube, termasuk penghapusan hardcoded token & password dan perbaikan sintaks di app.py. "\\
-    "v2.2.151: Memperbarui jenkins_sonar_postbuild.sh untuk menggunakan explicit repository URL dengan credentials GitHub Token untuk keperluan push di Jenkins. "\\
-    "v2.2.150: Memperbarui fetch_sonar_issues.py agar menyimpan riwayat tracking issue SonarQube di dalam SONAR_ISSUES.md dengan menambahkan hasil terbaru beserta stempel waktu di posisi paling atas file. "\\
-    "v2.2.149: Mengubah pengaturan git config pada jenkins_sonar_postbuild.sh menjadi bersifat lokal (temporary) agar tidak menimpa konfigurasi global di server Jenkins. "\\
-    "v2.2.148: Menambahkan script Python dan Shell Script untuk menarik hasil scan (issues) dari SonarQube ke repositori via pipeline Jenkins. "\\
-    "v2.2.147: Menambahkan file konfigurasi sonar-project.properties untuk integrasi SonarQube via Jenkins. "\\
-    "v2.2.146: Membatalkan penggabungan aplikasi Project Core ke Support Core atas permintaan user (rollback), memulihkan struktur navigasi Project Core, menghapus menu duplikat di Support Core, serta memulihkan portal Project Core. "\\
-    "v2.2.141: Memperbarui deploy-ubuntu.sh agar mengecualikan direktori static/uploads/ pada saat sinkronisasi (rsync) kode terbaru, mencegah file-file lampiran user dan redmine_files ikut terhapus saat deployment. "\\
-    "v2.2.140: Menggabungkan (Soft Merge) visualisasi Workload Matrix (Matriks Ketersediaan & Beban Kerja) antara Support Core dan Project Core melalui endpoint API terpadu dan komponen shared UI, serta menampilkannya di Dashboard SupportCore dan ProjectCore. "\
-    "v2.2.139: Memperbarui fitur Migrasi Redmine untuk secara otomatis mengambil daftar file lampiran (attachments) dari database, memetakan inline image pada deskripsi dan komentar tiket, serta memasukkan riwayat attachment ke Screenshot/Lampiran tiket SupportCore yang diarahkan ke /static/uploads/redmine_files. "\
+    "v2.2.158: Menambahkan Unit Test khusus (test_app_helpers.py) untuk fungsi pembantu dasar di app.py guna menyelesaikan peringatan Uncovered Code di SonarQube.\\n"
+    "v2.2.157: Membersihkan ratusan isu 'CRITICAL Code Smells' di SonarQube dengan mengekstrak duplicate string literals menjadi konstanta global di app.py.\\n"
+    "v2.2.156: Mengaktifkan konfigurasi code coverage SonarQube untuk pipeline Jenkins dan membersihkan unused variables & functions di app.py.\\n"
+    "v2.2.154: Menghapus trailing slash pada SONAR_URL untuk mencegah error URL double-slash saat request API, serta menambahkan logging raw response jika gagal parsing JSON. "\
+    "v2.2.152: Memperbaiki beberapa temuan Blocker dan Code Smells dari SonarQube, termasuk penghapusan hardcoded token & password dan perbaikan sintaks di app.py. "\
+    "v2.2.151: Memperbarui jenkins_sonar_postbuild.sh untuk menggunakan explicit repository URL dengan credentials GitHub Token untuk keperluan push di Jenkins. "\
+    "v2.2.150: Memperbarui fetch_sonar_issues.py agar menyimpan riwayat tracking issue SonarQube di dalam SONAR_ISSUES.md dengan menambahkan hasil terbaru beserta stempel waktu di posisi paling atas file. "\
+    "v2.2.149: Mengubah pengaturan git config pada jenkins_sonar_postbuild.sh menjadi bersifat lokal (temporary) agar tidak menimpa konfigurasi global di server Jenkins. "\
+    "v2.2.148: Menambahkan script Python dan Shell Script untuk menarik hasil scan (issues) dari SonarQube ke repositori via pipeline Jenkins. "\
+    "v2.2.147: Menambahkan file konfigurasi sonar-project.properties untuk integrasi SonarQube via Jenkins. "\
+    "v2.2.146: Membatalkan penggabungan aplikasi Project Core ke Support Core atas permintaan user (rollback), memulihkan struktur navigasi Project Core, menghapus menu duplikat di Support Core, serta memulihkan portal Project Core. "\
+    "v2.2.141: Memperbarui deploy-ubuntu.sh agar mengecualikan direktori static/uploads/ pada saat sinkronisasi (rsync) kode terbaru, mencegah file-file lampiran user dan redmine_files ikut terhapus saat deployment. "\
+    "v2.2.140: Menggabungkan (Soft Merge) visualisasi Workload Matrix (Matriks Ketersediaan & Beban Kerja) antara Support Core dan Project Core melalui endpoint API terpadu dan komponen shared UI, serta menampilkannya di Dashboard SupportCore dan ProjectCore. "
+    "v2.2.139: Memperbarui fitur Migrasi Redmine untuk secara otomatis mengambil daftar file lampiran (attachments) dari database, memetakan inline image pada deskripsi dan komentar tiket, serta memasukkan riwayat attachment ke Screenshot/Lampiran tiket SupportCore yang diarahkan ke /static/uploads/redmine_files. "
     "v2.2.138: Memperpanjang limit timeout Gunicorn dan Nginx dari 120s menjadi 600s untuk mencegah error 'Unexpected end of JSON input' saat proses restore backup S3 berukuran besar. "
     "v2.2.137: Menambahkan tombol Restore pada Daftar Backup S3 di Backup Center — mendukung restore langsung dari file backup S3 dengan download otomatis ke server sebelum restore, badge sumber (Lokal/S3) di modal konfirmasi, dan endpoint terpisah /portal/backup/restore-s3/<filename>. "
     "v2.2.136: Menambahkan fitur Restore Backup langsung dari GUI Backup Center — tombol Restore (kuning) tersedia di setiap baris file backup lokal dengan modal konfirmasi, pilihan restore Database dan/atau Konten Media, serta safety backup otomatis sebelum menimpa data yang ada. "
