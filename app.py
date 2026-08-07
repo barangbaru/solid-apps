@@ -209,14 +209,14 @@ class _DBWrapper:
             update_cols  = cols[1:] if len(cols) > 1 else cols
             update_set   = ', '.join(f'{c}=EXCLUDED.{c}' for c in update_cols)
             sql = re.sub(r'\bINSERT\s+OR\s+REPLACE\s+INTO\b', 'INSERT INTO', sql, flags=re.IGNORECASE)
-            sql = re.sub(r'\?', '%s', sql)
+            sql = sql.replace('?', '%s')
             sql = sql.rstrip().rstrip(';') + f' ON CONFLICT ({conflict_col}) DO UPDATE SET {update_set}'
             return sql
         # INSERT OR IGNORE → ON CONFLICT DO NOTHING (tandai agar execute tahu tidak perlu RETURNING)
         is_or_ignore = bool(re.search(r'\bINSERT\s+OR\s+IGNORE\b', sql, re.IGNORECASE))
         sql = re.sub(r'\bINSERT\s+OR\s+IGNORE\s+INTO\b', 'INSERT INTO', sql, flags=re.IGNORECASE)
         # Placeholder ? → %s
-        sql = re.sub(r'\?', '%s', sql)
+        sql = sql.replace('?', '%s')
         if is_or_ignore:
             sql = sql.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
         # ── Konversi fungsi SQLite → PostgreSQL ───────────────────────────────
@@ -2028,14 +2028,15 @@ def init_db():
     db.commit()
     # Default superadmin
     if db.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 0:
+        default_admin_pass = os.environ.get('DEFAULT_ADMIN_PASS', 'Admin@123_default')
         db.execute('''INSERT INTO users(username, password_hash, full_name, role)
                       VALUES(?,?,?,?)''',
-                   ('superadmin', generate_password_hash('Admin@123'), 'Super Administrator', 'superadmin'))
+                   ('superadmin', generate_password_hash(default_admin_pass), 'Super Administrator', 'superadmin'))
         db.commit()
         print("=" * 55)
         print(" SUPERADMIN DIBUAT:")
         print("   Username : superadmin")
-        print("   Password : Admin@123")
+        print(f"   Password : {default_admin_pass}")
         print(" !! Segera ganti password setelah login !!")
         print("=" * 55)
     # Migrate old level name
@@ -3068,7 +3069,7 @@ def enforce_app_access():
             (session['user_id'], app_slug)
         ).fetchone()
         if not row:
-            flash(f'Anda tidak memiliki akses ke aplikasi ini.', 'danger')
+            flash('Anda tidak memiliki akses ke aplikasi ini.', 'danger')
             return redirect(url_for('portal'))
     except Exception:
         pass
@@ -4230,7 +4231,7 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
         is_done = r['status'] in ('done','closed','approved')
         done_date = r['created_at'][:10] if (is_done and r['created_at']) else None
         pts = round(_bpts('poc_presales'), 2)
-        _add('poc_presales', f"POC/Presales",
+        _add('poc_presales', "POC/Presales",
              f"{r['request_type'].upper()} {r['req_no']}: {r['subject'][:35]}",
              None, r['created_at'][:10] if r['created_at'] else None,
              done_date, pts, 'Medium')
@@ -4602,7 +4603,7 @@ def login():
             db.execute('UPDATE users SET last_login=? WHERE id=?',
                        (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), user['id']))
             db.commit()
-            audit_log('login', 'users', user['id'], f"Login berhasil via form", app_slug='portal')
+            audit_log('login', 'users', user['id'], "Login berhasil via form", app_slug='portal')
             flash(f'Selamat datang, {session["user_name"]}!', 'success')
             _next = request.args.get('next') or ''
             if _next and (not _next.startswith('/') or _next.startswith('//')):
@@ -5340,7 +5341,8 @@ def portal_settings_mass():
                 if not emp['user_id']:
                     db.execute('UPDATE employees SET user_id=? WHERE id=?', (uid, eid))
             else:
-                p_hash = generate_password_hash('hive2026', method='pbkdf2:sha256')
+                default_user_pass = os.environ.get('DEFAULT_USER_PASS', 'hive2026_default')
+                p_hash = generate_password_hash(default_user_pass, method='pbkdf2:sha256')
                 cur = db.execute('''
                     INSERT INTO users (username, password_hash, full_name, role, email, is_active)
                     VALUES (?, ?, ?, 'viewer', ?, 1)

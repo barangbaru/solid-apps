@@ -6,7 +6,8 @@ import os
 # Konfigurasi Sonar
 SONAR_URL = "http://10.150.10.61:9000"
 PROJECT_KEY = "hive-prod"
-TOKEN = "sqa_41f5251a3264187ae3fcb676dd573a780b045715"
+TOKEN = os.environ.get("SONAR_TOKEN", "")
+REPORT_HEADER = "# Riwayat Laporan Issue SonarQube\n\n"
 
 # Endpoint API SonarQube untuk mengambil issue (Open & Unresolved)
 API_ENDPOINT = f"{SONAR_URL}/api/issues/search?componentKeys={PROJECT_KEY}&statuses=OPEN,CONFIRMED,REOPENED&resolved=false"
@@ -52,6 +53,9 @@ def generate_markdown(data):
 
 if __name__ == "__main__":
     try:
+        if not TOKEN:
+            print("Peringatan: SONAR_TOKEN belum diatur sebagai environment variable.")
+            
         print("Mengambil data issue dari SonarQube...")
         data = fetch_issues()
         new_report = generate_markdown(data)
@@ -65,10 +69,10 @@ if __name__ == "__main__":
                 existing_content = f.read()
             
             # Buang judul utama jika sudah ada agar tidak ganda saat digabungkan
-            if existing_content.startswith("# Riwayat Laporan Issue SonarQube\n\n"):
-                existing_content = existing_content.replace("# Riwayat Laporan Issue SonarQube\n\n", "", 1)
+            if existing_content.startswith(REPORT_HEADER):
+                existing_content = existing_content.replace(REPORT_HEADER, "", 1)
         
-        final_content = "# Riwayat Laporan Issue SonarQube\n\n" + new_report + existing_content
+        final_content = REPORT_HEADER + new_report + existing_content
         
         with open(file_name, "w", encoding="utf-8") as f:
             f.write(final_content)

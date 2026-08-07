@@ -1,6 +1,7 @@
-VERSION = "2.2.151"
+VERSION = "2.2.152"
 RELEASE_DATE = "2026-08-07"
 RELEASE_NOTES = (
+    "v2.2.152: Memperbaiki beberapa temuan Blocker dan Code Smells dari SonarQube, termasuk penghapusan hardcoded token & password dan perbaikan sintaks di app.py. "\\
     "v2.2.151: Memperbarui jenkins_sonar_postbuild.sh untuk menggunakan explicit repository URL dengan credentials GitHub Token untuk keperluan push di Jenkins. "\\
     "v2.2.150: Memperbarui fetch_sonar_issues.py agar menyimpan riwayat tracking issue SonarQube di dalam SONAR_ISSUES.md dengan menambahkan hasil terbaru beserta stempel waktu di posisi paling atas file. "\\
     "v2.2.149: Mengubah pengaturan git config pada jenkins_sonar_postbuild.sh menjadi bersifat lokal (temporary) agar tidak menimpa konfigurasi global di server Jenkins. "\\
