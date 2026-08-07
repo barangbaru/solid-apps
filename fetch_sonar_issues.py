@@ -4,7 +4,7 @@ import base64
 import os
 
 # Konfigurasi Sonar
-SONAR_URL = "http://10.150.10.61:9000"
+SONAR_URL = "https://sonar.devops.mmi-pt.com/"
 PROJECT_KEY = "hive-prod"
 TOKEN = os.environ.get("SONAR_TOKEN", "")
 REPORT_HEADER = "# Riwayat Laporan Issue SonarQube\n\n"
