@@ -4,7 +4,7 @@ import base64
 import os
 
 # Konfigurasi Sonar
-SONAR_URL = "https://sonar.devops.mmi-pt.com/"
+SONAR_URL = "https://sonar.devops.mmi-pt.com".rstrip("/")
 PROJECT_KEY = "hive-prod"
 TOKEN = os.environ.get("SONAR_TOKEN", "")
 REPORT_HEADER = "# Riwayat Laporan Issue SonarQube\n\n"
@@ -19,9 +19,14 @@ def fetch_issues():
     
     req = urllib.request.Request(API_ENDPOINT)
     req.add_header("Authorization", f"Basic {b64_auth_str}")
-    
     with urllib.request.urlopen(req) as response:
-        return json.loads(response.read().decode())
+        raw_data = response.read().decode()
+        try:
+            return json.loads(raw_data)
+        except json.JSONDecodeError:
+            print("Gagal mem-parsing JSON dari SonarQube.")
+            print(f"Respon raw (potongan): {raw_data[:200]}")
+            raise Exception("Respon bukan JSON yang valid. Pastikan SONAR_URL benar dan tidak diblokir.")
 
 import datetime
 

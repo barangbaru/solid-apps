@@ -1,7 +1,7 @@
-VERSION = "2.2.153"
+VERSION = "2.2.154"
 RELEASE_DATE = "2026-08-07"
 RELEASE_NOTES = (
-    "v2.2.153: Menambahkan konfigurasi sonar.coverage.exclusions di sonar-project.properties untuk mengabaikan perhitungan Code Coverage pada Quality Gate, karena proyek belum menggunakan Unit Test. "\\
+    "v2.2.154: Menghapus trailing slash pada SONAR_URL untuk mencegah error URL double-slash saat request API, serta menambahkan logging raw response jika gagal parsing JSON. "\\
     "v2.2.152: Memperbaiki beberapa temuan Blocker dan Code Smells dari SonarQube, termasuk penghapusan hardcoded token & password dan perbaikan sintaks di app.py. "\\
     "v2.2.151: Memperbarui jenkins_sonar_postbuild.sh untuk menggunakan explicit repository URL dengan credentials GitHub Token untuk keperluan push di Jenkins. "\\
     "v2.2.150: Memperbarui fetch_sonar_issues.py agar menyimpan riwayat tracking issue SonarQube di dalam SONAR_ISSUES.md dengan menambahkan hasil terbaru beserta stempel waktu di posisi paling atas file. "\\
