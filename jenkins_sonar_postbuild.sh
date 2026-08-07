@@ -21,9 +21,9 @@ if [[ -n $(git status -s SONAR_ISSUES.md) ]]; then
     git add SONAR_ISSUES.md
     git commit -m "chore: Update laporan otomatis SonarQube issues [skip ci]"
     
-    # Push ke branch main
+    # Push ke branch main menggunakan URL dengan credentials
     # [skip ci] ditambahkan agar Jenkins tidak loop trigger build kembali
-    git push origin HEAD:main
+    git push https://${GITHUB_TOKEN}@github.com/barangbaru/solid-apps.git HEAD:main
     echo "Laporan SonarQube berhasil di-push ke repositori."
 else
     echo "Tidak ada perubahan pada issue SonarQube. Skip commit."
