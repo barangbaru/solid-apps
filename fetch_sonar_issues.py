@@ -22,12 +22,19 @@ def fetch_issues():
     with urllib.request.urlopen(req) as response:
         return json.loads(response.read().decode())
 
+import datetime
+
 def generate_markdown(data):
     issues = data.get("issues", [])
-    if not issues:
-        return "# Laporan SonarQube\n\n✅ Tidak ada issue yang ditemukan atau semua issue telah terselesaikan!"
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    md_content = f"# Laporan Issue SonarQube (Total: {len(issues)})\n\n"
+    md_content = f"## Scan Date: {now}\n\n"
+    
+    if not issues:
+        md_content += "✅ Tidak ada issue yang ditemukan atau semua issue telah terselesaikan!\n\n---\n\n"
+        return md_content
+    
+    md_content += f"**Total Issues:** {len(issues)}\n\n"
     md_content += "| Severity | Type | File | Line | Message |\n"
     md_content += "|---|---|---|---|---|\n"
     
@@ -40,18 +47,32 @@ def generate_markdown(data):
         
         md_content += f"| {severity} | {type_} | `{component}` | {line} | {message} |\n"
         
+    md_content += "\n---\n\n"
     return md_content
 
 if __name__ == "__main__":
     try:
         print("Mengambil data issue dari SonarQube...")
         data = fetch_issues()
-        md_report = generate_markdown(data)
+        new_report = generate_markdown(data)
         
-        # Simpan ke file markdown
-        with open("SONAR_ISSUES.md", "w", encoding="utf-8") as f:
-            f.write(md_report)
+        # Simpan ke file markdown dengan tracking (menyisipkan di paling atas)
+        file_name = "SONAR_ISSUES.md"
+        existing_content = ""
+        
+        if os.path.exists(file_name):
+            with open(file_name, "r", encoding="utf-8") as f:
+                existing_content = f.read()
             
-        print("Berhasil membuat SONAR_ISSUES.md")
+            # Buang judul utama jika sudah ada agar tidak ganda saat digabungkan
+            if existing_content.startswith("# Riwayat Laporan Issue SonarQube\n\n"):
+                existing_content = existing_content.replace("# Riwayat Laporan Issue SonarQube\n\n", "", 1)
+        
+        final_content = "# Riwayat Laporan Issue SonarQube\n\n" + new_report + existing_content
+        
+        with open(file_name, "w", encoding="utf-8") as f:
+            f.write(final_content)
+            
+        print(f"Berhasil memperbarui {file_name}")
     except Exception as e:
         print(f"Gagal mengambil data dari SonarQube: {e}")

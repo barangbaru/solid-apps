@@ -1,6 +1,7 @@
-VERSION = "2.2.149"
+VERSION = "2.2.150"
 RELEASE_DATE = "2026-08-07"
 RELEASE_NOTES = (
+    "v2.2.150: Memperbarui fetch_sonar_issues.py agar menyimpan riwayat tracking issue SonarQube di dalam SONAR_ISSUES.md dengan menambahkan hasil terbaru beserta stempel waktu di posisi paling atas file. "\\
     "v2.2.149: Mengubah pengaturan git config pada jenkins_sonar_postbuild.sh menjadi bersifat lokal (temporary) agar tidak menimpa konfigurasi global di server Jenkins. "\\
     "v2.2.148: Menambahkan script Python dan Shell Script untuk menarik hasil scan (issues) dari SonarQube ke repositori via pipeline Jenkins. "\\
     "v2.2.147: Menambahkan file konfigurasi sonar-project.properties untuk integrasi SonarQube via Jenkins. "\\
