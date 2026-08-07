@@ -4078,14 +4078,6 @@ def calc_task_analytics(db, emp_id, date_from='', date_to=''):
 
     today = _date.today().isoformat()
 
-    def _in_period(d):
-        if not d:
-            return True
-        if date_from and d < date_from:
-            return False
-        if date_to and d > date_to:
-            return False
-        return True
 
     def _timeliness(due, done_date):
         """Return: 'ontime'|'delay'|'no_due'|'open_ontime'|'open_overtime'"""
@@ -6073,7 +6065,6 @@ def index():
         ORDER BY emp.divisi, emp.name
     ''').fetchall()
 
-    today = date.today()
     contracts_alert = db.execute('''
         SELECT *, julianday(contract_end) - julianday('now') AS days_left
         FROM employees WHERE employment_type='kontrak' AND contract_end != ''
@@ -6351,7 +6342,6 @@ def emp_import():
         wb = load_workbook(f, read_only=True, data_only=True)
         ws = wb.active
         db = get_db()
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Header row = 1, tip row = 2, data starts row 3
         FIELD_MAP = {
